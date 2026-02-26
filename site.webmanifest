@@ -1,0 +1,18 @@
+﻿{
+  "name": "Mae, Rainha e Vencedora Tres Vezes Admiravel de Schoenstatt",
+  "short_name": "Schoenstatt",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f0e5",
+  "theme_color": "#214f8b",
+  "icons": [
+    {
+      "src": "./assets/img/logo.png",
+      "sizes": "85x79",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.vscode
+.idea
+
+tmp
+docs
+
+backend/.env
+.env
+
+__pycache__
+*.pyc
+*.pyo
+*.log
+*.pdf

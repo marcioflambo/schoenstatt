@@ -1,0 +1,15 @@
+# Arquivos temporarios de pesquisa
+/tmp/*
+!/tmp/.gitkeep
+
+# Logs de ambiente
+*.log
+
+# Variaveis locais de ambiente
+.env
+/.env
+backend/.env
+
+# Cache Python
+__pycache__/
+*.pyc

@@ -1,0 +1,514 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#214f8b">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>M&atilde;e, Rainha e Vencedora Tr&ecirc;s Vezes Admir&aacute;vel de Schoenstatt</title>
+  <meta name="description" content="Portal para rezar o terco da M&atilde;e, Rainha e Vencedora Tr&ecirc;s Vezes Admir&aacute;vel de Schoenstatt, com cantos, cifras e oracoes.">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/img/logo.png">
+  <link rel="shortcut icon" type="image/png" href="./assets/img/logo.png">
+  <link rel="apple-touch-icon" href="./assets/img/logo.png">
+  <link rel="manifest" href="./site.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Nunito+Sans:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/css/portal.css">
+</head>
+<body>
+  <div class="page-atmosphere" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="orb orb-c"></div>
+  </div>
+
+  <header class="site-header" id="topo">
+    <div class="container header-row">
+      <a href="#inicio" class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <img src="./assets/img/logo.png" alt="" loading="lazy">
+        </span>
+        <span class="brand-text">
+          <strong>M&atilde;e, Rainha e Vencedora</strong>
+          <small>Tr&ecirc;s Vezes Admir&aacute;vel de Schoenstatt</small>
+        </span>
+      </a>
+
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-list" aria-label="Abrir menu">
+        <span class="menu-toggle-icon" aria-hidden="true"></span>
+      </button>
+
+      <nav class="menu-list" id="menu-list" aria-label="Navegacao principal">
+        <a href="#historia">A historia</a>
+
+        <details class="menu-dropdown">
+          <summary>Oracao</summary>
+          <div class="menu-submenu">
+            <a href="#roteiro">Como rezar</a>
+            <a href="#misterios">Misterios</a>
+            <a href="#oracoes">Oracoes</a>
+          </div>
+        </details>
+
+        <details class="menu-dropdown">
+          <summary>Conteudo</summary>
+          <div class="menu-submenu">
+            <a href="#cantos">Cantos com cifra</a>
+            <a href="#recursos">Recursos</a>
+          </div>
+        </details>
+
+        <details class="menu-dropdown">
+          <summary>Divulgacao</summary>
+          <div class="menu-submenu">
+            <a href="#sementes">Sementes do Santuario</a>
+            <a href="https://sementesdosantuario.pt" target="_blank" rel="noopener">Site Sementes</a>
+            <a href="https://www.schoenstatt.pt/santuarios" target="_blank" rel="noopener">Santuarios de Schoenstatt</a>
+            <a href="https://schoenstatt.com/pt-pt/" target="_blank" rel="noopener">Portal Schoenstatt</a>
+          </div>
+        </details>
+      </nav>
+
+      <div class="font-controls" aria-label="Controle de fonte">
+        <button type="button" id="font-decrease" class="font-btn" aria-label="Diminuir fonte">A-</button>
+        <button type="button" id="font-increase" class="font-btn" aria-label="Aumentar fonte">A+</button>
+        <button type="button" id="theme-toggle" class="font-btn theme-btn" aria-pressed="false" aria-label="Alternar tema claro e escuro">
+          <span class="theme-icon theme-icon-sun" aria-hidden="true">&#9728;</span>
+          <span class="theme-icon theme-icon-moon" aria-hidden="true">&#9790;</span>
+        </button>
+      </div>
+
+      <a href="#contato" class="btn btn-outline">Planejar conteudo</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero section reveal" id="inicio">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Santuario de Schoenstatt</p>
+          <h1>M&atilde;e, Rainha e Vencedora Tr&ecirc;s Vezes Admir&aacute;vel de Schoenstatt</h1>
+          <p class="hero-lead">
+            Um portal para ajudar comunidades, familias e grupos de violao a rezar com unidade:
+            roteiro completo, misterios do dia, oracoes e cantos com letra e cifra.
+          </p>
+          <div class="hero-actions">
+            <a href="#roteiro" class="btn btn-primary">Comecar o terco</a>
+            <a href="#cantos" class="btn btn-ghost">Ver cantos para violao</a>
+          </div>
+        </div>
+
+        <aside class="today-card">
+          <p class="today-label">Roteiro de hoje</p>
+          <h2 id="today-mystery-title">Misterios</h2>
+          <p id="today-mystery-day" class="today-day">Dia da semana</p>
+          <ul id="today-mystery-list" class="today-list"></ul>
+          <p class="today-note">Sugestao do portal: antes de iniciar, definir uma intencao comunitaria.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section section-soft reveal" id="historia">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Narracao como no video</p>
+          <h2>A historia da Mae Rainha em capitulos</h2>
+          <p>
+            Inspirado no estilo do video indicado, esta secao organiza a historia em blocos curtos:
+            significado do titulo, origem em Schoenstatt e missao para a vida de oracao.
+          </p>
+        </header>
+
+        <div class="story-layout">
+          <article class="story-video-card">
+            <div class="story-video-wrap">
+              <iframe
+                data-youtube-embed
+                src="https://www.youtube-nocookie.com/embed/1YUYV_F-p3M?rel=0&modestbranding=1&playsinline=1"
+                title="Mae Rainha Tres Vezes Admiravel - Qual o significado?"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerpolicy="strict-origin-when-cross-origin"
+                allowfullscreen></iframe>
+            </div>
+            <p class="story-video-fallback" data-video-fallback hidden>
+              Se aparecer o erro 153 no player incorporado, abra direto no
+              <a href="https://www.youtube.com/watch?v=1YUYV_F-p3M" target="_blank" rel="noopener">YouTube</a>.
+            </p>
+            <p class="story-video-note">
+              Video-base: "Mae Rainha Tres Vezes Admiravel - Qual o significado?" (Pe. Vandemir Meister).
+            </p>
+          </article>
+
+          <article class="story-narrative-card">
+            <p class="story-intro">
+              Linha narrativa sugerida: da origem do titulo mariano ate o envio missionario para rezar o terco em familia e comunidade.
+            </p>
+
+            <div class="story-tabs" role="tablist" aria-label="Capitulos da historia">
+              <button type="button" class="story-tab is-active" data-story-id="origem" aria-selected="true">1. Origem do titulo</button>
+              <button type="button" class="story-tab" data-story-id="alianca" aria-selected="false">2. Alianca em Schoenstatt</button>
+              <button type="button" class="story-tab" data-story-id="nome" aria-selected="false">3. Mae e Rainha</button>
+              <button type="button" class="story-tab" data-story-id="peregrina" aria-selected="false">4. Campanha Peregrina</button>
+              <button type="button" class="story-tab" data-story-id="hoje" aria-selected="false">5. Chamado de hoje</button>
+            </div>
+
+            <div class="story-panel">
+              <p id="story-eyebrow" class="story-panel-eyebrow">Capitulo 1</p>
+              <h3 id="story-title">Mater Ter Admirabilis</h3>
+              <p id="story-text">
+                A expressao "Tres Vezes Admiravel" ja era usada na tradicao mariana. Em Schoenstatt,
+                esse titulo ganha forca para expressar a missao de Maria na pedagogia da alianca.
+              </p>
+              <p id="story-meta" class="story-meta">Raiz historica: Ingolstadt, sec. XVII</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="story-timeline">
+          <article class="story-timeline-item">
+            <span>1604</span>
+            <p>Padre Jacob Rem divulga a invocacao "Mater Ter Admirabilis" em Ingolstadt.</p>
+          </article>
+          <article class="story-timeline-item">
+            <span>1914</span>
+            <p>Fundacao de Schoenstatt e Alianca de Amor no Santuario Original.</p>
+          </article>
+          <article class="story-timeline-item">
+            <span>1915-1916</span>
+            <p>Imagem da MTA no Santuario e consolidacao do titulo "Mae e Rainha Tres Vezes Admiravel".</p>
+          </article>
+          <article class="story-timeline-item">
+            <span>1950</span>
+            <p>Joao Pozzobon inicia no Brasil a Campanha da Mae Peregrina.</p>
+          </article>
+          <article class="story-timeline-item">
+            <span>Hoje</span>
+            <p>O titulo continua vivo na catequese, no terco e na evangelizacao das familias.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" id="roteiro">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Guia rapido</p>
+          <h2>Como rezar o terco em comunidade</h2>
+          <p>Estrutura pronta para encontros presenciais, familiares ou grupos de missa.</p>
+        </header>
+
+        <div class="steps-grid">
+          <article class="step-card">
+            <span class="step-number">1</span>
+            <h3>Acolhida</h3>
+            <p>Sinal da cruz, intencoes e consagracao breve a Mae Rainha.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">2</span>
+            <h3>Credo</h3>
+            <p>Rezar o Credo no crucifixo do terco.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">3</span>
+            <h3>Contas iniciais</h3>
+            <p>1 Pai-Nosso, 3 Ave-Marias e 1 Gloria.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">4</span>
+            <h3>Misterio 1</h3>
+            <p>Anunciar, fazer breve meditacao e rezar a dezena.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">5</span>
+            <h3>Misterios 2 a 5</h3>
+            <p>Repetir a dinamica das dezenas com canto entre os misterios.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">6</span>
+            <h3>Oracao final</h3>
+            <p>Salve Rainha, oracao da Mae Rainha e intencoes finais.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-number">7</span>
+            <h3>Envio</h3>
+            <p>Bencao final e convite para proximo encontro.</p>
+          </article>
+          <article class="step-card highlight">
+            <span class="step-number">+</span>
+            <h3>Espaco para cantos</h3>
+            <p>Entre dezenas, usar musicas com cifra para facilitar o violao.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-soft reveal" id="misterios">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Meditacao semanal</p>
+          <h2>Misterios do terco por dia</h2>
+          <p>Layout pronto para colocar meditacoes completas de cada misterio.</p>
+        </header>
+
+        <div class="mystery-grid">
+          <article class="mystery-card">
+            <p class="mystery-day">Segunda e Sabado</p>
+            <h3>Gozosos</h3>
+            <ul>
+              <li>Anunciacao do Anjo</li>
+              <li>Visitacao de Maria</li>
+              <li>Nascimento de Jesus</li>
+              <li>Apresentacao no Templo</li>
+              <li>Perda e Encontro de Jesus</li>
+            </ul>
+          </article>
+          <article class="mystery-card">
+            <p class="mystery-day">Terca e Sexta</p>
+            <h3>Dolorosos</h3>
+            <ul>
+              <li>Agonia de Jesus</li>
+              <li>Flagelacao</li>
+              <li>Coroacao de espinhos</li>
+              <li>Jesus carrega a cruz</li>
+              <li>Crucificacao e morte</li>
+            </ul>
+          </article>
+          <article class="mystery-card">
+            <p class="mystery-day">Quarta e Domingo</p>
+            <h3>Gloriosos</h3>
+            <ul>
+              <li>Ressurreicao de Jesus</li>
+              <li>Ascensao do Senhor</li>
+              <li>Vinda do Espirito Santo</li>
+              <li>Assuncao de Maria</li>
+              <li>Coroacao de Maria</li>
+            </ul>
+          </article>
+          <article class="mystery-card">
+            <p class="mystery-day">Quinta</p>
+            <h3>Luminosos</h3>
+            <ul>
+              <li>Batismo no Jordao</li>
+              <li>Bodas de Cana</li>
+              <li>Anuncio do Reino</li>
+              <li>Transfiguracao</li>
+              <li>Instituicao da Eucaristia</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" id="cantos">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Ministerio de musica</p>
+          <h2>Cantos com letra e cifra para violao</h2>
+          <p>Modelo de exibicao para quem toca e precisa ler rapido durante a oracao.</p>
+        </header>
+
+        <div class="song-grid">
+          <article class="song-card" data-accordion>
+            <div class="song-head">
+              <div>
+                <h3>Mae Rainha, passa a frente</h3>
+                <p>Tom: G | Compasso: 4/4 | Entrada para inicio do terco</p>
+              </div>
+              <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar letra e cifra" data-closed-label="Ver letra e cifra">Ver letra e cifra</button>
+            </div>
+            <div class="accordion-body" data-accordion-body>
+<pre>[G] Mae Rainha, passa a frente
+[Em] Guia nosso caminhar
+[C] No silencio do terco
+[D] Vem conosco rezar
+
+[G] Tua alianca nos sustenta
+[Em] No trabalho e na missao
+[C] Mae e Rainha de Schoenstatt
+[D] Guarda o nosso coracao</pre>
+            </div>
+          </article>
+
+          <article class="song-card" data-accordion>
+            <div class="song-head">
+              <div>
+                <h3>Consagracao a Mae Rainha</h3>
+                <p>Tom: D | Compasso: 3/4 | Momento apos o quinto misterio</p>
+              </div>
+              <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar letra e cifra" data-closed-label="Ver letra e cifra">Ver letra e cifra</button>
+            </div>
+            <div class="accordion-body" data-accordion-body>
+<pre>[D] Recebe, Mae querida
+[Bm] Minha vida em oracao
+[G] Cada conta deste terco
+[A] E entrega do coracao
+
+[D] Toma tudo em tua alianca
+[Bm] Faz de mim instrumento teu
+[G] Mae Rainha vitoriosa
+[A] Leva-me sempre a Deus</pre>
+            </div>
+          </article>
+
+          <article class="song-card" data-accordion>
+            <div class="song-head">
+              <div>
+                <h3>Vem, Espirito Santo</h3>
+                <p>Tom: C | Compasso: 4/4 | Invocacao antes dos misterios</p>
+              </div>
+              <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar letra e cifra" data-closed-label="Ver letra e cifra">Ver letra e cifra</button>
+            </div>
+            <div class="accordion-body" data-accordion-body>
+<pre>[C] Vem Espirito Santo
+[Am] Vem iluminar
+[F] Cada misterio
+[G] Que vamos contemplar
+
+[C] Com Maria no Santuario
+[Am] Queremos escutar
+[F] A voz de Cristo vivo
+[G] Que nos chama a amar</pre>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-soft reveal" id="oracoes">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Base de oracoes</p>
+          <h2>Oracoes principais do encontro</h2>
+          <p>Area pronta para cadastrar textos completos e versoes para criancas, jovens e familias.</p>
+        </header>
+
+        <div class="prayer-grid">
+          <article class="prayer-card" data-accordion>
+            <h3>Pai-Nosso</h3>
+            <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar oracao" data-closed-label="Ver oracao">Ver oracao</button>
+            <div class="accordion-body" data-accordion-body>
+              <p>Pai nosso que estais no ceu, santificado seja o vosso nome; venha a nos o vosso reino; seja feita a vossa vontade, assim na terra como no ceu...</p>
+            </div>
+          </article>
+
+          <article class="prayer-card" data-accordion>
+            <h3>Ave-Maria</h3>
+            <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar oracao" data-closed-label="Ver oracao">Ver oracao</button>
+            <div class="accordion-body" data-accordion-body>
+              <p>Ave Maria, cheia de graca, o Senhor e convosco; bendita sois vos entre as mulheres, e bendito e o fruto do vosso ventre, Jesus...</p>
+            </div>
+          </article>
+
+          <article class="prayer-card" data-accordion>
+            <h3>Salve Rainha</h3>
+            <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar oracao" data-closed-label="Ver oracao">Ver oracao</button>
+            <div class="accordion-body" data-accordion-body>
+              <p>Salve, Rainha, Mae de misericordia, vida, docura e esperanca nossa, salve. A vos bradamos os degredados filhos de Eva...</p>
+            </div>
+          </article>
+
+          <article class="prayer-card" data-accordion>
+            <h3>Oracao da Mae Rainha</h3>
+            <button class="accordion-trigger" type="button" data-accordion-trigger data-open-label="Ocultar oracao" data-closed-label="Ver oracao">Ver oracao</button>
+            <div class="accordion-body" data-accordion-body>
+              <p>Oh Senhora minha, oh minha Mae, eu me ofereco inteiramente a vos. E em prova da minha devocao para convosco, eu vos consagro neste dia meus olhos, meus ouvidos, minha boca, meu coracao...</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" id="sementes">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Site parceiro</p>
+          <h2>Sementes do Santuario (Schoenstatt Aveiro)</h2>
+          <p>
+            Espaco de evangelizacao e formacao ligado ao Instituto Secular das Irmas de Maria de Schoenstatt,
+            com conteudos e iniciativas em Aveiro.
+          </p>
+        </header>
+
+        <article class="sementes-card">
+          <p class="sementes-badge">Divulgacao</p>
+          <h3>Conheca o portal Sementes do Santuario</h3>
+          <p>
+            O Instituto Secular das Irmas de Maria de Schoenstatt (ISIMS) e um Instituto Secular da Igreja Catolica
+            com sede na Gafanha da Nazare, em Aveiro.
+          </p>
+          <div class="sementes-actions">
+            <a class="btn btn-primary" href="https://sementesdosantuario.pt" target="_blank" rel="noopener">Acessar site</a>
+            <a class="btn btn-ghost" href="https://sementesdosantuario.pt/noticias" target="_blank" rel="noopener">Ver noticias</a>
+            <a class="btn btn-ghost" href="https://www.schoenstatt.pt/santuarios" target="_blank" rel="noopener">Santuarios de Schoenstatt</a>
+            <a class="btn btn-ghost" href="https://schoenstatt.com/pt-pt/" target="_blank" rel="noopener">Portal Schoenstatt</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section reveal" id="recursos">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-kicker">Outras frentes do portal</p>
+          <h2>Recursos para comunidade e ministerio</h2>
+          <p>Blocos preparados para crescer para alem do layout inicial.</p>
+        </header>
+
+        <div class="resource-grid">
+          <article class="resource-card">
+            <h3>Pedidos de oracao</h3>
+            <p>Formulario para intencoes semanais da comunidade.</p>
+          </article>
+          <article class="resource-card">
+            <h3>Escala de musica</h3>
+            <p>Organizacao de vozes, violao e repertorio por encontro.</p>
+          </article>
+          <article class="resource-card">
+            <h3>Materiais para impressao</h3>
+            <p>Folhetos em PDF com terco, oracoes e letras.</p>
+          </article>
+          <article class="resource-card">
+            <h3>Agenda de encontros</h3>
+            <p>Calendario mensal com tema e familia responsavel.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-cta reveal" id="contato">
+      <div class="container cta-box">
+        <p class="section-kicker">Proxima etapa</p>
+        <h2>Layout base concluido para iniciar o conteudo real</h2>
+        <p>
+          Proximo passo sugerido: preencher letras completas (com direitos autorais revisados),
+          cadastrar oracoes completas e adicionar audio de referencia para os musicos.
+        </p>
+        <a href="#topo" class="btn btn-primary">Revisar estrutura do portal</a>
+      </div>
+    </section>
+  </main>
+
+  <div id="mystery-modal" class="mystery-modal" aria-hidden="true">
+    <div class="mystery-modal-backdrop" data-mystery-modal-close></div>
+    <article class="mystery-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mystery-modal-title">
+      <button type="button" class="mystery-modal-close" data-mystery-modal-close aria-label="Fechar modal">Fechar</button>
+      <p id="mystery-modal-group" class="mystery-modal-group"></p>
+      <h3 id="mystery-modal-title"></h3>
+      <p id="mystery-modal-text" class="mystery-modal-text"></p>
+    </article>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container footer-row">
+      <p>M&atilde;e, Rainha e Vencedora Tr&ecirc;s Vezes Admir&aacute;vel de Schoenstatt</p>
+      <a href="#inicio">Voltar ao topo</a>
+    </div>
+  </footer>
+
+  <script src="./assets/js/portal.js"></script>
+</body>
+</html>

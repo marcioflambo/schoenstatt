@@ -9,6 +9,14 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import PROJECT_DIR, settings
 from .db import ping_database
+from .songs import (
+    SongFetchRequest,
+    SongLyricsFetchRequest,
+    SongSearchRequest,
+    fetch_lyrics_from_letras,
+    fetch_song_from_url,
+    search_song_portals,
+)
 
 app = FastAPI(
     title='Portal Schoenstatt API',
@@ -51,6 +59,59 @@ def api_songs_status() -> dict[str, object]:
     return {
         'status': 'prepared',
         'message': 'Conectividade pronta. Criacao de tabelas e CRUD de musicas sera adicionada na proxima etapa.',
+    }
+
+
+@app.post('/api/songs/fetch')
+def api_song_fetch(payload: SongFetchRequest) -> dict[str, object]:
+    try:
+        song = fetch_song_from_url(payload.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **song,
+    }
+
+
+@app.post('/api/songs/search')
+def api_song_search(payload: SongSearchRequest) -> dict[str, object]:
+    try:
+        results = search_song_portals(payload.query, payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'query': payload.query.strip(),
+        'count': len(results),
+        'results': results,
+    }
+
+
+@app.post('/api/songs/fetch-lyrics')
+def api_song_fetch_lyrics(payload: SongLyricsFetchRequest) -> dict[str, object]:
+    try:
+        song = fetch_lyrics_from_letras(payload.title, payload.artist, payload.source_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        message = str(exc)
+        if message in {
+            'Nao foi possivel carregar a letra no Letras.mus.br para esta musica.',
+            'Nao foi possivel identificar a letra nesta pagina do Letras.mus.br.',
+        }:
+            raise HTTPException(status_code=404, detail={'message': message, 'code': 'lyrics_not_found'}) from exc
+        raise HTTPException(status_code=502, detail={'message': message}) from exc
+
+    return {
+        'ok': True,
+        **song,
     }
 
 

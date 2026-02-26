@@ -33,6 +33,8 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 Endpoints:
 - `GET /api/health`
 - `GET /api/db/ping`
+- `POST /api/songs/search` (busca por nome da musica em Cifra Club e Cifras)
+- `POST /api/songs/fetch` (carrega a cifra pela URL escolhida)
 
 ## Docker
 

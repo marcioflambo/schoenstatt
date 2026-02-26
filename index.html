@@ -43,11 +43,12 @@
       </button>
 
       <nav class="menu-list" id="menu-list" aria-label="Navegacao principal">
-        <a href="#historia">A historia</a>
+        <button type="button" class="menu-panel-close" data-menu-close aria-label="Fechar menu">&times;</button>
 
         <details class="menu-dropdown">
           <summary>Oracao</summary>
           <div class="menu-submenu">
+            <a href="#historia">A historia</a>
             <a href="#roteiro">Como rezar</a>
             <a href="#misterios">Misterios</a>
             <a href="#oracoes">Oracoes</a>
@@ -73,6 +74,54 @@
         </details>
       </nav>
 
+      <div class="menu-song-search">
+        <form id="song-fetch-form" class="song-fetch-form">
+          <label for="song-search-query">Buscar musica</label>
+          <div class="song-fetch-row">
+            <div class="song-fetch-input-wrap">
+              <input
+                id="song-search-query"
+                class="song-fetch-input"
+                type="search"
+                inputmode="search"
+                placeholder="Buscar musica"
+                required>
+              <button
+                type="button"
+                id="song-search-trigger"
+                class="song-search-trigger"
+                aria-label="Buscar novamente"
+                title="Buscar novamente">
+                <svg class="song-search-trigger-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="M16 16l4 4"></path>
+                </svg>
+              </button>
+              <button
+                type="button"
+                id="song-search-clear"
+                class="song-search-clear"
+                aria-label="Limpar busca"
+                title="Limpar busca"
+                hidden>
+                <svg class="song-search-clear-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h16" />
+                  <path d="M9 7V5h6v2" />
+                  <path d="M8 7l1 12h6l1-12" />
+                  <path d="M10 10v7" />
+                  <path d="M14 10v7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </form>
+        <p id="song-fetch-feedback" class="song-fetch-feedback" aria-live="polite"></p>
+          <div id="song-search-results" class="song-search-results" hidden>
+            <p class="song-search-results-title">Escolha uma opcao para abrir a musica</p>
+            <ul id="song-search-results-list" class="song-search-results-list"></ul>
+          </div>
+        </div>
+
       <div class="font-controls" aria-label="Controle de fonte">
         <button type="button" id="font-decrease" class="font-btn" aria-label="Diminuir fonte">A-</button>
         <button type="button" id="font-increase" class="font-btn" aria-label="Aumentar fonte">A+</button>
@@ -82,7 +131,6 @@
         </button>
       </div>
 
-      <a href="#contato" class="btn btn-outline">Planejar conteudo</a>
     </div>
   </header>
 
@@ -103,8 +151,11 @@
         </div>
 
         <aside class="today-card">
+          <figure class="today-visual" aria-hidden="true">
+            <img src="./assets/img/nossasenhora_schoenstatt.jpg" alt="">
+          </figure>
           <p class="today-label">Roteiro de hoje</p>
-          <h2 id="today-mystery-title">Misterios</h2>
+          <h2 id="today-mystery-title">Mist&eacute;rios</h2>
           <p id="today-mystery-day" class="today-day">Dia da semana</p>
           <ul id="today-mystery-list" class="today-list"></ul>
           <p class="today-note">Sugestao do portal: antes de iniciar, definir uma intencao comunitaria.</p>
@@ -259,44 +310,44 @@
             <p class="mystery-day">Segunda e Sabado</p>
             <h3>Gozosos</h3>
             <ul>
-              <li>Anunciacao do Anjo</li>
-              <li>Visitacao de Maria</li>
-              <li>Nascimento de Jesus</li>
-              <li>Apresentacao no Templo</li>
-              <li>Perda e Encontro de Jesus</li>
+              <li>Anuncia&ccedil;&atilde;o do Anjo a Nossa Senhora</li>
+              <li>Visita de Nossa Senhora &agrave; sua prima Santa Isabel</li>
+              <li>Nascimento de Jesus na gruta de Bel&eacute;m</li>
+              <li>Apresenta&ccedil;&atilde;o do Menino Jesus no Templo</li>
+              <li>Perda e encontro do Menino Jesus no Templo</li>
             </ul>
           </article>
           <article class="mystery-card">
             <p class="mystery-day">Terca e Sexta</p>
             <h3>Dolorosos</h3>
             <ul>
-              <li>Agonia de Jesus</li>
-              <li>Flagelacao</li>
-              <li>Coroacao de espinhos</li>
-              <li>Jesus carrega a cruz</li>
-              <li>Crucificacao e morte</li>
+              <li>Agonia de Jesus no Horto das Oliveiras</li>
+              <li>Flagela&ccedil;&atilde;o de Jesus</li>
+              <li>Jesus &eacute; coroado de espinhos</li>
+              <li>Jesus sobe o Monte Calv&aacute;rio com a cruz &agrave;s costas</li>
+              <li>Crucifica&ccedil;&atilde;o e morte de Jesus</li>
             </ul>
           </article>
           <article class="mystery-card">
             <p class="mystery-day">Quarta e Domingo</p>
             <h3>Gloriosos</h3>
             <ul>
-              <li>Ressurreicao de Jesus</li>
-              <li>Ascensao do Senhor</li>
-              <li>Vinda do Espirito Santo</li>
-              <li>Assuncao de Maria</li>
-              <li>Coroacao de Maria</li>
+              <li>Ressurrei&ccedil;&atilde;o de Jesus</li>
+              <li>Ascens&atilde;o de Jesus ao C&eacute;u</li>
+              <li>Descida do Esp&iacute;rito Santo sobre Nossa Senhora e os Ap&oacute;stolos, reunidos no Cen&aacute;culo, em ora&ccedil;&atilde;o</li>
+              <li>Assun&ccedil;&atilde;o de Maria ao C&eacute;u em corpo e alma</li>
+              <li>Coroa&ccedil;&atilde;o de Nossa Senhora como Rainha do C&eacute;u e da Terra</li>
             </ul>
           </article>
           <article class="mystery-card">
             <p class="mystery-day">Quinta</p>
             <h3>Luminosos</h3>
             <ul>
-              <li>Batismo no Jordao</li>
-              <li>Bodas de Cana</li>
-              <li>Anuncio do Reino</li>
-              <li>Transfiguracao</li>
-              <li>Instituicao da Eucaristia</li>
+              <li>Batismo de Jesus nas &aacute;guas do rio Jord&atilde;o</li>
+              <li>Jesus revela-Se nas Bodas de Can&aacute;</li>
+              <li>Jesus anuncia o Reino de Deus com o convite &agrave; convers&atilde;o</li>
+              <li>A Transfigura&ccedil;&atilde;o de Jesus</li>
+              <li>A institui&ccedil;&atilde;o da Eucaristia</li>
             </ul>
           </article>
         </div>
@@ -308,8 +359,56 @@
         <header class="section-header">
           <p class="section-kicker">Ministerio de musica</p>
           <h2>Cantos com letra e cifra para violao</h2>
-          <p>Modelo de exibicao para quem toca e precisa ler rapido durante a oracao.</p>
+          <p>Use a busca no menu ou aqui embaixo para localizar a musica e ajustar o tom no modal da cifra.</p>
         </header>
+
+        <article class="song-fetch-card song-fetch-card-cantos">
+          <form id="song-fetch-form-cantos" class="song-fetch-form">
+            <label for="song-search-query-cantos">Nome da musica</label>
+            <div class="song-fetch-row">
+              <div class="song-fetch-input-wrap">
+                <input
+                  id="song-search-query-cantos"
+                  class="song-fetch-input"
+                  type="search"
+                  inputmode="search"
+                  placeholder="Ex.: Eu Seguirei"
+                  required>
+                <button
+                  type="button"
+                  id="song-search-trigger-cantos"
+                  class="song-search-trigger"
+                  aria-label="Buscar novamente"
+                  title="Buscar novamente">
+                  <svg class="song-search-trigger-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6"></circle>
+                    <path d="M16 16l4 4"></path>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  id="song-search-clear-cantos"
+                  class="song-search-clear"
+                  aria-label="Limpar busca"
+                  title="Limpar busca"
+                  hidden>
+                  <svg class="song-search-clear-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h16" />
+                    <path d="M9 7V5h6v2" />
+                    <path d="M8 7l1 12h6l1-12" />
+                    <path d="M10 10v7" />
+                    <path d="M14 10v7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </form>
+          <p id="song-fetch-feedback-cantos" class="song-fetch-feedback" aria-live="polite"></p>
+          <div id="song-search-results-cantos" class="song-search-results" hidden>
+            <p class="song-search-results-title">Escolha uma opcao para abrir a musica</p>
+            <ul id="song-search-results-list-cantos" class="song-search-results-list"></ul>
+          </div>
+        </article>
 
         <div class="song-grid">
           <article class="song-card" data-accordion>
@@ -492,13 +591,72 @@
     </section>
   </main>
 
+  <div id="song-modal" class="song-modal" aria-hidden="true">
+    <div class="song-modal-backdrop" data-song-modal-close></div>
+    <article class="song-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="fetched-song-title">
+      <div class="song-modal-topbar">
+        <div class="song-modal-top-actions">
+          <button type="button" class="song-modal-close" data-song-modal-close aria-label="Fechar cifra">&times;</button>
+        </div>
+      </div>
+      <article id="fetched-song-card" class="song-card fetched-song-card" hidden>
+        <div class="song-head">
+          <div>
+            <h3 id="fetched-song-title">Musica carregada</h3>
+            <p id="fetched-song-meta">Tom original: -</p>
+            <div class="song-modal-tone-row">
+              <p class="song-modal-tone-label">Tom:</p>
+              <div id="song-tone-grid" class="song-tone-grid" aria-label="Escolher tom"></div>
+              <button type="button" id="song-tone-reset" class="song-tone-reset">Restaurar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="fetched-song-body">
+          <pre id="fetched-song-lyrics" class="fetched-song-lyrics"></pre>
+        </div>
+      </article>
+    </article>
+  </div>
+
   <div id="mystery-modal" class="mystery-modal" aria-hidden="true">
     <div class="mystery-modal-backdrop" data-mystery-modal-close></div>
     <article class="mystery-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mystery-modal-title">
-      <button type="button" class="mystery-modal-close" data-mystery-modal-close aria-label="Fechar modal">Fechar</button>
-      <p id="mystery-modal-group" class="mystery-modal-group"></p>
-      <h3 id="mystery-modal-title"></h3>
-      <p id="mystery-modal-text" class="mystery-modal-text"></p>
+      <div class="mystery-modal-content">
+        <nav id="mystery-modal-links" class="mystery-modal-links" aria-label="Navegar pelos 5 misterios"></nav>
+        <div class="mystery-modal-heading-row">
+          <div class="mystery-modal-heading">
+            <p id="mystery-modal-group" class="mystery-modal-group"></p>
+            <h3 id="mystery-modal-title"></h3>
+          </div>
+          <button type="button" class="mystery-modal-close" data-mystery-modal-close aria-label="Fechar misterio">&times;</button>
+        </div>
+        <p id="mystery-modal-text" class="mystery-modal-text"></p>
+      </div>
+      <footer class="mystery-modal-footer">
+        <button
+          type="button"
+          id="mystery-jaculatory-toggle"
+          class="mystery-jaculatory-toggle"
+          aria-controls="mystery-jaculatory-panel"
+          aria-expanded="false"
+        >
+          Exibir jaculatoria
+        </button>
+        <div id="mystery-jaculatory-panel" class="mystery-jaculatory-panel" hidden>
+          <p class="mystery-jaculatory-title">Jaculatorias</p>
+          <ul class="mystery-jaculatory-list">
+            <li>Jesus manso e humilde de coração, fazei o nosso coração semelhante ao vosso.</li>
+            <li>Sagrado Coração de Jesus, eu confio em Vós.</li>
+            <li>Sagrado Coração de Jesus que tanto nos amais, fazei que vos ame sempre e cada vez mais.</li>
+            <li>O Maria, concebida sem pecado, rogai por nos que recorremos a Vos.</li>
+            <li>O meu Jesus perdoai-nos e livrai-nos do fogo do inferno.</li>
+            <li>Levai as almas todas para o ceu, principalmente as que mais precisarem.</li>
+            <li>Mae, Rainha e Vencedora Tres Vezes Admiravel de Schoenstatt, rogai por nos.</li>
+            <li>Rainha da paz, dai-nos a paz.</li>
+          </ul>
+        </div>
+      </footer>
     </article>
   </div>
 
@@ -508,6 +666,8 @@
       <a href="#inicio">Voltar ao topo</a>
     </div>
   </footer>
+
+  <div id="song-toast" class="song-toast" role="status" aria-live="polite" hidden></div>
 
   <script src="./assets/js/portal.js"></script>
 </body>

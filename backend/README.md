@@ -18,7 +18,7 @@
    - `GET http://127.0.0.1:8000/api/db/ping`
 
 ## Observacoes
-- Nesta fase, apenas a conectividade com banco foi preparada.
+- Nesta fase, a API ja possui busca inicial de cifras por nome e leitura de cifra por URL.
 - Tabelas e CRUD de musicas/oracoes serao criados na proxima etapa.
 
 ## Executar com Docker (hot reload)
@@ -32,6 +32,8 @@ docker compose up --build -d
 Validar:
 - `GET http://127.0.0.1:8000/api/health`
 - `GET http://127.0.0.1:8000/api/db/ping`
+- `POST http://127.0.0.1:8000/api/songs/search`
+- `POST http://127.0.0.1:8000/api/songs/fetch`
 
 Sem reiniciar container:
 - alteracoes em `backend/*`: recarregamento automatico da API;

@@ -39,6 +39,7 @@ class Settings:
     cors_allow_origins: list[str]
     song_favorites_file: Path
     custom_songs_file: Path
+    mystery_song_assignments_file: Path
 
 
 
@@ -80,12 +81,23 @@ def _resolve_custom_songs_file() -> Path:
     return PROJECT_DIR / 'data' / 'custom_songs.json'
 
 
+def _resolve_mystery_song_assignments_file() -> Path:
+    custom_path = os.getenv('MYSTERY_SONG_ASSIGNMENTS_FILE', '').strip()
+    if custom_path:
+        resolved = Path(custom_path).expanduser()
+        if not resolved.is_absolute():
+            resolved = PROJECT_DIR / resolved
+        return resolved
+    return PROJECT_DIR / 'data' / 'mystery_song_assignments.json'
+
+
 def get_settings() -> Settings:
     return Settings(
         database_url=_build_database_url(),
         cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '*')),
         song_favorites_file=_resolve_song_favorites_file(),
         custom_songs_file=_resolve_custom_songs_file(),
+        mystery_song_assignments_file=_resolve_mystery_song_assignments_file(),
     )
 
 

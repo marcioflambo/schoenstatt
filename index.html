@@ -518,9 +518,22 @@
         </div>
         <nav id="mystery-modal-links" class="mystery-modal-links" aria-label=""></nav>
         <div class="mystery-modal-heading">
-          <h3 id="mystery-modal-title"></h3>
+          <div class="mystery-modal-title-row">
+            <h3 id="mystery-modal-title"></h3>
+            <button
+              type="button"
+              id="mystery-modal-song-toggle"
+              class="mystery-modal-song-toggle"
+              aria-label="Exibir música do mistério"
+              title="Exibir música do mistério"
+            ></button>
+          </div>
         </div>
         <p id="mystery-modal-text" class="mystery-modal-text"></p>
+        <section id="mystery-modal-song-panel" class="mystery-modal-song-panel" hidden>
+          <p id="mystery-modal-song-title" class="mystery-modal-song-title"></p>
+          <pre id="mystery-modal-song-lyrics" class="mystery-modal-song-lyrics"></pre>
+        </section>
       </div>
       <footer class="mystery-modal-footer">
         <button
@@ -566,6 +579,30 @@
         <button type="button" id="favorite-confirm-cancel" class="btn btn-ghost" data-favorite-confirm-close></button>
         <button type="button" id="favorite-confirm-accept" class="btn btn-primary"></button>
       </div>
+    </article>
+  </div>
+
+  <div id="mystery-song-assign-modal" class="mystery-song-assign-modal" aria-hidden="true">
+    <div class="mystery-song-assign-backdrop" data-mystery-song-assign-close></div>
+    <article
+      class="mystery-song-assign-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mystery-song-assign-title"
+    >
+      <div class="mystery-song-assign-heading-row">
+        <h3 id="mystery-song-assign-title">Adicionar música ao mistério</h3>
+        <button
+          type="button"
+          class="mystery-song-assign-close"
+          data-mystery-song-assign-close
+          aria-label="Fechar"
+        >
+          &times;
+        </button>
+      </div>
+      <p id="mystery-song-assign-song" class="mystery-song-assign-song"></p>
+      <div id="mystery-song-assign-list" class="mystery-song-assign-list"></div>
     </article>
   </div>
 

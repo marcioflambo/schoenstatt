@@ -121,6 +121,20 @@
     '<path d="M16 16l5 5"></path>',
     '</svg>'
   ].join('');
+  const MYSTERY_MUSIC_NOTE_ICON = [
+    '<svg viewBox="0 0 24 24" aria-hidden="true">',
+    '<path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M17 11a5 5 0 0 1-10 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M12 16v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M9 20h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '</svg>'
+  ].join('');
+  const SONG_ASSIGN_PLUS_ICON = [
+    '<svg class="song-search-action-icon" viewBox="0 0 24 24" aria-hidden="true">',
+    '<circle cx="12" cy="12" r="8.6"></circle>',
+    '<path d="M12 8v8M8 12h8"></path>',
+    '</svg>'
+  ].join('');
 
   const setNodeText = (selector, value) => {
     if (typeof value !== 'string') return;
@@ -1387,11 +1401,21 @@
   const mysteryModalTitle = document.getElementById('mystery-modal-title');
   const mysteryModalText = document.getElementById('mystery-modal-text');
   const mysteryModalGroup = document.getElementById('mystery-modal-group');
+  const mysteryModalSongToggle = document.getElementById('mystery-modal-song-toggle');
+  const mysteryModalSongPanel = document.getElementById('mystery-modal-song-panel');
+  const mysteryModalSongTitle = document.getElementById('mystery-modal-song-title');
+  const mysteryModalSongLyrics = document.getElementById('mystery-modal-song-lyrics');
   const mysteryJaculatoryToggle = document.getElementById('mystery-jaculatory-toggle');
   const mysteryJaculatoryPanel = document.getElementById('mystery-jaculatory-panel');
   const mysteryJaculatoryClose = document.getElementById('mystery-jaculatory-close');
   const mysteryModalCloseButtons = document.querySelectorAll('[data-mystery-modal-close]');
+  const mysterySongAssignModal = document.getElementById('mystery-song-assign-modal');
+  const mysterySongAssignSong = document.getElementById('mystery-song-assign-song');
+  const mysterySongAssignList = document.getElementById('mystery-song-assign-list');
+  const mysterySongAssignCloseButtons = document.querySelectorAll('[data-mystery-song-assign-close]');
   let lastFocusedMystery = null;
+  let lastFocusedMysterySongAssignTrigger = null;
+  let mysterySongAssignPendingSong = null;
 
   const ensureMysteryNavBeforeTitle = () => {
     if (!mysteryModalLinks) return;
@@ -1407,6 +1431,390 @@
     }
     return acc;
   }, {});
+  const normalizeMysteryName = (value) => (
+    String(value || '')
+      .trim()
+      .replace(/^\d+\s*[ºo]\s+/i, '')
+      .replace(/\s+/g, ' ')
+  );
+  const normalizeKeyToken = (value) => (
+    normalizeMysteryName(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+  );
+  const canonicalMysteryGroupKey = (value) => (
+    normalizeKeyToken(value)
+      .replace(/\bmisterios?\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+  const buildMysterySongAssignmentKey = (groupTitle, mysteryTitle) => (
+    `${canonicalMysteryGroupKey(groupTitle)}|${normalizeKeyToken(mysteryTitle)}`
+  );
+  const normalizeMysterySongAssignmentPayload = (raw) => {
+    const payload = asObject(raw);
+    return {
+      assignmentKey: String(payload.assignment_key || payload.assignmentKey || '').trim(),
+      groupTitle: String(payload.group_title || payload.groupTitle || '').trim(),
+      groupDay: String(payload.group_day || payload.groupDay || '').trim(),
+      mysteryTitle: normalizeMysteryName(payload.mystery_title || payload.mysteryTitle || ''),
+      songTitle: String(payload.song_title || payload.songTitle || '').trim(),
+      songArtist: String(payload.song_artist || payload.songArtist || '').trim(),
+      songUrl: String(payload.song_url || payload.songUrl || '').trim(),
+      source: String(payload.source || '').trim(),
+      sourceLabel: String(payload.source_label || payload.sourceLabel || '').trim(),
+      imageUrl: String(payload.image_url || payload.imageUrl || '').trim(),
+      lyricsText: String(payload.lyrics_text || payload.lyricsText || ''),
+      lyricsSource: String(payload.lyrics_source || payload.lyricsSource || '').trim(),
+      lyricsSourceUrl: String(payload.lyrics_source_url || payload.lyricsSourceUrl || '').trim(),
+      createdAtUtc: String(payload.created_at_utc || payload.createdAtUtc || '').trim(),
+      updatedAtUtc: String(payload.updated_at_utc || payload.updatedAtUtc || '').trim(),
+    };
+  };
+  const parseMysterySongAssignmentApiError = (payload, fallbackMessage) => (
+    payload?.detail?.message
+    || payload?.message
+    || fallbackMessage
+  );
+  const mysteryCardsConfig = Array.isArray(portalContent?.misterios?.cards)
+    ? portalContent.misterios.cards
+    : [];
+  const mysterySongGroupsCatalog = mysteryCardsConfig
+    .map((card) => {
+      const safeCard = asObject(card);
+      const groupTitle = String(safeCard.title || '').trim();
+      const groupDay = String(safeCard.day || '').trim();
+      const items = Array.isArray(safeCard.items)
+        ? safeCard.items.map((item) => normalizeMysteryName(item)).filter(Boolean)
+        : [];
+      if (!groupTitle || !items.length) return null;
+      return {
+        key: canonicalMysteryGroupKey(groupTitle),
+        title: groupTitle,
+        day: groupDay,
+        items,
+      };
+    })
+    .filter(Boolean);
+  let mysterySongAssignments = {};
+  let mysterySongAssignmentsLoading = false;
+  let currentMysteryModalSelection = { title: '', group: '' };
+  let mysteryModalSongLoading = false;
+
+  const getMysterySongAssignment = (groupTitle, mysteryTitle) => {
+    const key = buildMysterySongAssignmentKey(groupTitle, mysteryTitle);
+    return asObject(mysterySongAssignments[key]);
+  };
+
+  const cacheMysterySongAssignment = (payload) => {
+    const normalized = normalizeMysterySongAssignmentPayload(payload);
+    const groupTitle = normalized.groupTitle;
+    const mysteryTitle = normalized.mysteryTitle;
+    if (!groupTitle || !mysteryTitle) return null;
+    const assignmentKey = buildMysterySongAssignmentKey(groupTitle, mysteryTitle);
+    mysterySongAssignments[assignmentKey] = {
+      ...asObject(mysterySongAssignments[assignmentKey]),
+      ...normalized,
+      groupTitle,
+      mysteryTitle,
+    };
+    return asObject(mysterySongAssignments[assignmentKey]);
+  };
+
+  const fetchMysterySongAssignments = async () => {
+    if (mysterySongAssignmentsLoading) return false;
+    mysterySongAssignmentsLoading = true;
+    try {
+      const response = await fetch('/api/mysteries/song-assignments');
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          parseMysterySongAssignmentApiError(
+            payload,
+            readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+          )
+        );
+      }
+      const nextAssignments = {};
+      const rows = Array.isArray(payload.assignments) ? payload.assignments : [];
+      rows.forEach((row) => {
+        const normalized = normalizeMysterySongAssignmentPayload(row);
+        if (!normalized.groupTitle || !normalized.mysteryTitle) return;
+        const key = buildMysterySongAssignmentKey(normalized.groupTitle, normalized.mysteryTitle);
+        nextAssignments[key] = normalized;
+      });
+      mysterySongAssignments = nextAssignments;
+      updateMysteryModalSongToggleState();
+      return true;
+    } catch (err) {
+      return false;
+    } finally {
+      mysterySongAssignmentsLoading = false;
+    }
+  };
+
+  const saveMysterySongAssignmentOnServer = async (groupTitle, mysteryTitle, payload) => {
+    const safeGroupTitle = String(groupTitle || '').trim();
+    const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
+    if (!safeGroupTitle || !safeMysteryTitle) {
+      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério para vincular a música.'));
+    }
+
+    const safePayload = asObject(payload);
+    const response = await fetch('/api/mysteries/song-assignments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        group_title: safeGroupTitle,
+        group_day: String(safePayload.groupDay || safePayload.group_day || '').trim(),
+        mystery_title: safeMysteryTitle,
+        song_title: String(safePayload.songTitle || safePayload.song_title || '').trim(),
+        song_artist: String(safePayload.songArtist || safePayload.song_artist || '').trim(),
+        song_url: String(safePayload.songUrl || safePayload.song_url || '').trim(),
+        source: String(safePayload.source || '').trim(),
+        source_label: String(safePayload.sourceLabel || safePayload.source_label || '').trim(),
+        image_url: String(safePayload.imageUrl || safePayload.image_url || '').trim(),
+        lyrics_text: String(safePayload.lyricsText || safePayload.lyrics_text || ''),
+        lyrics_source: String(safePayload.lyricsSource || safePayload.lyrics_source || '').trim(),
+        lyrics_source_url: String(safePayload.lyricsSourceUrl || safePayload.lyrics_source_url || '').trim(),
+      }),
+    });
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        parseMysterySongAssignmentApiError(
+          responsePayload,
+          readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.')
+        )
+      );
+    }
+
+    const saved = cacheMysterySongAssignment(responsePayload.assignment);
+    if (!saved) {
+      throw new Error(readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.'));
+    }
+    updateMysteryModalSongToggleState();
+    return saved;
+  };
+
+  const closeMysterySongPanel = () => {
+    if (mysteryModalSongPanel) {
+      mysteryModalSongPanel.hidden = true;
+    }
+    if (mysteryModalSongTitle) {
+      mysteryModalSongTitle.textContent = '';
+    }
+    if (mysteryModalSongLyrics) {
+      mysteryModalSongLyrics.textContent = '';
+    }
+  };
+
+  const updateMysteryModalSongToggleState = () => {
+    if (!mysteryModalSongToggle) return;
+    const assignment = getMysterySongAssignment(
+      currentMysteryModalSelection.group,
+      currentMysteryModalSelection.title
+    );
+    const hasAssignedSong = Boolean(assignment.songTitle || assignment.songUrl);
+    const isPanelVisible = mysteryModalSongPanel ? !mysteryModalSongPanel.hidden : false;
+    mysteryModalSongToggle.innerHTML = MYSTERY_MUSIC_NOTE_ICON;
+    mysteryModalSongToggle.classList.toggle('is-active', isPanelVisible);
+    mysteryModalSongToggle.classList.toggle('is-loading', mysteryModalSongLoading);
+    mysteryModalSongToggle.classList.toggle('is-empty', !hasAssignedSong);
+    mysteryModalSongToggle.disabled = mysteryModalSongLoading;
+    mysteryModalSongToggle.title = hasAssignedSong
+      ? readMysteryMessage('songToggleShow', 'Exibir música do mistério')
+      : readMysteryMessage('songToggleEmpty', 'Nenhuma música atribuída a este mistério');
+    mysteryModalSongToggle.setAttribute('aria-label', mysteryModalSongToggle.title);
+  };
+
+  const resolveMysterySongLyrics = async (assignment) => {
+    const safeAssignment = asObject(assignment);
+    const cachedLyrics = String(safeAssignment.lyricsText || '');
+    if (cachedLyrics.trim()) {
+      return safeAssignment;
+    }
+
+    const title = String(safeAssignment.songTitle || '').trim();
+    const artist = String(safeAssignment.songArtist || '').trim();
+    const sourceUrl = String(safeAssignment.songUrl || '').trim();
+    if (!title && !sourceUrl) {
+      throw new Error(readSongMessage('invalidLyricsTarget', 'Não foi possível identificar a música para buscar a letra.'));
+    }
+
+    const response = await fetch('/api/songs/fetch-lyrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        artist,
+        source_url: sourceUrl,
+      }),
+    });
+    const payload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !payload.ok) {
+      const message = payload?.detail?.message
+        || payload?.message
+        || readSongMessage('lyricsFetchErrorApi', 'Não foi possível carregar a letra.');
+      const code = payload?.detail?.code || payload?.code || '';
+      const error = new Error(message);
+      if (code) {
+        error.code = code;
+      }
+      throw error;
+    }
+
+    return {
+      ...safeAssignment,
+      lyricsText: String(payload.lyrics || ''),
+      lyricsSource: String(payload.source || safeAssignment.lyricsSource || '').trim(),
+      lyricsSourceUrl: String(payload.url || safeAssignment.lyricsSourceUrl || safeAssignment.songUrl || '').trim(),
+    };
+  };
+
+  const renderMysterySongAssignList = () => {
+    if (!mysterySongAssignList) return;
+    mysterySongAssignList.innerHTML = '';
+
+    if (!mysterySongGroupsCatalog.length) {
+      const emptyNode = document.createElement('p');
+      emptyNode.className = 'mystery-song-assign-empty';
+      emptyNode.textContent = readMysteryMessage('assignEmpty', 'Não foi possível carregar a lista de mistérios.');
+      mysterySongAssignList.appendChild(emptyNode);
+      return;
+    }
+
+    mysterySongGroupsCatalog.forEach((group) => {
+      const groupBlock = document.createElement('section');
+      groupBlock.className = 'mystery-song-assign-group';
+
+      const groupTitle = document.createElement('h4');
+      groupTitle.className = 'mystery-song-assign-group-title';
+      const groupNameNode = document.createElement('span');
+      groupNameNode.className = 'mystery-song-assign-group-name';
+      groupNameNode.textContent = group.title;
+      groupTitle.appendChild(groupNameNode);
+      if (group.day) {
+        const groupDayNode = document.createElement('span');
+        groupDayNode.className = 'mystery-song-assign-group-day';
+        groupDayNode.textContent = group.day;
+        groupTitle.appendChild(groupDayNode);
+      }
+
+      const list = document.createElement('div');
+      list.className = 'mystery-song-assign-items';
+      group.items.forEach((itemTitle, index) => {
+        const itemButton = document.createElement('button');
+        itemButton.type = 'button';
+        itemButton.className = 'mystery-song-assign-item';
+        itemButton.textContent = `${index + 1}º ${itemTitle}`;
+        itemButton.addEventListener('click', async () => {
+          const song = asObject(mysterySongAssignPendingSong);
+          if (!song.title && !song.url) {
+            showSongToast(
+              readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+              'is-error'
+            );
+            return;
+          }
+          try {
+            await saveMysterySongAssignmentOnServer(group.title, itemTitle, {
+              songTitle: String(song.title || '').trim(),
+              songArtist: String(song.artist || '').trim(),
+              songUrl: String(song.url || '').trim(),
+              source: String(song.source || '').trim(),
+              sourceLabel: resolveSongSourceLabel(
+                String(song.source || '').trim(),
+                String(song.source_label || '').trim()
+              ),
+              imageUrl: String(song.image_url || '').trim(),
+              lyricsText: '',
+              lyricsSource: '',
+              lyricsSourceUrl: '',
+              groupDay: group.day,
+            });
+          } catch (err) {
+            const message = err instanceof Error
+              ? err.message
+              : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+            showSongToast(message, 'is-error');
+            return;
+          }
+          if (
+            canonicalMysteryGroupKey(group.title) === canonicalMysteryGroupKey(currentMysteryModalSelection.group)
+            && normalizeMysteryName(itemTitle) === normalizeMysteryName(currentMysteryModalSelection.title)
+          ) {
+            closeMysterySongPanel();
+            updateMysteryModalSongToggleState();
+          }
+          closeMysterySongAssignModal();
+          showSongToast(
+            readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+            'is-success'
+          );
+        });
+        list.appendChild(itemButton);
+      });
+
+      groupBlock.appendChild(groupTitle);
+      groupBlock.appendChild(list);
+      mysterySongAssignList.appendChild(groupBlock);
+    });
+  };
+
+  function closeMysterySongAssignModal() {
+    if (!mysterySongAssignModal) return;
+    const focusTarget = lastFocusedMysterySongAssignTrigger instanceof HTMLElement
+      ? lastFocusedMysterySongAssignTrigger
+      : null;
+    mysterySongAssignModal.classList.remove('open');
+    mysterySongAssignModal.setAttribute('aria-hidden', 'true');
+    mysterySongAssignPendingSong = null;
+    syncBodyModalLock();
+    if (!hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+    lastFocusedMysterySongAssignTrigger = null;
+  }
+
+  const openMysterySongAssignModal = (songPayload, triggerButton = null) => {
+    if (!mysterySongAssignModal || !mysterySongAssignList) {
+      showSongToast(
+        readMysteryMessage('assignModalUnavailable', 'Não foi possível abrir a seleção de mistério.'),
+        'is-error'
+      );
+      return;
+    }
+
+    const song = asObject(songPayload);
+    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+    const artist = String(song.artist || '').trim();
+    mysterySongAssignPendingSong = song;
+    lastFocusedMysterySongAssignTrigger = triggerButton instanceof HTMLElement
+      ? triggerButton
+      : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+
+    if (mysterySongAssignSong) {
+      mysterySongAssignSong.textContent = artist ? `${title} - ${artist}` : title;
+    }
+    renderMysterySongAssignList();
+
+    mysterySongAssignModal.classList.add('open');
+    mysterySongAssignModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    window.requestAnimationFrame(() => {
+      const firstAction = mysterySongAssignList.querySelector('.mystery-song-assign-item');
+      if (firstAction instanceof HTMLElement) {
+        focusWithoutScrollingPage(firstAction);
+      }
+    });
+  };
 
   const resolveMysteryGroupTitle = (group) => {
     const rawGroup = (group || '').trim();
@@ -1461,7 +1869,7 @@
 
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -1536,6 +1944,62 @@
     mysteryJaculatoryToggle.textContent = readMysteryMessage('toggleShow', 'Exibir jaculatória');
   };
 
+  const toggleMysteryModalSongPanel = async () => {
+    if (!mysteryModalSongPanel || !mysteryModalSongTitle || !mysteryModalSongLyrics) return;
+    const assignment = getMysterySongAssignment(
+      currentMysteryModalSelection.group,
+      currentMysteryModalSelection.title
+    );
+    if (!assignment.songTitle && !assignment.songUrl) {
+      showSongToast(
+        readMysteryMessage('songToggleEmpty', 'Nenhuma música atribuída a este mistério.'),
+        'is-warning'
+      );
+      return;
+    }
+
+    const isOpen = !mysteryModalSongPanel.hidden;
+    if (isOpen) {
+      closeMysterySongPanel();
+      updateMysteryModalSongToggleState();
+      return;
+    }
+
+    mysteryModalSongLoading = true;
+    updateMysteryModalSongToggleState();
+    try {
+      const resolvedAssignment = await resolveMysterySongLyrics(assignment);
+      let persistedAssignment = resolvedAssignment;
+      try {
+        persistedAssignment = await saveMysterySongAssignmentOnServer(
+          currentMysteryModalSelection.group,
+          currentMysteryModalSelection.title,
+          resolvedAssignment
+        );
+      } catch (saveErr) {
+        persistedAssignment = cacheMysterySongAssignment({
+          ...resolvedAssignment,
+          groupTitle: currentMysteryModalSelection.group,
+          mysteryTitle: currentMysteryModalSelection.title,
+        }) || resolvedAssignment;
+      }
+      mysteryModalSongTitle.textContent = persistedAssignment.songArtist
+        ? `${persistedAssignment.songTitle} - ${persistedAssignment.songArtist}`
+        : persistedAssignment.songTitle || readSongMessage('defaultSongTitle', 'Música');
+      mysteryModalSongLyrics.textContent = String(persistedAssignment.lyricsText || '').trim()
+        || readMysteryMessage('songLyricsEmpty', 'A letra desta música ainda não foi encontrada.');
+      mysteryModalSongPanel.hidden = false;
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readSongMessage('lyricsLoadError', 'Falha ao carregar a letra.');
+      showSongToast(message, 'is-error');
+    } finally {
+      mysteryModalSongLoading = false;
+      updateMysteryModalSongToggleState();
+    }
+  };
+
   const openMysteryModal = (title, group) => {
     if (!mysteryModal || !mysteryModalTitle || !mysteryModalText || !mysteryModalGroup) return;
 
@@ -1547,6 +2011,14 @@
     mysteryModalTitle.textContent = title;
     mysteryModalText.textContent = meditation;
     mysteryModalGroup.textContent = resolvedGroup;
+    currentMysteryModalSelection = {
+      title: normalizeMysteryName(title),
+      group: resolvedGroup,
+    };
+    mysteryModalSongLoading = false;
+    closeMysterySongPanel();
+    updateMysteryModalSongToggleState();
+    void fetchMysterySongAssignments();
     renderMysteryModalLinks(resolvedGroup, title);
     if (shouldResetJaculatory) {
       setMysteryJaculatoryVisible(false);
@@ -1562,6 +2034,9 @@
     mysteryModal.classList.remove('open');
     mysteryModal.setAttribute('aria-hidden', 'true');
     setMysteryJaculatoryVisible(false);
+    closeMysterySongPanel();
+    mysteryModalSongLoading = false;
+    updateMysteryModalSongToggleState();
     syncBodyModalLock();
     if (!hasAnyOpenModal() && focusTarget) {
       window.requestAnimationFrame(() => {
@@ -1613,6 +2088,18 @@
       setMysteryJaculatoryVisible(false);
     });
   }
+  if (mysteryModalSongToggle) {
+    mysteryModalSongToggle.addEventListener('click', () => {
+      void toggleMysteryModalSongPanel();
+    });
+    updateMysteryModalSongToggleState();
+  }
+  if (mysterySongAssignCloseButtons.length) {
+    mysterySongAssignCloseButtons.forEach((button) => {
+      button.addEventListener('click', closeMysterySongAssignModal);
+    });
+  }
+  void fetchMysterySongAssignments();
 
   const daySlot = mysteryByDay[new Date().getDay()];
   const titleEl = document.getElementById('today-mystery-title');
@@ -4403,6 +4890,22 @@
         saveSongFavorite(result, favoriteAction, activeWidget);
       });
 
+      const assignMysteryAction = document.createElement('button');
+      assignMysteryAction.type = 'button';
+      assignMysteryAction.className = 'song-search-action song-search-action-assign-mystery';
+      assignMysteryAction.innerHTML = SONG_ASSIGN_PLUS_ICON;
+      assignMysteryAction.title = readMysteryMessage('assignButtonTitle', 'Adicionar aos mistérios');
+      assignMysteryAction.setAttribute(
+        'aria-label',
+        readMysteryMessage('assignButtonAria', 'Adicionar música a um mistério')
+      );
+      assignMysteryAction.disabled = !((result.title || '').trim() || (result.url || '').trim());
+      assignMysteryAction.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openMysterySongAssignModal(result, assignMysteryAction);
+      });
+
       const spotifyAction = document.createElement('a');
       spotifyAction.className = 'song-search-action song-search-action-external';
       spotifyAction.classList.add('song-search-action-spotify');
@@ -4439,10 +4942,7 @@
       lyricAction.type = 'button';
       lyricAction.className = 'song-search-action';
       lyricAction.classList.add('song-search-action-lyrics');
-      lyricAction.innerHTML = [
-        LYRICS_ACTION_ICON,
-        `<span class="song-search-action-label">${readSongMessage('lyricsButton', 'Letra')}</span>`
-      ].join('');
+      lyricAction.innerHTML = LYRICS_ACTION_ICON;
       lyricAction.title = readSongMessage('lyricsButton', 'Letra');
       lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
       lyricAction.disabled = !result.title && !result.url;
@@ -4454,10 +4954,7 @@
       chordAction.type = 'button';
       chordAction.className = 'song-search-action';
       chordAction.classList.add('song-search-action-chords');
-      chordAction.innerHTML = [
-        CHORDS_ACTION_ICON,
-        `<span class="song-search-action-label">${readSongMessage('chordsButton', 'Cifra')}</span>`
-      ].join('');
+      chordAction.innerHTML = CHORDS_ACTION_ICON;
       chordAction.title = readSongMessage('chordsButton', 'Cifra');
       chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
       chordAction.disabled = !result.url;
@@ -4470,6 +4967,7 @@
       actions.appendChild(lyricAction);
       actions.appendChild(chordAction);
       actions.appendChild(favoriteAction);
+      actions.appendChild(assignMysteryAction);
 
       item.appendChild(main);
       item.appendChild(actions);
@@ -4870,6 +5368,17 @@
         && customSongModal.classList.contains('open')
       );
       if (customSongModalIsOpen) return;
+      const clickedInsideMysterySongAssignModal = Boolean(
+        targetElement
+        && mysterySongAssignModal
+        && targetElement.closest('#mystery-song-assign-modal')
+      );
+      if (clickedInsideMysterySongAssignModal) return;
+      const mysterySongAssignModalIsOpen = Boolean(
+        mysterySongAssignModal
+        && mysterySongAssignModal.classList.contains('open')
+      );
+      if (mysterySongAssignModalIsOpen) return;
 
       const clickedInsideSongSearch = songSearchWidgets.some((widget) => (
         (widget.form && widget.form.contains(target))
@@ -4894,6 +5403,11 @@
             customSongModal
             && customSongModal.classList.contains('open')
             && targetElement.closest('.custom-song-dialog')
+          )
+          || (
+            mysterySongAssignModal
+            && mysterySongAssignModal.classList.contains('open')
+            && targetElement.closest('.mystery-song-assign-dialog')
           )
         )
       );
@@ -4977,6 +5491,11 @@
 
     if (event.key === 'Escape') {
       closeMainMenu();
+
+      if (mysterySongAssignModal && mysterySongAssignModal.classList.contains('open')) {
+        closeMysterySongAssignModal();
+        return;
+      }
 
       if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
         closeFavoriteConfirmModal(false);

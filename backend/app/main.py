@@ -19,6 +19,11 @@ from .custom_songs import (
     update_custom_song,
 )
 from .db import ping_database
+from .mystery_song_assignments import (
+    MysterySongAssignmentUpsertRequest,
+    list_mystery_song_assignments,
+    upsert_mystery_song_assignment,
+)
 from .song_favorites import (
     SongFavoriteCreateRequest,
     SongFavoriteReorderRequest,
@@ -63,6 +68,7 @@ def api_health() -> dict[str, object]:
         'database_configured': bool(settings.database_url),
         'song_favorites_store': str(settings.song_favorites_file),
         'custom_songs_store': str(settings.custom_songs_file),
+        'mystery_song_assignments_store': str(settings.mystery_song_assignments_file),
     }
 
 
@@ -139,6 +145,35 @@ def api_song_favorites_reorder(payload: SongFavoriteReorderRequest) -> dict[str,
         'ok': True,
         'count': len(favorites),
         'favorites': favorites,
+    }
+
+
+@app.get('/api/mysteries/song-assignments')
+def api_mystery_song_assignments_list() -> dict[str, object]:
+    try:
+        assignments = list_mystery_song_assignments(settings.mystery_song_assignments_file)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'count': len(assignments),
+        'assignments': assignments,
+    }
+
+
+@app.post('/api/mysteries/song-assignments')
+def api_mystery_song_assignments_upsert(payload: MysterySongAssignmentUpsertRequest) -> dict[str, object]:
+    try:
+        assignment = upsert_mystery_song_assignment(settings.mystery_song_assignments_file, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'assignment': assignment,
     }
 
 

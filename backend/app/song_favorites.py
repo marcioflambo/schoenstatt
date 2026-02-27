@@ -22,6 +22,10 @@ class SongFavoriteCreateRequest(BaseModel):
     youtube_url: str = ''
 
 
+class SongFavoriteReorderRequest(BaseModel):
+    ordered_ids: list[int]
+
+
 _STORE_LOCK = RLock()
 
 
@@ -89,6 +93,10 @@ def _normalize_favorite_row(raw_row: dict[str, object]) -> dict[str, object]:
         'chords_source_url': _normalize_spaces(str(raw_row.get('chords_source_url') or '')),
         'chords_original_key': _normalize_spaces(str(raw_row.get('chords_original_key') or '')),
         'chords_text': str(raw_row.get('chords_text') or ''),
+        'order_index': max(
+            _coerce_int(raw_row.get('order_index') or raw_row.get('orderIndex'), 0),
+            0,
+        ),
         'created_at_utc': str(raw_row.get('created_at_utc') or ''),
         'updated_at_utc': str(raw_row.get('updated_at_utc') or ''),
     }
@@ -110,6 +118,22 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     max_id = 0
     for row in favorite_rows:
         max_id = max(max_id, _coerce_int(row.get('id'), 0))
+
+    # Backfill missing order indexes keeping the current recency-based order.
+    max_order = max((_coerce_int(row.get('order_index'), 0) for row in favorite_rows), default=0)
+    next_order = max_order + 1
+    for row in sorted(
+        favorite_rows,
+        key=lambda item: (
+            str(item.get('updated_at_utc') or ''),
+            _coerce_int(item.get('id'), 0),
+        ),
+        reverse=True,
+    ):
+        if _coerce_int(row.get('order_index'), 0) <= 0:
+            row['order_index'] = next_order
+            next_order += 1
+
     last_id = max(_coerce_int(raw_store.get('last_id'), 0), max_id)
 
     return {
@@ -156,6 +180,7 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
 
     return {
         'id': _coerce_int(row.get('id'), 0),
+        'order_index': _coerce_int(row.get('order_index'), 0),
         'url': row.get('song_url') or '',
         'title': row.get('title') or '',
         'artist': row.get('artist') or '',
@@ -195,6 +220,12 @@ def list_song_favorites(favorites_file: Path) -> list[dict[str, object]]:
             _coerce_int(row.get('id'), 0),
         ),
         reverse=True,
+    )
+    normalized_rows.sort(
+        key=lambda row: (
+            _coerce_int(row.get('order_index'), 0) <= 0,
+            _coerce_int(row.get('order_index'), 0) if _coerce_int(row.get('order_index'), 0) > 0 else 10**9,
+        )
     )
     return [_row_to_payload(row) for row in normalized_rows]
 
@@ -251,6 +282,10 @@ def save_song_favorite(
         store = _read_store(favorites_file)
         rows = store.get('favorites')
         favorite_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
+        max_order = max(
+            (_coerce_int(item.get('order_index'), 0) for item in favorite_rows if isinstance(item, dict)),
+            default=0,
+        )
 
         existing_index = next(
             (
@@ -268,9 +303,11 @@ def save_song_favorite(
             existing = _normalize_favorite_row(favorite_rows[existing_index])
             favorite_id = _coerce_int(existing.get('id'), 0)
             created_at_utc = str(existing.get('created_at_utc') or now_iso)
+            order_index = max(_coerce_int(existing.get('order_index'), 0), 1)
         else:
             favorite_id = _coerce_int(store.get('last_id'), 0) + 1
             created_at_utc = now_iso
+            order_index = max_order + 1
 
         row = {
             'id': favorite_id,
@@ -289,6 +326,7 @@ def save_song_favorite(
             'chords_source_url': chords_source_url,
             'chords_original_key': chords_original_key,
             'chords_text': chords_text,
+            'order_index': order_index,
             'created_at_utc': created_at_utc,
             'updated_at_utc': now_iso,
         }
@@ -332,3 +370,69 @@ def delete_song_favorite(favorites_file: Path, url: str) -> bool:
             _write_store(favorites_file, store)
 
     return removed
+
+
+def reorder_song_favorites(favorites_file: Path, ordered_ids: list[int]) -> list[dict[str, object]]:
+    seen_ids: set[int] = set()
+    normalized_order: list[int] = []
+    for raw_id in ordered_ids:
+        favorite_id = _coerce_int(raw_id, 0)
+        if favorite_id <= 0:
+            raise ValueError('Lista de ordenacao invalida.')
+        if favorite_id in seen_ids:
+            raise ValueError('Lista de ordenacao invalida.')
+        seen_ids.add(favorite_id)
+        normalized_order.append(favorite_id)
+
+    with _STORE_LOCK:
+        store = _read_store(favorites_file)
+        rows = store.get('favorites')
+        favorite_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
+
+        normalized_rows = [
+            _normalize_favorite_row(item)
+            for item in favorite_rows
+            if isinstance(item, dict) and _normalize_spaces(str(item.get('song_url') or item.get('url') or ''))
+        ]
+        if not normalized_rows:
+            store['favorites'] = normalized_rows
+            _write_store(favorites_file, store)
+            return []
+
+        favorites_by_id = {
+            _coerce_int(row.get('id'), 0): row
+            for row in normalized_rows
+        }
+        missing_ids = [favorite_id for favorite_id in normalized_order if favorite_id not in favorites_by_id]
+        if missing_ids:
+            raise ValueError('Favorito nao encontrado para reordenar.')
+
+        current_sorted_rows = sorted(
+            normalized_rows,
+            key=lambda row: (
+                str(row.get('updated_at_utc') or ''),
+                _coerce_int(row.get('id'), 0),
+            ),
+            reverse=True,
+        )
+        current_sorted_rows.sort(
+            key=lambda row: (
+                _coerce_int(row.get('order_index'), 0) <= 0,
+                _coerce_int(row.get('order_index'), 0) if _coerce_int(row.get('order_index'), 0) > 0 else 10**9,
+            )
+        )
+        remaining_ids = [
+            _coerce_int(row.get('id'), 0)
+            for row in current_sorted_rows
+            if _coerce_int(row.get('id'), 0) not in seen_ids
+        ]
+        final_order = normalized_order + remaining_ids
+        for index, favorite_id in enumerate(final_order, start=1):
+            row = favorites_by_id.get(favorite_id)
+            if row:
+                row['order_index'] = index
+
+        store['favorites'] = normalized_rows
+        _write_store(favorites_file, store)
+
+    return list_song_favorites(favorites_file)

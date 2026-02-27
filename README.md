@@ -15,6 +15,7 @@ Portal do Terco da Mae Rainha de Schoenstatt.
 - `content/misterios/`: meditacoes dos misterios.
 - `docs/`: documentacao do projeto.
 - `tmp/`: arquivos temporarios (ignorados no Git).
+- `data/`: dados persistentes locais (ignorados no Git).
 
 ## Backend (conectividade preparada)
 
@@ -38,6 +39,11 @@ Endpoints:
 - `GET /api/songs/favorites` (lista musicas favoritadas com cache de letra/cifra)
 - `POST /api/songs/favorites` (salva/atualiza favorito em JSON local)
 - `DELETE /api/songs/favorites?url=...` (remove favorito pelo link da musica)
+- `GET /api/songs/custom` (lista musicas manuais em JSON local)
+- `POST /api/songs/custom` (cria musica manual em JSON local)
+- `PUT /api/songs/custom/{id}` (atualiza musica manual)
+- `DELETE /api/songs/custom/{id}` (inativa musica manual)
+- `PUT /api/songs/custom/{id}/restore` (reativa musica manual inativada)
 
 ## Docker
 

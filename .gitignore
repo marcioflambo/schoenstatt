@@ -2,6 +2,10 @@
 /tmp/*
 !/tmp/.gitkeep
 
+# Dados locais persistentes (runtime)
+/data/*
+!/data/.gitkeep
+
 # Logs de ambiente
 *.log
 

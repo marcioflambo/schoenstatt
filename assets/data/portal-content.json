@@ -45,10 +45,6 @@
             "href": "#cantos"
           },
           {
-            "label": "Cânticos do livreto",
-            "href": "#cantos"
-          },
-          {
             "label": "Recursos",
             "href": "#recursos"
           }
@@ -210,43 +206,50 @@
       {
         "number": "1",
         "title": "Acolhida",
-        "text": "Sinal da cruz, intenções e consagração breve à Mãe Rainha."
+        "text": "Sinal da cruz, intenções e consagração breve à Mãe Rainha.",
+        "content": "Iniciar com o sinal da cruz, acolher as intenções da comunidade e fazer uma consagração breve à Mãe Rainha, unindo todos os presentes no mesmo propósito de oração."
       },
       {
         "number": "2",
-        "title": "Credo",
-        "text": "Rezar o Credo no crucifixo do terço."
+        "title": "Contemplação ao Espírito Santo",
+        "text": "Antes do Credo, rezar a oração do Espírito Santo e fazer breve momento de contemplação em silêncio.",
+        "content": "Ao iniciar em momento de contemplação ao Espírito Santo, rezamos: \"Vinde Espírito Santo e enchei os corações dos vossos fiéis e acendei neles o fogo do vosso amor, enviai o vosso Espírito e tudo será criado e renovareis a face da terra.\" Oremos: \"Deus que instruiste os corações do vossos fiéis com a Luz do Espírito Santo, fazei que apreciemos retamente todas as coisas segundo o mesmo espírito e gozemos sempre de sua consolação, por Cristo Senhor Nosso. Amém!\""
       },
       {
         "number": "3",
-        "title": "Contas iniciais",
-        "text": "1 Pai-Nosso, 3 Ave-Marias e 1 Glória."
+        "title": "Credo",
+        "text": "Rezar o Credo no crucifixo do terço.",
+        "content": "No crucifixo do terço, rezar o Credo (Símbolo dos Apóstolos), professando a fé da Igreja antes de iniciar as dezenas."
       },
       {
         "number": "4",
-        "title": "Mistério 1",
-        "text": "Anunciar, fazer breve meditação e rezar a dezena."
+        "title": "Contas iniciais",
+        "text": "1 Pai-Nosso, 3 Ave-Marias e 1 Glória.",
+        "content": "Nas contas iniciais, rezar 1 Pai-Nosso, 3 Ave-Marias e 1 Glória ao Pai, pedindo crescimento na fé, na esperança e na caridade."
       },
       {
         "number": "5",
-        "title": "Mistérios 2 a 5",
-        "text": "Repetir a dinâmica das dezenas com canto entre os mistérios."
+        "title": "Mistério 1",
+        "text": "Anunciar, fazer breve meditação e rezar a dezena.",
+        "content": "Anunciar o 1º mistério do dia, fazer uma breve meditação e rezar a dezena: 1 Pai-Nosso, 10 Ave-Marias e 1 Glória, concluindo com a jaculatória."
       },
       {
         "number": "6",
-        "title": "Oração final",
-        "text": "Salve Rainha, oração da Mãe Rainha e intenções finais."
+        "title": "Mistérios 2 a 5",
+        "text": "Repetir a dinâmica das dezenas com canto entre os mistérios.",
+        "content": "Repetir a mesma dinâmica para os mistérios seguintes, mantendo ritmo orante e, se conveniente, inserir um canto breve entre os mistérios para ajudar na contemplação."
       },
       {
         "number": "7",
-        "title": "Envio",
-        "text": "Bênção final e convite para próximo encontro."
+        "title": "Oração final",
+        "text": "Salve Rainha, oração da Mãe Rainha e intenções finais.",
+        "content": "Após a quinta dezena, rezar a Salve Rainha, a oração da Mãe Rainha e apresentar as intenções finais, agradecendo as graças recebidas."
       },
       {
-        "number": "+",
-        "title": "Espaço para cantos",
-        "text": "Entre dezenas, usar músicas com cifra para facilitar o violão.",
-        "highlight": true
+        "number": "8",
+        "title": "Envio",
+        "text": "Bênção final e convite para próximo encontro.",
+        "content": "Encerrar com bênção final, compromisso missionário e convite para o próximo encontro de oração em comunidade."
       }
     ]
   },
@@ -502,6 +505,10 @@
     },
     "items": [
       {
+        "title": "Oração ao Espírito Santo",
+        "text": "Vinde Espírito Santo e enchei os corações dos vossos fiéis e acendei neles o fogo do vosso amor, enviai o vosso Espírito e tudo será criado e renovareis a face da terra. Oremos: Deus, que instruístes os corações dos vossos fiéis com a Luz do Espírito Santo, fazei que apreciemos retamente todas as coisas segundo o mesmo Espírito e gozemos sempre de sua consolação, por Cristo Senhor Nosso. Amém!"
+      },
+      {
         "title": "Credo (Símbolo dos Apóstolos)",
         "text": "Creio em Deus Pai todo-poderoso, criador do céu e da terra. E em Jesus Cristo, seu único Filho, nosso Senhor, que foi concebido pelo poder do Espírito Santo; nasceu da Virgem Maria; padeceu sob Pôncio Pilatos, foi crucificado, morto e sepultado; desceu à mansão dos mortos; ressuscitou ao terceiro dia; subiu aos céus; está sentado à direita de Deus Pai todo-poderoso, donde há de vir a julgar os vivos e os mortos. Creio no Espírito Santo, na santa Igreja Católica, na comunhão dos santos, na remissão dos pecados, na ressurreição da carne, na vida eterna. Amém."
       },
@@ -727,6 +734,7 @@
     "mystery": {
       "toggleShow": "Exibir jaculatória",
       "toggleHide": "Ocultar jaculatória",
+      "closeJaculatoryAria": "Fechar jaculatória",
       "groupFallback": "Mistério do Terço",
       "emptyMeditation": "Meditação em preparação. Em breve o texto completo deste mistério estará disponível.",
       "groupGozosos": "Mistérios Gozosos",

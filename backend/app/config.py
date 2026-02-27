@@ -38,6 +38,7 @@ class Settings:
     database_url: str | None
     cors_allow_origins: list[str]
     song_favorites_file: Path
+    custom_songs_file: Path
 
 
 
@@ -53,7 +54,30 @@ def _resolve_song_favorites_file() -> Path:
         if not resolved.is_absolute():
             resolved = PROJECT_DIR / resolved
         return resolved
-    return PROJECT_DIR / 'tmp' / 'song_favorites.json'
+
+    # Default favorites storage should be persistent and not under tmp/.
+    default_path = PROJECT_DIR / 'data' / 'song_favorites.json'
+    legacy_tmp_path = PROJECT_DIR / 'tmp' / 'song_favorites.json'
+
+    # One-time best-effort migration from legacy tmp location.
+    if not default_path.exists() and legacy_tmp_path.exists():
+        try:
+            default_path.parent.mkdir(parents=True, exist_ok=True)
+            default_path.write_text(legacy_tmp_path.read_text(encoding='utf-8'), encoding='utf-8')
+        except OSError:
+            pass
+
+    return default_path
+
+
+def _resolve_custom_songs_file() -> Path:
+    custom_path = os.getenv('CUSTOM_SONGS_FILE', '').strip()
+    if custom_path:
+        resolved = Path(custom_path).expanduser()
+        if not resolved.is_absolute():
+            resolved = PROJECT_DIR / resolved
+        return resolved
+    return PROJECT_DIR / 'data' / 'custom_songs.json'
 
 
 def get_settings() -> Settings:
@@ -61,6 +85,7 @@ def get_settings() -> Settings:
         database_url=_build_database_url(),
         cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '*')),
         song_favorites_file=_resolve_song_favorites_file(),
+        custom_songs_file=_resolve_custom_songs_file(),
     )
 
 

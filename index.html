@@ -62,7 +62,6 @@
             <ul class="dl-submenu" hidden>
               <li class="dl-back"><button type="button" class="menu-back-trigger"></button></li>
               <li><a href="#cantos"></a></li>
-              <li><a href="#cantos"></a></li>
               <li><a href="#recursos"></a></li>
             </ul>
           </li>
@@ -122,7 +121,6 @@
             </div>
           </div>
         </form>
-        <p id="song-fetch-feedback" class="song-fetch-feedback" aria-live="polite"></p>
           <div id="song-search-results" class="song-search-results" hidden>
             <ul id="song-search-results-list" class="song-search-results-list"></ul>
           </div>
@@ -278,7 +276,7 @@
             <h3></h3>
             <p></p>
           </article>
-          <article class="step-card highlight">
+          <article class="step-card">
             <span class="step-number"></span>
             <h3></h3>
             <p></p>
@@ -381,7 +379,6 @@
               </div>
             </div>
           </form>
-          <p id="song-fetch-feedback-cantos" class="song-fetch-feedback" aria-live="polite"></p>
           <div id="song-search-results-cantos" class="song-search-results" hidden>
             <ul id="song-search-results-list-cantos" class="song-search-results-list"></ul>
           </div>
@@ -395,10 +392,23 @@
           <ul id="song-favorites-list" class="booklet-cantos-list song-favorites-list"></ul>
         </article>
 
+        <article id="custom-songs-card" class="booklet-cantos-card custom-songs-card">
+          <header class="booklet-cantos-header custom-songs-header">
+            <div class="custom-songs-header-row">
+              <h3 id="custom-songs-title">Nossas músicas</h3>
+              <button type="button" id="custom-songs-add-btn" class="btn btn-primary custom-songs-add-btn">
+                Adicionar música
+              </button>
+            </div>
+            <p id="custom-songs-description">Adicione músicas manuais com letra e cifra.</p>
+          </header>
+          <ul id="custom-songs-list" class="booklet-cantos-list custom-songs-list"></ul>
+        </article>
+
         <article class="booklet-cantos-card">
           <header class="booklet-cantos-header">
-            <h3></h3>
-            <p></p>
+            <h3 id="booklet-cantos-title"></h3>
+            <p id="booklet-cantos-description"></p>
           </header>
           <ul id="booklet-cantos-list" class="booklet-cantos-list"></ul>
         </article>
@@ -523,7 +533,18 @@
           
         </button>
         <div id="mystery-jaculatory-panel" class="mystery-jaculatory-panel" hidden>
-          <p class="mystery-jaculatory-title"></p>
+          <div class="mystery-jaculatory-head">
+            <p class="mystery-jaculatory-title"></p>
+            <button
+              type="button"
+              id="mystery-jaculatory-close"
+              class="mystery-jaculatory-close"
+              aria-label=""
+              title=""
+            >
+              &times;
+            </button>
+          </div>
           <ul class="mystery-jaculatory-list"></ul>
         </div>
       </footer>
@@ -545,6 +566,72 @@
         <button type="button" id="favorite-confirm-cancel" class="btn btn-ghost" data-favorite-confirm-close></button>
         <button type="button" id="favorite-confirm-accept" class="btn btn-primary"></button>
       </div>
+    </article>
+  </div>
+
+  <div id="custom-song-modal" class="custom-song-modal" aria-hidden="true">
+    <div class="custom-song-backdrop" data-custom-song-modal-close></div>
+    <article
+      class="custom-song-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="custom-song-modal-title"
+    >
+      <header class="custom-song-header">
+        <h3 id="custom-song-modal-title">Nova música manual</h3>
+        <button type="button" id="custom-song-modal-close" class="custom-song-close" data-custom-song-modal-close aria-label="Fechar">&times;</button>
+      </header>
+
+      <div class="custom-song-fields">
+        <label class="custom-song-field">
+          <span id="custom-song-title-label">Título</span>
+          <input id="custom-song-title-input" class="custom-song-input" type="text" maxlength="160" />
+        </label>
+        <label class="custom-song-field custom-song-field-key">
+          <span id="custom-song-key-label">Tom</span>
+          <input id="custom-song-key-input" class="custom-song-input" type="text" maxlength="18" />
+        </label>
+      </div>
+
+      <nav class="custom-song-tabs" aria-label="Editor">
+        <button
+          type="button"
+          id="custom-song-tab-lyrics"
+          class="custom-song-tab is-active"
+          data-custom-song-tab="lyrics"
+          aria-controls="custom-song-panel-lyrics"
+          aria-selected="true"
+        >
+          Música
+        </button>
+        <button
+          type="button"
+          id="custom-song-tab-chords"
+          class="custom-song-tab"
+          data-custom-song-tab="chords"
+          aria-controls="custom-song-panel-chords"
+          aria-selected="false"
+        >
+          Cifras
+        </button>
+      </nav>
+
+      <section id="custom-song-panel-lyrics" class="custom-song-panel" data-custom-song-panel="lyrics">
+        <label class="custom-song-panel-label" for="custom-song-lyrics-input" id="custom-song-lyrics-label">Texto da música</label>
+        <textarea id="custom-song-lyrics-input" class="custom-song-textarea" rows="10"></textarea>
+      </section>
+
+      <section id="custom-song-panel-chords" class="custom-song-panel" data-custom-song-panel="chords" hidden>
+        <label class="custom-song-panel-label" for="custom-song-chords-input" id="custom-song-chords-label">Texto da cifra</label>
+        <textarea id="custom-song-chords-input" class="custom-song-textarea" rows="10"></textarea>
+      </section>
+
+      <p id="custom-song-draft-status" class="custom-song-draft-status" aria-live="polite"></p>
+
+      <footer class="custom-song-footer">
+        <button type="button" id="custom-song-cancel-btn" class="btn btn-ghost" data-custom-song-modal-close>Cancelar</button>
+        <button type="button" id="custom-song-save-btn" class="btn btn-primary">Salvar música</button>
+      </footer>
     </article>
   </div>
 

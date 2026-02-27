@@ -776,8 +776,38 @@
       }
     }
 
-    const targetTop = Math.max(0, sectionTop + contentOffset - headerOffset - 4);
+    const targetTop = Math.max(0, sectionTop + contentOffset - headerOffset);
     window.scrollTo({ top: targetTop, behavior });
+  };
+
+  const resolveHashTargetElement = () => {
+    const rawHash = window.location.hash || '';
+    if (!rawHash || rawHash.length <= 1) return null;
+    const hashValue = rawHash.slice(1);
+    let hashId = hashValue;
+    try {
+      hashId = decodeURIComponent(hashValue);
+    } catch (err) {
+      hashId = hashValue;
+    }
+    return hashId ? document.getElementById(hashId) : null;
+  };
+
+  const alignCurrentHashTarget = (options = {}) => {
+    const { behavior = 'auto' } = options;
+    const target = resolveHashTargetElement();
+    if (!target) return false;
+    scrollToSectionWithHeaderOffset(target, { behavior });
+    setActiveSectionLink(target.id);
+    return true;
+  };
+
+  const scheduleHashAlignmentPasses = (delays = [0, 90, 240]) => {
+    delays.forEach((delay) => {
+      window.setTimeout(() => {
+        alignCurrentHashTarget({ behavior: 'auto' });
+      }, delay);
+    });
   };
 
   const setActiveSectionLink = (sectionId) => {
@@ -915,7 +945,7 @@
     if (portalModeEnabled) {
       targetSection.scrollTop = 0;
     } else {
-      targetSection.scrollIntoView({ behavior, block: 'start' });
+      scrollToSectionWithHeaderOffset(targetSection, { behavior });
     }
 
     if (updateHash && window.history.replaceState) {
@@ -1301,17 +1331,16 @@
     attemptHideMobileBrowserBars();
   }, { passive: true });
 
-  const initialHashId = window.location.hash ? window.location.hash.slice(1) : '';
-  const initialHashTarget = initialHashId ? document.getElementById(initialHashId) : null;
+  const initialHashTarget = resolveHashTargetElement();
   if (initialHashTarget) {
-    window.setTimeout(() => {
+    scheduleHashAlignmentPasses();
+    window.requestAnimationFrame(() => {
       if (portalModeEnabled) {
         setPortalActiveSection(initialHashTarget.id, { updateHash: true, behavior: 'auto' });
       } else {
-        scrollToSectionWithHeaderOffset(initialHashTarget, { behavior: 'auto' });
-        setActiveSectionLink(initialHashTarget.id);
+        alignCurrentHashTarget({ behavior: 'auto' });
       }
-    }, 0);
+    });
   } else if (pageSections.length) {
     if (portalModeEnabled) {
       setPortalActiveSection(pageSections[0].id, { updateHash: false, behavior: 'auto' });
@@ -1321,8 +1350,7 @@
   }
 
   window.addEventListener('hashchange', () => {
-    const hashId = window.location.hash ? window.location.hash.slice(1) : '';
-    const target = hashId ? document.getElementById(hashId) : null;
+    const target = resolveHashTargetElement();
     if (!target) return;
 
     if (portalModeEnabled) {
@@ -1331,6 +1359,14 @@
       scrollToSectionWithHeaderOffset(target, { behavior: 'auto' });
       setActiveSectionLink(target.id);
     }
+  });
+
+  window.addEventListener('load', () => {
+    alignCurrentHashTarget({ behavior: 'auto' });
+    scheduleHashAlignmentPasses([120, 280]);
+  });
+  window.addEventListener('pageshow', () => {
+    alignCurrentHashTarget({ behavior: 'auto' });
   });
 
   if (!portalModeEnabled) {

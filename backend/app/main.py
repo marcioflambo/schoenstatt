@@ -21,6 +21,7 @@ from .custom_songs import (
 from .db import ping_database
 from .mystery_song_assignments import (
     MysterySongAssignmentUpsertRequest,
+    delete_mystery_song_assignment,
     list_mystery_song_assignments,
     upsert_mystery_song_assignment,
 )
@@ -174,6 +175,28 @@ def api_mystery_song_assignments_upsert(payload: MysterySongAssignmentUpsertRequ
     return {
         'ok': True,
         'assignment': assignment,
+    }
+
+
+@app.delete('/api/mysteries/song-assignments')
+def api_mystery_song_assignments_delete(
+    group_title: str = Query(..., min_length=1),
+    mystery_title: str = Query(..., min_length=1),
+) -> dict[str, object]:
+    try:
+        removed = delete_mystery_song_assignment(
+            settings.mystery_song_assignments_file,
+            group_title,
+            mystery_title,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'removed': removed,
     }
 
 

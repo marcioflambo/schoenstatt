@@ -272,3 +272,45 @@ def upsert_mystery_song_assignment(
         _write_store(assignments_file, store)
 
     return _row_to_payload(row)
+
+
+def delete_mystery_song_assignment(
+    assignments_file: Path,
+    group_title: str,
+    mystery_title: str,
+) -> bool:
+    safe_group_title = _normalize_spaces(group_title)
+    safe_mystery_title = _normalize_mystery_title(mystery_title)
+    if not safe_group_title or not safe_mystery_title:
+        raise ValueError('Informe o grupo e o misterio para remover a musica do misterio.')
+
+    assignment_key = _build_assignment_key(safe_group_title, safe_mystery_title)
+
+    with _STORE_LOCK:
+        store = _read_store(assignments_file)
+        rows = store.get('assignments')
+        assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
+
+        normalized_rows = [
+            _normalize_assignment_row(item)
+            for item in assignment_rows
+            if isinstance(item, dict)
+        ]
+        normalized_rows = [
+            row
+            for row in normalized_rows
+            if row['assignment_key'] and row['group_title'] and row['mystery_title']
+        ]
+
+        kept_rows = [
+            row
+            for row in normalized_rows
+            if str(row.get('assignment_key') or '') != assignment_key
+        ]
+        removed = len(kept_rows) != len(normalized_rows)
+
+        if removed:
+            store['assignments'] = kept_rows
+            _write_store(assignments_file, store)
+
+    return removed

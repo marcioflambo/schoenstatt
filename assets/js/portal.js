@@ -458,7 +458,7 @@
 
     setNodeText('#cantos .section-header .section-kicker', content.cantos?.header?.kicker);
     setNodeText('#cantos .section-header h2', content.cantos?.header?.title);
-    setNodeText('#cantos .section-header p', content.cantos?.header?.description);
+    setNodeText('#cantos .section-header > p:not(.section-kicker)', content.cantos?.header?.description);
     setNodeText('#song-fetch-form label[for=\"song-search-query\"]', content.cantos?.search?.menuLabel);
     setNodeAttr('#song-search-query', 'placeholder', content.cantos?.search?.menuPlaceholder);
     setNodeText('#song-fetch-form-cantos label[for=\"song-search-query-cantos\"]', content.cantos?.search?.cantosLabel);
@@ -753,6 +753,31 @@
   const syncHeaderHeight = () => {
     if (!siteHeader) return;
     document.documentElement.style.setProperty('--header-height', `${siteHeader.offsetHeight}px`);
+  };
+  const scrollToSectionWithHeaderOffset = (section, options = {}) => {
+    if (!(section instanceof HTMLElement)) return;
+    const { behavior = 'auto' } = options;
+    syncHeaderHeight();
+    const headerOffset = siteHeader ? siteHeader.offsetHeight : 0;
+    const sectionTop = section.getBoundingClientRect().top + window.scrollY;
+    const sectionStyle = window.getComputedStyle(section);
+    const sectionPaddingTop = Number.parseFloat(sectionStyle.paddingTop) || 0;
+
+    let contentOffset = 0;
+    if (section.matches('section[id]')) {
+      const contentTarget = section.querySelector('.section-header, .hero-copy, .container > :first-child');
+      if (contentTarget instanceof HTMLElement) {
+        contentOffset = Math.max(
+          0,
+          contentTarget.getBoundingClientRect().top - section.getBoundingClientRect().top
+        );
+      } else {
+        contentOffset = sectionPaddingTop;
+      }
+    }
+
+    const targetTop = Math.max(0, sectionTop + contentOffset - headerOffset - 4);
+    window.scrollTo({ top: targetTop, behavior });
   };
 
   const setActiveSectionLink = (sectionId) => {
@@ -1118,7 +1143,17 @@
         event.preventDefault();
         setPortalActiveSection(target.id, { updateHash: true, behavior: 'auto' });
       } else {
+        event.preventDefault();
+        const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth';
+        scrollToSectionWithHeaderOffset(target, { behavior });
         setActiveSectionLink(target.id);
+        if (window.history.pushState) {
+          window.history.pushState(null, '', `#${target.id}`);
+        } else {
+          window.location.hash = target.id;
+        }
       }
     });
   });
@@ -1273,7 +1308,7 @@
       if (portalModeEnabled) {
         setPortalActiveSection(initialHashTarget.id, { updateHash: true, behavior: 'auto' });
       } else {
-        initialHashTarget.scrollIntoView({ behavior: 'auto', block: 'start' });
+        scrollToSectionWithHeaderOffset(initialHashTarget, { behavior: 'auto' });
         setActiveSectionLink(initialHashTarget.id);
       }
     }, 0);
@@ -1293,7 +1328,7 @@
     if (portalModeEnabled) {
       setPortalActiveSection(target.id, { updateHash: false, behavior: 'auto' });
     } else {
-      target.scrollIntoView({ behavior: 'auto', block: 'start' });
+      scrollToSectionWithHeaderOffset(target, { behavior: 'auto' });
       setActiveSectionLink(target.id);
     }
   });
@@ -1523,6 +1558,18 @@
     return asObject(mysterySongAssignments[assignmentKey]);
   };
 
+  const removeCachedMysterySongAssignment = (groupTitle, mysteryTitle) => {
+    const safeGroupTitle = String(groupTitle || '').trim();
+    const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
+    if (!safeGroupTitle || !safeMysteryTitle) return false;
+    const assignmentKey = buildMysterySongAssignmentKey(safeGroupTitle, safeMysteryTitle);
+    if (!Object.prototype.hasOwnProperty.call(mysterySongAssignments, assignmentKey)) {
+      return false;
+    }
+    delete mysterySongAssignments[assignmentKey];
+    return true;
+  };
+
   const fetchMysterySongAssignments = async () => {
     if (mysterySongAssignmentsLoading) return false;
     mysterySongAssignmentsLoading = true;
@@ -1599,6 +1646,34 @@
     }
     updateMysteryModalSongToggleState();
     return saved;
+  };
+
+  const deleteMysterySongAssignmentOnServer = async (groupTitle, mysteryTitle) => {
+    const safeGroupTitle = String(groupTitle || '').trim();
+    const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
+    if (!safeGroupTitle || !safeMysteryTitle) {
+      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+    }
+
+    const response = await fetch(
+      `/api/mysteries/song-assignments?group_title=${encodeURIComponent(safeGroupTitle)}&mystery_title=${encodeURIComponent(safeMysteryTitle)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        parseMysterySongAssignmentApiError(
+          responsePayload,
+          readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.')
+        )
+      );
+    }
+
+    removeCachedMysterySongAssignment(safeGroupTitle, safeMysteryTitle);
+    updateMysteryModalSongToggleState();
+    return Boolean(responsePayload.removed);
   };
 
   const closeMysterySongPanel = () => {
@@ -1708,10 +1783,38 @@
       const list = document.createElement('div');
       list.className = 'mystery-song-assign-items';
       group.items.forEach((itemTitle, index) => {
+        const itemGroupKey = canonicalMysteryGroupKey(group.title);
+        const itemMysteryKey = normalizeKeyToken(itemTitle);
+        const existingAssignment = getMysterySongAssignment(group.title, itemTitle);
+        const hasAssignedSong = Boolean(existingAssignment.songTitle || existingAssignment.songUrl);
         const itemButton = document.createElement('button');
         itemButton.type = 'button';
         itemButton.className = 'mystery-song-assign-item';
-        itemButton.textContent = `${index + 1}º ${itemTitle}`;
+        itemButton.dataset.mysteryGroupKey = itemGroupKey;
+        itemButton.dataset.mysteryTitleKey = itemMysteryKey;
+        const itemLabel = document.createElement('span');
+        itemLabel.className = 'mystery-song-assign-item-label';
+        itemLabel.textContent = `${index + 1}º ${itemTitle}`;
+        itemButton.appendChild(itemLabel);
+
+        if (hasAssignedSong) {
+          itemButton.classList.add('is-assigned');
+          const assignedIcon = document.createElement('span');
+          assignedIcon.className = 'mystery-song-assign-item-icon';
+          assignedIcon.innerHTML = MYSTERY_MUSIC_NOTE_ICON;
+          assignedIcon.setAttribute('aria-hidden', 'true');
+          itemButton.appendChild(assignedIcon);
+
+          const assignedSongTitle = String(existingAssignment.songTitle || '').trim();
+          if (assignedSongTitle) {
+            itemButton.title = readMysteryMessage(
+              'assignCurrentSongTitle',
+              'Já possui música atribuída: {title}',
+              { title: assignedSongTitle }
+            );
+          }
+        }
+
         itemButton.addEventListener('click', async () => {
           const song = asObject(mysterySongAssignPendingSong);
           if (!song.title && !song.url) {
@@ -1721,6 +1824,81 @@
             );
             return;
           }
+
+          const currentAssignment = getMysterySongAssignment(group.title, itemTitle);
+          const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
+          const refreshAssignListAfterMutation = () => {
+            const previousScrollTop = mysterySongAssignList ? mysterySongAssignList.scrollTop : 0;
+            renderMysterySongAssignList();
+            if (mysterySongAssignList) {
+              mysterySongAssignList.scrollTop = previousScrollTop;
+              const updatedButton = Array.from(
+                mysterySongAssignList.querySelectorAll('.mystery-song-assign-item')
+              ).find((node) => (
+                node instanceof HTMLElement
+                && node.dataset.mysteryGroupKey === itemGroupKey
+                && node.dataset.mysteryTitleKey === itemMysteryKey
+              ));
+              if (updatedButton instanceof HTMLElement) {
+                window.requestAnimationFrame(() => {
+                  focusWithoutScrollingPage(updatedButton);
+                });
+              }
+            }
+          };
+
+          if (hasCurrentAssignment) {
+            const currentSongTitle = String(currentAssignment.songTitle || '').trim()
+              || readSongMessage('defaultSongTitle', 'Música atual');
+            const nextSongTitle = String(song.title || '').trim()
+              || readSongMessage('defaultSongTitle', 'Nova música');
+            const removeMessage = readMysteryMessage(
+              'assignRemoveConfirmMessageWithTitle',
+              'Deseja remover "{title}" deste mistério?',
+              { title: currentSongTitle }
+            );
+            const existingAction = await openFavoriteDecisionModal({
+              triggerElement: itemButton,
+              title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
+              message: readMysteryMessage(
+                'assignExistingChoiceMessage',
+                'Este mistério já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+                { current: currentSongTitle, next: nextSongTitle }
+              ),
+              cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
+              acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+              fallbackCancelConfirmMessage: removeMessage,
+            });
+            if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return;
+
+            if (existingAction === FAVORITE_CONFIRM_ACTION_CANCEL) {
+              try {
+                await deleteMysterySongAssignmentOnServer(group.title, itemTitle);
+              } catch (err) {
+                const message = err instanceof Error
+                  ? err.message
+                  : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+                showSongToast(message, 'is-error');
+                return;
+              }
+
+              if (
+                canonicalMysteryGroupKey(group.title) === canonicalMysteryGroupKey(currentMysteryModalSelection.group)
+                && normalizeMysteryName(itemTitle) === normalizeMysteryName(currentMysteryModalSelection.title)
+              ) {
+                closeMysterySongPanel();
+                updateMysteryModalSongToggleState();
+              }
+
+              refreshAssignListAfterMutation();
+              showSongToast(
+                readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+                'is-success'
+              );
+              return;
+            }
+          }
+
           try {
             await saveMysterySongAssignmentOnServer(group.title, itemTitle, {
               songTitle: String(song.title || '').trim(),
@@ -1751,7 +1929,7 @@
             closeMysterySongPanel();
             updateMysteryModalSongToggleState();
           }
-          closeMysterySongAssignModal();
+          refreshAssignListAfterMutation();
           showSongToast(
             readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
             'is-success'
@@ -2331,6 +2509,10 @@
   let lastFocusedFavoriteConfirmTrigger = null;
   let lastFocusedCustomSongTrigger = null;
   let pendingFavoriteConfirmResolver = null;
+  let pendingFavoriteConfirmMode = 'boolean';
+  const FAVORITE_CONFIRM_ACTION_ACCEPT = 'accept';
+  const FAVORITE_CONFIRM_ACTION_CANCEL = 'cancel';
+  const FAVORITE_CONFIRM_ACTION_DISMISS = 'dismiss';
   const songSearchWidgets = [
     {
       id: 'header',
@@ -2743,16 +2925,22 @@
     }
   };
 
-  const resolvePendingFavoriteConfirm = (confirmed) => {
+  const resolvePendingFavoriteConfirm = (action = FAVORITE_CONFIRM_ACTION_DISMISS) => {
     if (!pendingFavoriteConfirmResolver) return;
     const resolve = pendingFavoriteConfirmResolver;
+    const mode = pendingFavoriteConfirmMode;
     pendingFavoriteConfirmResolver = null;
-    resolve(Boolean(confirmed));
+    pendingFavoriteConfirmMode = 'boolean';
+    if (mode === 'action') {
+      resolve(action);
+      return;
+    }
+    resolve(action === FAVORITE_CONFIRM_ACTION_ACCEPT);
   };
 
-  const closeFavoriteConfirmModal = (confirmed = false) => {
+  const closeFavoriteConfirmModal = (action = FAVORITE_CONFIRM_ACTION_DISMISS) => {
     if (!favoriteConfirmModal) {
-      resolvePendingFavoriteConfirm(confirmed);
+      resolvePendingFavoriteConfirm(action);
       return;
     }
     const focusTarget = (
@@ -2763,7 +2951,7 @@
     favoriteConfirmModal.classList.remove('open');
     favoriteConfirmModal.setAttribute('aria-hidden', 'true');
     syncBodyModalLock();
-    resolvePendingFavoriteConfirm(confirmed);
+    resolvePendingFavoriteConfirm(action);
     if (!hasAnyOpenModal() && focusTarget) {
       window.requestAnimationFrame(() => {
         focusWithoutScrollingPage(focusTarget);
@@ -2816,7 +3004,7 @@
     favoriteConfirmMessage.textContent = message;
 
     if (pendingFavoriteConfirmResolver) {
-      resolvePendingFavoriteConfirm(false);
+      resolvePendingFavoriteConfirm(FAVORITE_CONFIRM_ACTION_DISMISS);
     }
 
     const fallbackFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -2829,6 +3017,58 @@
     });
 
     return new Promise((resolve) => {
+      pendingFavoriteConfirmMode = 'boolean';
+      pendingFavoriteConfirmResolver = resolve;
+    });
+  };
+
+  const openFavoriteDecisionModal = (options = {}) => {
+    const safeOptions = asObject(options);
+    const triggerElement = safeOptions.triggerElement instanceof HTMLElement
+      ? safeOptions.triggerElement
+      : null;
+    const title = String(safeOptions.title || '').trim()
+      || readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito');
+    const cancelLabel = String(safeOptions.cancelLabel || '').trim()
+      || readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar');
+    const acceptLabel = String(safeOptions.acceptLabel || '').trim()
+      || readSongMessage('favoriteRemoveConfirmAccept', 'Confirmar');
+    const message = String(safeOptions.message || '').trim()
+      || readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?');
+    const fallbackCancelConfirmMessage = String(safeOptions.fallbackCancelConfirmMessage || '').trim()
+      || readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?');
+
+    if (!favoriteConfirmModal || !favoriteConfirmMessage || !favoriteConfirmAcceptBtn) {
+      const shouldAccept = window.confirm(message);
+      if (shouldAccept) return Promise.resolve(FAVORITE_CONFIRM_ACTION_ACCEPT);
+      const shouldCancelAction = window.confirm(fallbackCancelConfirmMessage);
+      return Promise.resolve(shouldCancelAction ? FAVORITE_CONFIRM_ACTION_CANCEL : FAVORITE_CONFIRM_ACTION_DISMISS);
+    }
+
+    if (favoriteConfirmTitle) {
+      favoriteConfirmTitle.textContent = title;
+    }
+    if (favoriteConfirmCancelBtn) {
+      favoriteConfirmCancelBtn.textContent = cancelLabel;
+    }
+    favoriteConfirmAcceptBtn.textContent = acceptLabel;
+    favoriteConfirmMessage.textContent = message;
+
+    if (pendingFavoriteConfirmResolver) {
+      resolvePendingFavoriteConfirm(FAVORITE_CONFIRM_ACTION_DISMISS);
+    }
+
+    const fallbackFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedFavoriteConfirmTrigger = triggerElement || fallbackFocus;
+    favoriteConfirmModal.classList.add('open');
+    favoriteConfirmModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    window.requestAnimationFrame(() => {
+      focusWithoutScrollingPage(favoriteConfirmAcceptBtn);
+    });
+
+    return new Promise((resolve) => {
+      pendingFavoriteConfirmMode = 'action';
       pendingFavoriteConfirmResolver = resolve;
     });
   };
@@ -2843,11 +3083,16 @@
 
   if (favoriteConfirmCloseButtons.length) {
     favoriteConfirmCloseButtons.forEach((button) => {
-      button.addEventListener('click', () => closeFavoriteConfirmModal(false));
+      const isCancelButton = button === favoriteConfirmCancelBtn;
+      button.addEventListener('click', () => {
+        closeFavoriteConfirmModal(
+          isCancelButton ? FAVORITE_CONFIRM_ACTION_CANCEL : FAVORITE_CONFIRM_ACTION_DISMISS
+        );
+      });
     });
   }
   if (favoriteConfirmAcceptBtn) {
-    favoriteConfirmAcceptBtn.addEventListener('click', () => closeFavoriteConfirmModal(true));
+    favoriteConfirmAcceptBtn.addEventListener('click', () => closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_ACCEPT));
   }
 
   const syncSongSearchClearButtons = () => {
@@ -5498,7 +5743,7 @@
       }
 
       if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
-        closeFavoriteConfirmModal(false);
+        closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS);
         return;
       }
 

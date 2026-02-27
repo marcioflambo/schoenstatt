@@ -90,7 +90,7 @@
         "href": "#roteiro"
       },
       {
-        "label": "Ver cantos para violão",
+        "label": "Ver cantos",
         "href": "#cantos"
       }
     ],
@@ -429,8 +429,8 @@
   "cantos": {
     "header": {
       "kicker": "Ministério de música",
-      "title": "Cantos com letra e cifra para violão",
-      "description": "Use a busca no menu ou aqui embaixo para localizar a música e ajustar o tom no modal da cifra."
+      "title": "Cantos com letra e cifra",
+      "description": "Use a busca no menu ou aqui embaixo para localizar a música e ajustar o tom na cifra."
     },
     "search": {
       "menuLabel": "Buscar música",
@@ -743,7 +743,28 @@
       "groupLuminosos": "Mistérios Luminosos",
       "unknownGroup": "Mistério do Terço",
       "modalLinkLabel": "{index}º Mistério",
-      "modalLinkAria": "{index}º Mistério: {title}"
+      "modalLinkAria": "{index}º Mistério: {title}",
+      "assignButtonTitle": "Adicionar aos mistérios",
+      "assignButtonAria": "Adicionar música a um mistério",
+      "assignCurrentSongTitle": "Já possui música atribuída: {title}",
+      "assignInvalidTarget": "Informe o grupo e o mistério da música.",
+      "assignSongInvalid": "Não foi possível identificar a música para atribuir.",
+      "assignSaveError": "Não foi possível salvar a música no mistério.",
+      "assignSuccess": "Música atribuída ao mistério com sucesso.",
+      "assignRemoveConfirmTitle": "Remover música do mistério",
+      "assignRemoveConfirmMessageWithTitle": "Deseja remover \"{title}\" deste mistério?",
+      "assignRemoveConfirmCancel": "Cancelar",
+      "assignRemoveConfirmAccept": "Remover",
+      "assignRemoveError": "Não foi possível remover a música do mistério.",
+      "assignRemoveSuccess": "Música removida do mistério.",
+      "assignReplaceConfirmTitle": "Trocar música do mistério",
+      "assignReplaceConfirmMessage": "Este mistério já possui \"{current}\". Deseja trocar por \"{next}\"?",
+      "assignReplaceConfirmCancel": "Manter atual",
+      "assignReplaceConfirmAccept": "Trocar",
+      "assignExistingChoiceTitle": "Música já vinculada",
+      "assignExistingChoiceMessage": "Este mistério já possui \"{current}\". Deseja substituir por \"{next}\" ou remover a atual?",
+      "assignExistingChoiceReplace": "Substituir",
+      "assignExistingChoiceRemove": "Remover atual"
     }
   }
 }

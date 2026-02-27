@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import PROJECT_DIR, settings
 from .db import ping_database
+from .song_favorites import SongFavoriteCreateRequest, delete_song_favorite, list_song_favorites, save_song_favorite
 from .songs import (
     SongFetchRequest,
     SongLyricsFetchRequest,
@@ -21,7 +22,7 @@ from .songs import (
 app = FastAPI(
     title='Portal Schoenstatt API',
     version='0.1.0',
-    description='Backend inicial para conectividade do portal com PostgreSQL.',
+    description='Backend do portal com busca de musicas e favoritos locais em JSON.',
 )
 
 app.add_middleware(
@@ -43,6 +44,7 @@ def api_health() -> dict[str, object]:
         'status': 'ok',
         'service': 'portal-schoenstatt-api',
         'database_configured': bool(settings.database_url),
+        'song_favorites_store': str(settings.song_favorites_file),
     }
 
 
@@ -59,6 +61,50 @@ def api_songs_status() -> dict[str, object]:
     return {
         'status': 'prepared',
         'message': 'Conectividade pronta. Criacao de tabelas e CRUD de musicas sera adicionada na proxima etapa.',
+    }
+
+
+@app.get('/api/songs/favorites')
+def api_song_favorites_list() -> dict[str, object]:
+    try:
+        favorites = list_song_favorites(settings.song_favorites_file)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'count': len(favorites),
+        'favorites': favorites,
+    }
+
+
+@app.post('/api/songs/favorites')
+def api_song_favorites_save(payload: SongFavoriteCreateRequest) -> dict[str, object]:
+    try:
+        favorite = save_song_favorite(settings.song_favorites_file, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'favorite': favorite,
+    }
+
+
+@app.delete('/api/songs/favorites')
+def api_song_favorites_delete(url: str = Query(..., min_length=1)) -> dict[str, object]:
+    try:
+        removed = delete_song_favorite(settings.song_favorites_file, url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'removed': removed,
     }
 
 

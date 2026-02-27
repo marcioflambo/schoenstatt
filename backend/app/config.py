@@ -37,6 +37,7 @@ def _build_database_url() -> str | None:
 class Settings:
     database_url: str | None
     cors_allow_origins: list[str]
+    song_favorites_file: Path
 
 
 
@@ -45,10 +46,21 @@ def _parse_origins(value: str) -> list[str]:
     return origins or ['*']
 
 
+def _resolve_song_favorites_file() -> Path:
+    custom_path = os.getenv('SONG_FAVORITES_FILE', '').strip()
+    if custom_path:
+        resolved = Path(custom_path).expanduser()
+        if not resolved.is_absolute():
+            resolved = PROJECT_DIR / resolved
+        return resolved
+    return PROJECT_DIR / 'tmp' / 'song_favorites.json'
+
+
 def get_settings() -> Settings:
     return Settings(
         database_url=_build_database_url(),
         cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '*')),
+        song_favorites_file=_resolve_song_favorites_file(),
     )
 
 

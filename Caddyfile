@@ -1,0 +1,10 @@
+{$SITE_DOMAIN:app.eaintegrations.com} {
+	encode zstd gzip
+	reverse_proxy portal:8000
+}
+
+localhost {
+	tls internal
+	encode zstd gzip
+	reverse_proxy portal:8000
+}

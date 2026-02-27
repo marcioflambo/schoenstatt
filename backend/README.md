@@ -19,7 +19,7 @@
 
 ## Observacoes
 - Nesta fase, a API ja possui busca inicial de cifras por nome e leitura de cifra por URL.
-- Tabelas e CRUD de musicas/oracoes serao criados na proxima etapa.
+- Favoritos sao salvos localmente em `tmp/song_favorites.json` (ou no caminho definido por `SONG_FAVORITES_FILE`).
 
 ## Executar com Docker (hot reload)
 
@@ -34,6 +34,9 @@ Validar:
 - `GET http://127.0.0.1:8000/api/db/ping`
 - `POST http://127.0.0.1:8000/api/songs/search`
 - `POST http://127.0.0.1:8000/api/songs/fetch`
+- `GET http://127.0.0.1:8000/api/songs/favorites`
+- `POST http://127.0.0.1:8000/api/songs/favorites`
+- `DELETE http://127.0.0.1:8000/api/songs/favorites?url=...`
 
 Sem reiniciar container:
 - alteracoes em `backend/*`: recarregamento automatico da API;

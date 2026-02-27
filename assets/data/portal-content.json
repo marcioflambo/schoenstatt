@@ -1,0 +1,741 @@
+﻿{
+  "meta": {
+    "title": "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt",
+    "description": "Portal para rezar o terço da Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt, com cantos, cifras e orações."
+  },
+  "brand": {
+    "primary": "Mãe, Rainha e Vencedora",
+    "secondary": "Três Vezes Admirável de Schoenstatt",
+    "logo": {
+      "src": "./assets/img/logo.png",
+      "alt": "Logo da Mãe Rainha de Schoenstatt"
+    }
+  },
+  "menu": {
+    "ariaLabel": "Navegação principal",
+    "closeButtonLabel": "Fechar menu",
+    "backButtonLabel": "Voltar",
+    "items": [
+      {
+        "label": "A história",
+        "href": "#historia"
+      },
+      {
+        "label": "Oração",
+        "subLinks": [
+          {
+            "label": "Como rezar",
+            "href": "#roteiro"
+          },
+          {
+            "label": "Mistérios",
+            "href": "#misterios"
+          },
+          {
+            "label": "Orações",
+            "href": "#oracoes"
+          }
+        ]
+      },
+      {
+        "label": "Conteúdo",
+        "subLinks": [
+          {
+            "label": "Cantos com cifra",
+            "href": "#cantos"
+          },
+          {
+            "label": "Cânticos do livreto",
+            "href": "#cantos"
+          },
+          {
+            "label": "Recursos",
+            "href": "#recursos"
+          }
+        ]
+      },
+      {
+        "label": "Divulgação",
+        "subLinks": [
+          {
+            "label": "Sementes do Santuário",
+            "href": "#sementes"
+          },
+          {
+            "label": "Santuários em Portugal",
+            "href": "#santuarios"
+          },
+          {
+            "label": "Site Sementes",
+            "href": "https://sementesdosantuario.pt",
+            "target": "_blank"
+          },
+          {
+            "label": "Santuários de Schoenstatt",
+            "href": "https://www.schoenstatt.pt/santuarios",
+            "target": "_blank"
+          },
+          {
+            "label": "Portal Schoenstatt",
+            "href": "https://schoenstatt.com/pt-pt/",
+            "target": "_blank"
+          }
+        ]
+      }
+    ]
+  },
+  "hero": {
+    "eyebrow": "Santuário de Schoenstatt",
+    "title": "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt",
+    "lead": "Um portal para ajudar comunidades, famílias e grupos de violão a rezar com unidade: roteiro completo, mistérios do dia, orações e cantos com letra e cifra.",
+    "actions": [
+      {
+        "label": "Começar o terço",
+        "href": "#roteiro"
+      },
+      {
+        "label": "Ver cantos para violão",
+        "href": "#cantos"
+      }
+    ],
+    "today": {
+      "label": "Roteiro de hoje",
+      "note": "Sugestão do portal: antes de iniciar, definir uma intenção comunitária.",
+      "image": {
+        "src": "./assets/img/nossasenhora_schoenstatt.jpg",
+        "alt": "Imagem de Nossa Senhora de Schoenstatt"
+      }
+    }
+  },
+  "historia": {
+    "header": {
+      "kicker": "Narração como no vídeo",
+      "title": "A história da Mãe Rainha em capítulos",
+      "description": "Inspirado no estilo do vídeo indicado, esta seção organiza a história em blocos curtos: significado do título, origem em Schoenstatt e missão para a vida de oração."
+    },
+    "video": {
+      "embedUrl": "https://www.youtube-nocookie.com/embed/1YUYV_F-p3M?rel=0&modestbranding=1&playsinline=1",
+      "title": "Mãe Rainha Três Vezes Admirável - Qual o significado?",
+      "fallbackText": "Se aparecer o erro 153 no player incorporado, abra direto no",
+      "fallbackLinkLabel": "YouTube",
+      "fallbackLinkUrl": "https://www.youtube.com/watch?v=1YUYV_F-p3M",
+      "note": "Vídeo-base: \"Mãe Rainha Três Vezes Admirável - Qual o significado?\" (Pe. Vandemir Meister)."
+    },
+    "intro": "Linha narrativa sugerida: da origem do título mariano até o envio missionário para rezar o terço em família e comunidade.",
+    "tabsAriaLabel": "Capítulos da história",
+    "tabs": [
+      {
+        "id": "origem",
+        "label": "1. Origem do título"
+      },
+      {
+        "id": "alianca",
+        "label": "2. Aliança em Schoenstatt"
+      },
+      {
+        "id": "nome",
+        "label": "3. Mãe e Rainha"
+      },
+      {
+        "id": "peregrina",
+        "label": "4. Campanha Peregrina"
+      },
+      {
+        "id": "hoje",
+        "label": "5. Chamado de hoje"
+      }
+    ],
+    "stories": {
+      "origem": {
+        "eyebrow": "Capítulo 1",
+        "title": "Mater Ter Admirabilis",
+        "text": "A expressão \"Três Vezes Admirável\" vem da tradição mariana e ganhou destaque em Ingolstadt. Em Schoenstatt, o título passa a ser vivido como caminho pedagógico de aliança com Maria.",
+        "meta": "Raiz histórica: Ingolstadt, séc. XVII"
+      },
+      "alianca": {
+        "eyebrow": "Capítulo 2",
+        "title": "Aliança de Amor em Schoenstatt",
+        "text": "Em 18 de outubro de 1914, nasce a Aliança de Amor no Santuário Original. Essa experiência marca o início da espiritualidade de Schoenstatt e seu modo próprio de viver com Maria.",
+        "meta": "Marco histórico: 18/10/1914"
+      },
+      "nome": {
+        "eyebrow": "Capítulo 3",
+        "title": "Mãe e Rainha Três Vezes Admirável",
+        "text": "Entre 1915 e 1916, com a presença da imagem da MTA no Santuário, o título mariano vai sendo consolidado na vida do movimento: Maria como Mãe, Rainha e educadora dos corações.",
+        "meta": "Consolidação do título: 1915-1916"
+      },
+      "peregrina": {
+        "eyebrow": "Capítulo 4",
+        "title": "Da capela para as famílias",
+        "text": "Em 1950, João Pozzobon inicia a Campanha da Mãe Peregrina no Brasil. A imagem sai em missão e a espiritualidade chega às casas, aos doentes e aos grupos de terço.",
+        "meta": "Campanha da Mãe Peregrina: desde 1950"
+      },
+      "hoje": {
+        "eyebrow": "Capítulo 5",
+        "title": "O chamado de hoje",
+        "text": "Rezar o terço com a Mãe Rainha é renovar a aliança no cotidiano: família, trabalho, comunidade e missão. A história continua quando a oração se torna vida concreta.",
+        "meta": "Aplicação pastoral: comunidade e família"
+      }
+    },
+    "timeline": [
+      {
+        "year": "1604",
+        "text": "Padre Jacob Rem divulga a invocação \"Mater Ter Admirabilis\" em Ingolstadt."
+      },
+      {
+        "year": "1914",
+        "text": "Fundação de Schoenstatt e Aliança de Amor no Santuário Original."
+      },
+      {
+        "year": "1915-1916",
+        "text": "Imagem da MTA no Santuário e consolidação do título \"Mãe e Rainha Três Vezes Admirável\"."
+      },
+      {
+        "year": "1950",
+        "text": "João Pozzobon inicia no Brasil a Campanha da Mãe Peregrina."
+      },
+      {
+        "year": "Hoje",
+        "text": "O título continua vivo na catequese, no terço e na evangelização das famílias."
+      }
+    ]
+  },
+  "roteiro": {
+    "header": {
+      "kicker": "Guia rápido",
+      "title": "Como rezar o terço em comunidade",
+      "description": "Estrutura pronta para encontros presenciais, familiares ou grupos de missa."
+    },
+    "steps": [
+      {
+        "number": "1",
+        "title": "Acolhida",
+        "text": "Sinal da cruz, intenções e consagração breve à Mãe Rainha."
+      },
+      {
+        "number": "2",
+        "title": "Credo",
+        "text": "Rezar o Credo no crucifixo do terço."
+      },
+      {
+        "number": "3",
+        "title": "Contas iniciais",
+        "text": "1 Pai-Nosso, 3 Ave-Marias e 1 Glória."
+      },
+      {
+        "number": "4",
+        "title": "Mistério 1",
+        "text": "Anunciar, fazer breve meditação e rezar a dezena."
+      },
+      {
+        "number": "5",
+        "title": "Mistérios 2 a 5",
+        "text": "Repetir a dinâmica das dezenas com canto entre os mistérios."
+      },
+      {
+        "number": "6",
+        "title": "Oração final",
+        "text": "Salve Rainha, oração da Mãe Rainha e intenções finais."
+      },
+      {
+        "number": "7",
+        "title": "Envio",
+        "text": "Bênção final e convite para próximo encontro."
+      },
+      {
+        "number": "+",
+        "title": "Espaço para cantos",
+        "text": "Entre dezenas, usar músicas com cifra para facilitar o violão.",
+        "highlight": true
+      }
+    ]
+  },
+  "misterios": {
+    "header": {
+      "kicker": "Meditação semanal",
+      "title": "Mistérios do terço por dia",
+      "description": "Layout pronto para colocar meditações completas de cada mistério."
+    },
+    "cards": [
+      {
+        "day": "Segunda e Sábado",
+        "title": "Gozosos",
+        "items": [
+          "1º Anunciação do Anjo a Nossa Senhora",
+          "2º Visita de Nossa Senhora à sua prima Santa Isabel",
+          "3º Nascimento de Jesus na gruta de Belém",
+          "4º Apresentação do Menino Jesus no Templo",
+          "5º Perda e encontro do Menino Jesus no Templo"
+        ]
+      },
+      {
+        "day": "Terça e Sexta",
+        "title": "Dolorosos",
+        "items": [
+          "1º Agonia de Jesus no Horto das Oliveiras",
+          "2º Flagelação de Jesus",
+          "3º Jesus é coroado de espinhos",
+          "4º Jesus sobe o Monte Calvário com a cruz às costas",
+          "5º Crucificação e morte de Jesus"
+        ]
+      },
+      {
+        "day": "Quarta e Domingo",
+        "title": "Gloriosos",
+        "items": [
+          "1º Ressurreição de Jesus",
+          "2º Ascensão de Jesus ao Céu",
+          "3º Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração",
+          "4º Assunção de Maria ao Céu em corpo e alma",
+          "5º Coroação de Nossa Senhora como Rainha do Céu e da Terra"
+        ]
+      },
+      {
+        "day": "Quinta",
+        "title": "Luminosos",
+        "items": [
+          "1º Batismo de Jesus nas águas do rio Jordão",
+          "2º Jesus revela-Se nas Bodas de Caná",
+          "3º Jesus anuncia o Reino de Deus com o convite à conversão",
+          "4º A Transfiguração de Jesus",
+          "5º A instituição da Eucaristia"
+        ]
+      }
+    ],
+    "byDay": {
+      "0": {
+        "day": "Domingo",
+        "title": "Mistérios Gloriosos",
+        "items": [
+          "Ressurreição de Jesus",
+          "Ascensão de Jesus ao Céu",
+          "Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração",
+          "Assunção de Maria ao Céu em corpo e alma",
+          "Coroação de Nossa Senhora como Rainha do Céu e da Terra"
+        ]
+      },
+      "1": {
+        "day": "Segunda-feira",
+        "title": "Mistérios Gozosos",
+        "items": [
+          "Anunciação do Anjo a Nossa Senhora",
+          "Visita de Nossa Senhora à sua prima Santa Isabel",
+          "Nascimento de Jesus na gruta de Belém",
+          "Apresentação do Menino Jesus no Templo",
+          "Perda e encontro do Menino Jesus no Templo"
+        ]
+      },
+      "2": {
+        "day": "Terça-feira",
+        "title": "Mistérios Dolorosos",
+        "items": [
+          "Agonia de Jesus no Horto das Oliveiras",
+          "Flagelação de Jesus",
+          "Jesus é coroado de espinhos",
+          "Jesus sobe o Monte Calvário com a cruz às costas",
+          "Crucificação e morte de Jesus"
+        ]
+      },
+      "3": {
+        "day": "Quarta-feira",
+        "title": "Mistérios Gloriosos",
+        "items": [
+          "Ressurreição de Jesus",
+          "Ascensão de Jesus ao Céu",
+          "Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração",
+          "Assunção de Maria ao Céu em corpo e alma",
+          "Coroação de Nossa Senhora como Rainha do Céu e da Terra"
+        ]
+      },
+      "4": {
+        "day": "Quinta-feira",
+        "title": "Mistérios Luminosos",
+        "items": [
+          "Batismo de Jesus nas águas do rio Jordão",
+          "Jesus revela-Se nas Bodas de Caná",
+          "Jesus anuncia o Reino de Deus com o convite à conversão",
+          "A Transfiguração de Jesus",
+          "A instituição da Eucaristia"
+        ]
+      },
+      "5": {
+        "day": "Sexta-feira",
+        "title": "Mistérios Dolorosos",
+        "items": [
+          "Agonia de Jesus no Horto das Oliveiras",
+          "Flagelação de Jesus",
+          "Jesus é coroado de espinhos",
+          "Jesus sobe o Monte Calvário com a cruz às costas",
+          "Crucificação e morte de Jesus"
+        ]
+      },
+      "6": {
+        "day": "Sábado",
+        "title": "Mistérios Gozosos",
+        "items": [
+          "Anunciação do Anjo a Nossa Senhora",
+          "Visita de Nossa Senhora à sua prima Santa Isabel",
+          "Nascimento de Jesus na gruta de Belém",
+          "Apresentação do Menino Jesus no Templo",
+          "Perda e encontro do Menino Jesus no Templo"
+        ]
+      }
+    },
+    "meditations": {
+      "Anunciação do Anjo a Nossa Senhora": "Mãe, as palavras do Anjo perturbaram-Te. Não duvidaste, mas ficaste confusa... Deus olhou para a tua pequenez. Faz-nos entender o valor dos pequenos \"sim\" que Deus espera de nós, dia a dia, e dá-nos a graça de aceitar com confiança os Seus planos, mesmo sendo diferentes dos nossos.",
+      "Visita de Nossa Senhora à sua prima Santa Isabel": "Mãe, caminhas até à casa de Isabel, a quem vais servir. Comunicas alegria e graça, porque levas Jesus dentro de Ti. Dá-nos, também a nós, a consciência de sermos teus instrumentos, mensageiros de Jesus, caminhando ao encontro da vida.",
+      "Nascimento de Jesus na gruta de Belém": "Mãe, no pobre e pequeno estábulo de Belém, dás à luz o Senhor do mundo, pois não havia para Ele lugar na hospedaria. Também no mundo de hoje, Deus não tem lugar na vida dos homens. Por isso, Mãe, transforma os nossos corações, para que aprendamos a criar espaço para Jesus e, assim, Ele possa nascer em nós, cada dia.",
+      "Apresentação do Menino Jesus no Templo": "Mãe, no Templo ofereces, sem reservas, o teu Filho ao Pai e com Ele renovas também a tua entrega. Ajuda-nos para que, como Tu, também nós sejamos capazes de oferecer hoje a Deus tudo o que nos preocupa, renovando o nosso \"sim\" a tudo o que são os planos d'Ele para nós.",
+      "Perda e encontro do Menino Jesus no Templo": "Mãe, muitas vezes Deus põe-Te à prova e assim prepara o teu coração para sacrifícios maiores. Ele trata-Te duramente, para que um dia possas permanecer de pé junto à cruz do teu Filho. Ajuda-nos, querida Mãe, a também permanecermos serenos quando Deus nos manda duras provas de fé. Pedimos-Te que nos ensines o caminho de volta ao coração do Pai, sempre que nos encontrarmos perdidos na confusão do mundo ou na intranquilidade do nosso coração.",
+      "Batismo de Jesus nas águas do rio Jordão": "Mãe, o teu Filho, na sua humildade, quis ser como um de nós, homens, recebendo o Batismo. Fez-nos assim entender que, ao tornarmo-nos filhos de Deus e seus irmãos, a nossa missão pessoal ficou intimamente ligada à sua. Que a consciência desta dignidade nos leve a caminhar na vida como teu Filho Jesus, seguros na força do Espírito Santo que recebemos pelo Batismo e abertos aos planos de Deus.",
+      "Jesus revela-Se nas Bodas de Caná": "Mãe, em Caná revelaste-nos que estás atenta às pessoas, que vês o que falta nas nossas vidas e que entregas a teu Filho as situações que precisam de uma solução: \"Eles não têm mais vinho\". Cheia de confiança dirigiste-Te aos serventes dizendo: \"Fazei o que Ele vos disser\". Muitas vezes, na nossa vida, o amor também se esvazia, \"falta o vinho\". Ajuda-nos, Mãe, nesses momentos, a confiar como Tu em Jesus, a fazer as pequenas coisas que Ele nos diz, para que, apesar da nossa pequenez, Ele possa abrir os nossos corações para o verdadeiro amor.",
+      "Jesus anuncia o Reino de Deus com o convite à conversão": "Mãe, certamente te sentiste inquieta com teu Filho quando começou a anunciar a Boa Nova; certamente quiseste estar a seu lado; também, com certeza, sentiste arder em Ti a esperança de um mundo novo. Na sua pregação, Jesus lançou os fundamentos de um mundo novo, onde reinam o amor, a partilha, o perdão, a fraternidade. Contigo, Mãe, queremos aprender a esperança nas suas palavras.",
+      "A Transfiguração de Jesus": "Mãe, estiveste sempre tão perto de Jesus! Mãe de Deus! Tu sabias que a transfiguração significava uma palavra de ânimo para os apóstolos; aí se manifestou a glória de Jesus e se confirmou que Ele é, apesar da cruz que se aproxima, o Filho amado de Deus. Que esta certeza faça crescer em nós o entusiasmo por viver como verdadeiros cristãos, assumindo com tranquilidade e alegria a nossa cruz como caminho para a Ressurreição.",
+      "A instituição da Eucaristia": "Mãe, encontraste-Te com teu Filho muito antes de nós! Muito antes Te apercebeste do seu grande amor. Jesus quis que cada um de nós também se encontrasse com Ele na Eucaristia: a comunhão é o momento do encontro máximo de dois amores, e nessa oferta está também cada um de nós, entregando-se por inteiro, com tudo o que faz parte da sua vida, em favor de todos os homens. Querida Mãe, sabes que temos um caminho interior a percorrer, para que a comunhão aconteça em nós. Ensina-nos a dar esses passos, de coração aberto; estamos seguros de que Tu nos levarás ao verdadeiro encontro com Jesus.",
+      "Agonia de Jesus no Horto das Oliveiras": "Mãe, a angústia pelo sofrimento faz o teu Filho sofrer. Mas nada O retém na Sua entrega e espírito de sacrifício pelo Pai e por nós. Faz que, também nós, saibamos alimentar-nos da oração e oferecer com amor todos os nossos sofrimentos e assim colaborar com Jesus na salvação do mundo.",
+      "Flagelação de Jesus": "Mãe, a cada chicotada, teu Filho sofre em silêncio por amor a nós. Que todos nós, \"tocados\" pelo olhar de Jesus, procuremos afastar da nossa vida tudo o que não é digno do seu amor.",
+      "Jesus é coroado de espinhos": "Jesus é coroado de espinhos, é gozado como rei dos judeus, é gozado na sua missão. Não há compaixão. Ajuda-nos, Mãe, a corrigir a nossa tendência à rebeldia contra tudo o que não nos agrada e a querermos representar mais do que somos. Faz-nos entender que somente chegaremos à verdadeira grandeza, se soubermos levar com dignidade a coroa de espinhos que a vida nos impõe.",
+      "Jesus sobe o Monte Calvário com a cruz às costas": "Mãe, com amor imenso, o teu Filho leva a pesada cruz que nós, por nossa fuga ao sofrimento, Lhe colocamos sobre os ombros. Acompanhando-O, ajudaste-O espiritualmente a levar a cruz. Dá-nos a tua mão e ensina-nos, Mãe, a perdoar quem nos ofende, a abrir os nossos braços e o nosso coração e a sermos capazes de ter gestos corajosos de paz e perdão.",
+      "Crucificação e morte de Jesus": "Mãe, antes de morrer, Jesus entregou-Te ao discípulo amado no qual viu toda a humanidade: \"Eis aí o teu filho\". A S. João (como se a todos nós) disse: \"Eis aí a tua Mãe\". Jesus deixou-Te como nossa Mãe e a Ti pedimos que nos ajudes a entender o sentido do sofrimento e a aceitar com amor as nossas cruzes e dores para as oferecer alegremente a Deus.",
+      "Ressurreição de Jesus": "Jesus está vivo, Mãe! Apareceu aos discípulos de Emaús, a Maria Madalena e ficará presente para sempre. Ele venceu a morte e o pecado. Ajuda-nos a descobrir este Cristo vivo na nossa vida, em cada pessoa e em tudo à nossa volta e dá-nos as graças de que necessitamos para resistir ao mal, nos levantarmos sempre de novo do erro e do desânimo e sermos capazes de recomeçar todos os dias.",
+      "Ascensão de Jesus ao Céu": "Mãe, contemplas a subida do teu Filho ao Céu, o seu regresso ao Pai. A sua felicidade é também a tua. Ajuda-nos a manter sempre viva a ligação ao coração de Jesus, porque Ele é o caminho para o Pai. Contigo queremos transformar a nossa vida no projeto que Deus pensou para nós.",
+      "Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração": "Mãe, na tua presença os apóstolos recebem uma missão que os ultrapassa: o Espírito Santo transforma-os em homens corajosos, fiéis anunciadores do Evangelho. Dispõe também as nossas almas à atuação do Espírito de Deus. Que Ele nos queime com o fogo do seu amor, nos transforme e nos ajude a anunciarmos o Evangelho pela palavra e pelo testemunho da nossa vida.",
+      "Assunção de Maria ao Céu em corpo e alma": "Mãe, como viveste com o teu Filho, com Ele amaste e sofreste, assim, ao terminar a tua existência, Ele Te leva, em corpo e alma, para o Céu. Quando nos consagramos a Ti, querida Mãe, estamos a partilhar do amor de Jesus que Te quis perto d'Ele para sempre. Faz-nos viver fielmente essa entrega e confiança nas coisas pequenas de cada dia.",
+      "Coroação de Nossa Senhora como Rainha do Céu e da Terra": "Mãe, reinas no Céu e reinas no mundo, podendo assim distribuir as graças do Céu. Hoje queremos coroar-Te como Rainha do nosso coração, queremos entregar-Te o poder sobre a nossa vida e pomos nas tuas mãos as nossas inquietações. Educa-nos, fortalece-nos nas dificuldades e guia-nos rumo ao Céu."
+    },
+    "modal": {
+      "groupFallback": "Mistério do Terço",
+      "emptyMeditation": "Meditação em preparação. Em breve o texto completo deste mistério estará disponível.",
+      "linksAriaLabel": "Navegar pelos 5 mistérios",
+      "closeAriaLabel": "Fechar mistério",
+      "toggleShow": "Exibir jaculatória",
+      "toggleHide": "Ocultar jaculatória",
+      "jaculatoryTitle": "Jaculatórias",
+      "jaculatoryItems": [
+        "Jesus manso e humilde de coração, fazei o nosso coração semelhante ao vosso.",
+        "Sagrado Coração de Jesus, eu confio em Vós.",
+        "Sagrado Coração de Jesus que tanto nos amais, fazei que vos ame sempre e cada vez mais.",
+        "Ó Maria, concebida sem pecado, rogai por nós que recorremos a Vós.",
+        "Ó meu Jesus, perdoai-nos e livrai-nos do fogo do inferno.",
+        "Levai as almas todas para o céu, principalmente as que mais precisarem.",
+        "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt, rogai por nós.",
+        "Rainha da paz, dai-nos a paz."
+      ]
+    }
+  },
+  "cantos": {
+    "header": {
+      "kicker": "Ministério de música",
+      "title": "Cantos com letra e cifra para violão",
+      "description": "Use a busca no menu ou aqui embaixo para localizar a música e ajustar o tom no modal da cifra."
+    },
+    "search": {
+      "menuLabel": "Buscar música",
+      "menuPlaceholder": "Buscar música",
+      "cantosLabel": "Pesquisar músicas",
+      "cantosPlaceholder": "Ex.: Eu Seguirei",
+      "searchButtonLabel": "Buscar novamente",
+      "clearButtonLabel": "Limpar busca",
+      "resultFallbackImage": "./assets/img/logo.png"
+    },
+    "favorites": {
+      "title": "Músicas favoritas",
+      "description": "Seus cantos preferidos ficam aqui para abrir letra, cifra, YouTube e Spotify com um toque."
+    },
+    "booklet": {
+      "kicker": "Cânticos do livreto",
+      "title": "Capítulo IV (OCR)",
+      "description": "Base preparada para completar letra, cifra e links dos cantos do livreto da Mãe Peregrina.",
+      "items": [
+        {
+          "title": "Hino à Mãe Peregrina",
+          "page": "83",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Vim aqui",
+          "page": "84",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Quero ser como Tu",
+          "page": "85",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Nada sem Ti e sem nós",
+          "page": "86",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Pelas estradas da vida",
+          "page": "87",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Quem é esta Senhora",
+          "page": "88",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Minha Senhora e minha Mãe",
+          "page": "89",
+          "status": "Pendente de letra/cifra"
+        },
+        {
+          "title": "Boa noite, Maria",
+          "page": "89",
+          "status": "Pendente de letra/cifra"
+        }
+      ]
+    }
+  },
+  "oracoes": {
+    "header": {
+      "kicker": "Base de orações",
+      "title": "Orações principais do encontro",
+      "description": "Orações completas para acompanhar o encontro e o terço em comunidade."
+    },
+    "accordion": {
+      "openLabel": "Ocultar oração",
+      "closedLabel": "Ver oração"
+    },
+    "items": [
+      {
+        "title": "Credo (Símbolo dos Apóstolos)",
+        "text": "Creio em Deus Pai todo-poderoso, criador do céu e da terra. E em Jesus Cristo, seu único Filho, nosso Senhor, que foi concebido pelo poder do Espírito Santo; nasceu da Virgem Maria; padeceu sob Pôncio Pilatos, foi crucificado, morto e sepultado; desceu à mansão dos mortos; ressuscitou ao terceiro dia; subiu aos céus; está sentado à direita de Deus Pai todo-poderoso, donde há de vir a julgar os vivos e os mortos. Creio no Espírito Santo, na santa Igreja Católica, na comunhão dos santos, na remissão dos pecados, na ressurreição da carne, na vida eterna. Amém."
+      },
+      {
+        "title": "Pai-Nosso",
+        "text": "Pai-Nosso que estais no céu, santificado seja o vosso nome; venha a nós o vosso Reino; seja feita a vossa vontade, assim na terra como no céu. O pão nosso de cada dia nos dai hoje; perdoai-nos as nossas ofensas, assim como nós perdoamos a quem nos tem ofendido; e não nos deixeis cair em tentação, mas livrai-nos do mal. Amém."
+      },
+      {
+        "title": "Ave-Maria",
+        "text": "Ave Maria, cheia de graça, o Senhor é convosco; bendita sois vós entre as mulheres, e bendito é o fruto do vosso ventre, Jesus. Santa Maria, Mãe de Deus, rogai por nós, pecadores, agora e na hora da nossa morte. Amém."
+      },
+      {
+        "title": "Glória ao Pai",
+        "text": "Glória ao Pai, ao Filho e ao Espírito Santo. Como era no princípio, agora e sempre. Amém."
+      },
+      {
+        "title": "Oração de Fátima",
+        "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o céu, principalmente as que mais precisarem."
+      },
+      {
+        "title": "Salve Rainha",
+        "text": "Salve, Rainha, Mãe de misericórdia, vida, doçura e esperança nossa, salve. A vós bradamos os degredados filhos de Eva; a vós suspiramos, gemendo e chorando neste vale de lágrimas. Eia, pois, advogada nossa, esses vossos olhos misericordiosos a nós volvei; e depois deste desterro mostrai-nos Jesus, bendito fruto do vosso ventre, ó clemente, ó piedosa, ó doce sempre Virgem Maria. Rogai por nós, Santa Mãe de Deus, para que sejamos dignos das promessas de Cristo. Amém."
+      },
+      {
+        "title": "Oração da Mãe Rainha",
+        "text": "Ó Senhora minha, ó minha Mãe, eu me ofereço inteiramente a vós; e, em prova da minha devoção para convosco, eu vos consagro neste dia os meus olhos, os meus ouvidos, a minha boca, o meu coração e inteiramente todo o meu ser. E porque assim sou vosso, ó incomparável Mãe, guardai-me, defendei-me, como filho e propriedade vossa. Amém."
+      },
+      {
+        "title": "Angelus",
+        "text": "O Anjo do Senhor anunciou a Maria, e Ela concebeu pelo Espírito Santo. Ave Maria. Eis a escrava do Senhor, faça-se em mim segundo a Vossa palavra. Ave Maria. E o Verbo Divino encarnou e habitou entre nós. Ave Maria. Rogai por nós, Santa Mãe de Deus, para que sejamos dignos das promessas de Cristo. Oremos: infundi, Senhor, a Vossa graça em nossas almas, para que nós, que, pela Anunciação do Anjo, conhecemos a Encarnação de Cristo, vosso Filho, pela sua Paixão e Morte na Cruz, sejamos conduzidos à glória da Ressurreição. Pelo mesmo Cristo Senhor nosso. Amém."
+      },
+      {
+        "title": "Oração pela Beatificação de João Luiz Pozzobon",
+        "text": "Deus, nosso Pai, fizeste de João Luiz Pozzobon um esposo e pai exemplar, um amigo dos pobres e um incansável peregrino. Ele dedicou a sua vida a levar a Mãe e Rainha às famílias, hospitais, escolas e prisões, rezando o terço. Por isso, Pai, confiante, peço que, se for da Tua vontade, este teu servo seja canonizado, e, por sua intercessão, eu possa receber a graça de que tanto necessito (pedir a graça). Amém. Pai-Nosso, Ave-Maria e Glória ao Pai."
+      },
+      {
+        "title": "Ladainha de Nossa Senhora",
+        "text": "Senhor, tende piedade de nós. Cristo, tende piedade de nós. Senhor, tende piedade de nós. Cristo, ouvi-nos. Cristo, atendei-nos. Deus Pai do céu, tende piedade de nós. Deus Filho, Redentor do mundo, tende piedade de nós. Deus Espírito Santo, tende piedade de nós. Santíssima Trindade, que sois um só Deus, tende piedade de nós. Santa Maria, rogai por nós. Santa Mãe de Deus, rogai por nós. Santa Virgem das virgens, rogai por nós. Mãe de Cristo, rogai por nós. Mãe da Igreja, rogai por nós. Mãe da divina graça, rogai por nós. Mãe puríssima, rogai por nós. Mãe castíssima, rogai por nós. Mãe sempre virgem, rogai por nós. Mãe imaculada, rogai por nós. Mãe digna de amor, rogai por nós. Mãe admirável, rogai por nós. Mãe do bom conselho, rogai por nós. Mãe do Criador, rogai por nós. Mãe do Salvador, rogai por nós. Virgem prudentíssima, rogai por nós. Virgem venerável, rogai por nós. Virgem louvável, rogai por nós. Virgem poderosa, rogai por nós. Virgem clemente, rogai por nós. Virgem fiel, rogai por nós. Espelho de justiça, rogai por nós. Sede da sabedoria, rogai por nós. Causa da nossa alegria, rogai por nós. Vaso espiritual, rogai por nós. Vaso honorífico, rogai por nós. Vaso insigne de devoção, rogai por nós. Rosa mística, rogai por nós. Torre de Davi, rogai por nós. Torre de marfim, rogai por nós. Casa de ouro, rogai por nós. Arca da aliança, rogai por nós. Porta do céu, rogai por nós. Estrela da manhã, rogai por nós. Saúde dos enfermos, rogai por nós. Refúgio dos pecadores, rogai por nós. Consoladora dos aflitos, rogai por nós. Auxílio dos cristãos, rogai por nós. Rainha dos anjos, rogai por nós. Rainha dos patriarcas, rogai por nós. Rainha dos profetas, rogai por nós. Rainha dos apóstolos, rogai por nós. Rainha dos mártires, rogai por nós. Rainha dos confessores, rogai por nós. Rainha das virgens, rogai por nós. Rainha de todos os santos, rogai por nós. Rainha concebida sem pecado original, rogai por nós. Rainha assunta ao céu, rogai por nós. Rainha do santíssimo Rosário, rogai por nós. Rainha da paz, rogai por nós. Cordeiro de Deus, que tirais o pecado do mundo, perdoai-nos, Senhor. Cordeiro de Deus, que tirais o pecado do mundo, ouvi-nos, Senhor. Cordeiro de Deus, que tirais o pecado do mundo, tende piedade de nós."
+      },
+      {
+        "title": "Magnificat",
+        "text": "A minha alma glorifica o Senhor e o meu espírito se alegra em Deus, meu Salvador, porque olhou para a humildade da sua serva. Doravante todas as gerações me chamarão bem-aventurada, porque o Todo-Poderoso fez em mim maravilhas; santo é o seu nome. A sua misericórdia se estende de geração em geração sobre os que O temem. Manifestou o poder do seu braço, dispersou os soberbos. Derrubou os poderosos de seus tronos e elevou os humildes. Encheu de bens os famintos e despediu os ricos de mãos vazias. Acolheu Israel, seu servo, lembrado da sua misericórdia, conforme prometera a nossos pais, em favor de Abraão e de sua descendência para sempre. Glória ao Pai, ao Filho e ao Espírito Santo. Como era no princípio, agora e sempre. Amém."
+      }
+    ]
+  },
+  "santuarios": {
+    "header": {
+      "kicker": "Santuários",
+      "title": "Santuários de Schoenstatt em Portugal",
+      "description": "Seção preparada para inserir os santuários citados no capítulo V do livreto."
+    },
+    "items": [
+      {
+        "name": "Base do capítulo V",
+        "city": "Portugal",
+        "description": "Adicionar nomes dos santuários e respetivas cidades após validação final do OCR/PDF.",
+        "url": "https://www.schoenstatt.pt/santuarios",
+        "linkLabel": "Abrir referência"
+      },
+      {
+        "name": "Santuários e contatos locais",
+        "city": "A preencher",
+        "description": "Espaço reservado para endereço, horários e equipa de acolhimento.",
+        "url": "",
+        "linkLabel": "Pendente"
+      },
+      {
+        "name": "Rota de peregrinação",
+        "city": "A preencher",
+        "description": "Espaço para organizar roteiro entre os santuários em Portugal.",
+        "url": "",
+        "linkLabel": "Pendente"
+      }
+    ]
+  },
+  "sementes": {
+    "header": {
+      "kicker": "Site parceiro",
+      "title": "Sementes do Santuário (Schoenstatt Aveiro)",
+      "description": "Espaço de evangelização e formação ligado ao Instituto Secular das Irmãs de Maria de Schoenstatt, com conteúdos e iniciativas em Aveiro."
+    },
+    "card": {
+      "badge": "Divulgação",
+      "title": "Conheça o portal Sementes do Santuário",
+      "text": "O Instituto Secular das Irmãs de Maria de Schoenstatt (ISIMS) é um Instituto Secular da Igreja Católica com sede na Gafanha da Nazaré, em Aveiro."
+    },
+    "actions": [
+      {
+        "label": "Acessar site",
+        "href": "https://sementesdosantuario.pt"
+      },
+      {
+        "label": "Santuários de Schoenstatt",
+        "href": "https://www.schoenstatt.pt/santuarios"
+      },
+      {
+        "label": "Portal Schoenstatt",
+        "href": "https://schoenstatt.com/pt-pt/"
+      }
+    ]
+  },
+  "recursos": {
+    "header": {
+      "kicker": "Outras frentes do portal",
+      "title": "Recursos para comunidade e ministério",
+      "description": "Blocos preparados para crescer para além do layout inicial."
+    },
+    "items": [
+      {
+        "title": "Pedidos de oração",
+        "text": "Formulário para intenções semanais da comunidade."
+      },
+      {
+        "title": "Escala de música",
+        "text": "Organização de vozes, violão e repertório por encontro."
+      },
+      {
+        "title": "Materiais para impressão",
+        "text": "Folhetos em PDF com terço, orações e letras."
+      },
+      {
+        "title": "Agenda de encontros",
+        "text": "Calendário mensal com tema e família responsável."
+      }
+    ]
+  },
+  "footer": {
+    "text": "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt",
+    "backToTopLabel": "Voltar ao topo"
+  },
+  "uiMessages": {
+    "menu": {
+      "openAria": "Abrir menu",
+      "closeAria": "Fechar menu"
+    },
+    "theme": {
+      "toggleAria": "Alternar tema claro e escuro",
+      "enableLight": "Ativar tema claro",
+      "enableDark": "Ativar tema escuro",
+      "darkActive": "Tema escuro ativo",
+      "lightActive": "Tema claro ativo"
+    },
+    "controls": {
+      "fontGroupAria": "Controle de fonte",
+      "fontDecreaseAria": "Diminuir fonte",
+      "fontIncreaseAria": "Aumentar fonte",
+      "fontDecreaseLabel": "A-",
+      "fontIncreaseLabel": "A+"
+    },
+    "song": {
+      "closeModalAria": "Fechar cifra",
+      "originalKeyUnknownTemplate": "Tom original: -",
+      "toneLabel": "Tom:",
+      "tonePickerAriaLabel": "Escolher tom",
+      "toneResetLabel": "Restaurar",
+      "notInformed": "Não informado",
+      "defaultSongTitle": "Música",
+      "loadedSongTitle": "Música carregada",
+      "sourceDefault": "Portal",
+      "sourcePrefix": "Fonte:",
+      "singerPrefix": "Cantor:",
+      "originalKeyPrefix": "Tom original:",
+      "sourceLabelCifraClub": "Cifra Club",
+      "sourceLabelCifras": "Cifras",
+      "sourceLabelLetras": "Letras.mus.br",
+      "loadingAction": "Carregando...",
+      "invalidChordLink": "A opção selecionada não possui um link válido de cifra.",
+      "loadingChord": "Carregando cifra selecionada...",
+      "chordFetchErrorApi": "Não foi possível carregar a cifra.",
+      "chordLoaded": "Cifra carregada. Ajuste o tom abaixo do título.",
+      "chordLoadError": "Falha ao carregar a cifra.",
+      "invalidLyricsTarget": "Não foi possível identificar a música para buscar a letra.",
+      "loadingLyrics": "Buscando letra no Letras.mus.br...",
+      "lyricsFetchErrorApi": "Não foi possível carregar a letra.",
+      "lyricsLoaded": "Letra carregada com sucesso.",
+      "lyricsLoadError": "Falha ao carregar a letra.",
+      "lyricsNotFoundApiMessage": "Não foi possível carregar a letra no Letras.mus.br para esta música.",
+      "lyricsNotFoundToast": "Não encontramos a letra no Letras.mus.br para esta música.",
+      "searchButton": "Buscar música",
+      "searchButtonLoading": "Buscando...",
+      "searchMinChars": "Digite pelo menos {count} caracteres para buscar.",
+      "searchNoResults": "Nenhuma música encontrada para este nome.",
+      "searchResultsFound": "{count} opções encontradas.",
+      "searchingSources": "Buscando músicas nos portais...",
+      "searchError": "Falha ao buscar músicas.",
+      "searchErrorApi": "Não foi possível buscar músicas agora.",
+      "lyricsButton": "Letra",
+      "chordsButton": "Cifra",
+      "favoritesLoading": "Carregando favoritos...",
+      "favoritesLoadError": "Não foi possível carregar os favoritos.",
+      "favoritesEmpty": "Nenhuma música favoritada ainda.",
+      "favoriteButtonAdd": "Favoritar",
+      "favoriteButtonRemove": "Remover favorito",
+      "favoriteButtonSaved": "Favorito salvo",
+      "favoriteButtonSaving": "Salvando favorito...",
+      "favoriteButtonRemoving": "Removendo favorito...",
+      "favoriteAriaAdd": "Salvar música nos favoritos",
+      "favoriteAriaRemove": "Remover música dos favoritos",
+      "favoriteAriaSaved": "Música já salva nos favoritos",
+      "favoriteRemoveConfirmTitle": "Remover favorito",
+      "favoriteRemoveConfirmMessage": "Tem certeza de que deseja remover este favorito?",
+      "favoriteRemoveConfirmMessageWithTitle": "Deseja remover \"{title}\" dos favoritos?",
+      "favoriteRemoveConfirmCancel": "Cancelar",
+      "favoriteRemoveConfirmAccept": "Remover",
+      "favoriteSaveSuccess": "Música salva nos favoritos.",
+      "favoriteSaveError": "Não foi possível salvar o favorito.",
+      "favoriteRemoveSuccess": "Favorito removido.",
+      "favoriteRemoveError": "Não foi possível remover o favorito.",
+      "favoriteSearchAria": "Buscar \"{query}\"",
+      "favoriteLyricsReady": "Letra pronta",
+      "favoriteLyricsMissing": "Letra indisponível",
+      "favoriteChordsReady": "Cifra pronta",
+      "favoriteChordsMissing": "Cifra indisponível",
+      "favoriteCachedLyricsLoaded": "Letra carregada dos favoritos.",
+      "favoriteCachedChordsLoaded": "Cifra carregada dos favoritos.",
+      "avatarAltWithArtist": "Foto de {artist}",
+      "avatarAltFallback": "Imagem da música",
+      "spotifyTitle": "Abrir no Spotify",
+      "youtubeTitle": "Abrir no YouTube",
+      "spotifyAria": "Abrir no Spotify",
+      "youtubeAria": "Abrir no YouTube"
+    },
+    "mystery": {
+      "toggleShow": "Exibir jaculatória",
+      "toggleHide": "Ocultar jaculatória",
+      "groupFallback": "Mistério do Terço",
+      "emptyMeditation": "Meditação em preparação. Em breve o texto completo deste mistério estará disponível.",
+      "groupGozosos": "Mistérios Gozosos",
+      "groupDolorosos": "Mistérios Dolorosos",
+      "groupGloriosos": "Mistérios Gloriosos",
+      "groupLuminosos": "Mistérios Luminosos",
+      "unknownGroup": "Mistério do Terço",
+      "modalLinkLabel": "{index}º Mistério",
+      "modalLinkAria": "{index}º Mistério: {title}"
+    }
+  }
+}

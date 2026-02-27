@@ -1,8 +1,10 @@
-﻿(() => {
+﻿(async () => {
   const menuToggle = document.querySelector('.menu-toggle');
   const menuList = document.getElementById('menu-list');
-  const menuDropdowns = menuList ? menuList.querySelectorAll('.menu-dropdown') : [];
+  const menuRootLevel = menuList ? menuList.querySelector('.dl-menu') : null;
   const menuCloseButtons = menuList ? menuList.querySelectorAll('[data-menu-close]') : [];
+  const menuParentTriggers = menuList ? Array.from(menuList.querySelectorAll('.menu-parent-trigger')) : [];
+  const menuBackTriggers = menuList ? Array.from(menuList.querySelectorAll('.menu-back-trigger')) : [];
   const fontDecreaseBtn = document.getElementById('font-decrease');
   const fontIncreaseBtn = document.getElementById('font-increase');
   const themeToggleBtn = document.getElementById('theme-toggle');
@@ -27,11 +29,578 @@
   const FONT_SCALE_MIN = 0.9;
   const FONT_SCALE_MAX = 1.25;
   const FONT_SCALE_STEP = 0.05;
+  const PORTAL_CONTENT_URL = './assets/data/portal-content.json';
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const asObject = (value) => (
+    value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  );
+  const isPayloadReadError = (value) => {
+    if (typeof value !== 'string') return false;
+    return (
+      value.includes("Cannot read properties of undefined (reading 'payload')")
+      || value.includes('Cannot read properties of undefined (reading "payload")')
+    );
+  };
+  const reportPayloadReadError = (() => {
+    let reported = false;
+    return (details) => {
+      if (reported) return;
+      reported = true;
+      const scripts = Array.from(document.querySelectorAll('script[src]'))
+        .map((node) => (node.getAttribute('src') || '').trim())
+        .filter(Boolean);
+      console.warn('[Portal] Erro detectado ao ler payload (possivel script externo).', {
+        ...details,
+        scripts
+      });
+    };
+  })();
+
+  window.addEventListener('error', (event) => {
+    const message = typeof event.message === 'string' ? event.message : '';
+    if (!isPayloadReadError(message)) return;
+    reportPayloadReadError({
+      channel: 'error',
+      message,
+      filename: typeof event.filename === 'string' ? event.filename : '',
+      lineno: Number(event.lineno || 0),
+      colno: Number(event.colno || 0)
+    });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const message = reason instanceof Error ? (reason.message || '') : String(reason || '');
+    const stack = reason instanceof Error ? (reason.stack || '') : '';
+    if (!isPayloadReadError(message) && !isPayloadReadError(stack)) return;
+    reportPayloadReadError({
+      channel: 'unhandledrejection',
+      message,
+      stack
+    });
+  });
+
+  const getNestedValue = (payload, path) => (
+    path.split('.').reduce((acc, key) => (
+      acc && typeof acc === 'object' ? acc[key] : undefined
+    ), payload)
+  );
+  const formatTemplate = (template, replacements = {}) => (
+    String(template || '').replace(/\{(\w+)\}/g, (_match, key) => (
+      Object.prototype.hasOwnProperty.call(replacements, key)
+        ? String(replacements[key])
+        : ''
+    ))
+  );
+  const loadPortalContent = async () => {
+    try {
+      const response = await fetch(PORTAL_CONTENT_URL, { cache: 'no-store' });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return payload && typeof payload === 'object' ? payload : null;
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const portalContent = await loadPortalContent();
+  const readUiMessage = (path, fallback = '') => {
+    const value = getNestedValue(portalContent, `uiMessages.${path}`);
+    return typeof value === 'string' ? value : fallback;
+  };
+  const readSongMessage = (key, fallback = '', replacements = null) => {
+    const template = readUiMessage(`song.${key}`, fallback);
+    return replacements ? formatTemplate(template, replacements) : template;
+  };
+  const readMysteryMessage = (key, fallback = '', replacements = null) => {
+    const template = readUiMessage(`mystery.${key}`, fallback);
+    return replacements ? formatTemplate(template, replacements) : template;
+  };
+  const SONG_SEARCH_BUTTON_ICON = [
+    '<svg viewBox="0 0 24 24" aria-hidden="true">',
+    '<circle cx="11" cy="11" r="6"></circle>',
+    '<path d="M16 16l5 5"></path>',
+    '</svg>'
+  ].join('');
+
+  const setNodeText = (selector, value) => {
+    if (typeof value !== 'string') return;
+    const node = document.querySelector(selector);
+    if (node) {
+      node.textContent = value;
+    }
+  };
+  const formatMysteryItemLabel = (value, index) => {
+    if (typeof value !== 'string') return '';
+    const cleanValue = value.trim();
+    if (!cleanValue) return '';
+    if (/^\d+\s*[ºo]\s+/i.test(cleanValue)) return cleanValue;
+    return `${index + 1}º ${cleanValue}`;
+  };
+  const setNodeAttr = (selector, attr, value) => {
+    if (typeof value !== 'string') return;
+    const node = document.querySelector(selector);
+    if (node) {
+      node.setAttribute(attr, value);
+    }
+  };
+  const updateLinksFromConfig = (links, linkConfig) => {
+    if (!Array.isArray(links) || !Array.isArray(linkConfig)) return;
+    links.forEach((link, index) => {
+      const config = linkConfig[index];
+      if (!config || !link) return;
+      if (typeof config.label === 'string') {
+        link.textContent = config.label;
+      }
+      if (typeof config.href === 'string') {
+        link.setAttribute('href', config.href);
+      }
+      if (config.target === '_blank') {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener');
+      }
+    });
+  };
+
+  const applyPortalContentToDom = (content) => {
+    if (!content || typeof content !== 'object') return;
+
+    if (typeof content.meta?.title === 'string') {
+      document.title = content.meta.title;
+    }
+    if (typeof content.meta?.description === 'string') {
+      const descriptionMeta = document.querySelector('meta[name="description"]');
+      if (descriptionMeta) {
+        descriptionMeta.setAttribute('content', content.meta.description);
+      }
+    }
+
+    setNodeText('.brand-text strong', content.brand?.primary);
+    setNodeText('.brand-text small', content.brand?.secondary);
+    setNodeAttr('.brand-mark img', 'src', content.brand?.logo?.src);
+    setNodeAttr('.brand-mark img', 'alt', content.brand?.logo?.alt);
+    setNodeAttr('.menu-toggle', 'aria-label', readUiMessage('menu.openAria', 'Abrir menu'));
+
+    if (menuList && typeof content.menu?.ariaLabel === 'string') {
+      menuList.setAttribute('aria-label', content.menu.ariaLabel);
+    }
+    if (typeof content.menu?.closeButtonLabel === 'string') {
+      document.querySelectorAll('[data-menu-close]').forEach((button) => {
+        button.setAttribute('aria-label', content.menu.closeButtonLabel);
+      });
+    }
+    if (typeof content.menu?.backButtonLabel === 'string') {
+      document.querySelectorAll('.menu-back-trigger').forEach((button) => {
+        button.textContent = content.menu.backButtonLabel;
+      });
+    }
+    if (menuRootLevel && Array.isArray(content.menu?.items)) {
+      const topLevelItems = Array.from(menuRootLevel.children);
+      content.menu.items.forEach((itemConfig, index) => {
+        const itemNode = topLevelItems[index];
+        if (!itemNode || !itemConfig) return;
+
+        const directLink = itemNode.querySelector(':scope > a');
+        const parentTrigger = itemNode.querySelector(':scope > .menu-parent-trigger');
+
+        if (directLink) {
+          if (typeof itemConfig.label === 'string') {
+            directLink.textContent = itemConfig.label;
+          }
+          if (typeof itemConfig.href === 'string') {
+            directLink.setAttribute('href', itemConfig.href);
+          }
+        }
+
+        if (parentTrigger && typeof itemConfig.label === 'string') {
+          parentTrigger.textContent = itemConfig.label;
+        }
+        if (parentTrigger && Array.isArray(itemConfig.subLinks)) {
+          const subLinks = Array.from(itemNode.querySelectorAll('.dl-submenu > li:not(.dl-back) > a'));
+          updateLinksFromConfig(subLinks, itemConfig.subLinks);
+        }
+      });
+    }
+    setNodeAttr('.font-controls', 'aria-label', readUiMessage('controls.fontGroupAria', 'Controle de fonte'));
+    setNodeAttr('#font-decrease', 'aria-label', readUiMessage('controls.fontDecreaseAria', 'Diminuir fonte'));
+    setNodeAttr('#font-increase', 'aria-label', readUiMessage('controls.fontIncreaseAria', 'Aumentar fonte'));
+    setNodeText('#font-decrease', readUiMessage('controls.fontDecreaseLabel', 'A-'));
+    setNodeText('#font-increase', readUiMessage('controls.fontIncreaseLabel', 'A+'));
+    setNodeAttr('#theme-toggle', 'aria-label', readUiMessage('theme.toggleAria', 'Alternar tema claro e escuro'));
+
+    setNodeText('#inicio .eyebrow', content.hero?.eyebrow);
+    setNodeText('#inicio h1', content.hero?.title);
+    setNodeText('#inicio .hero-lead', content.hero?.lead);
+    updateLinksFromConfig(
+      Array.from(document.querySelectorAll('#inicio .hero-actions a')),
+      content.hero?.actions || []
+    );
+    setNodeText('#inicio .today-label', content.hero?.today?.label);
+    setNodeText('#inicio .today-note', content.hero?.today?.note);
+    setNodeAttr('#inicio .today-visual img', 'src', content.hero?.today?.image?.src);
+    setNodeAttr('#inicio .today-visual img', 'alt', content.hero?.today?.image?.alt);
+
+    setNodeText('#historia .section-header .section-kicker', content.historia?.header?.kicker);
+    setNodeText('#historia .section-header h2', content.historia?.header?.title);
+    setNodeText('#historia .section-header p', content.historia?.header?.description);
+    setNodeText('#historia .story-intro', content.historia?.intro);
+    setNodeAttr('#historia .story-tabs', 'aria-label', content.historia?.tabsAriaLabel || 'Capítulos da história');
+    setNodeAttr('#historia iframe[data-youtube-embed]', 'src', content.historia?.video?.embedUrl);
+    setNodeAttr('#historia iframe[data-youtube-embed]', 'title', content.historia?.video?.title);
+    const storyFallback = document.querySelector('#historia .story-video-fallback');
+    if (storyFallback && typeof content.historia?.video?.fallbackText === 'string') {
+      const fallbackLink = storyFallback.querySelector('a');
+      storyFallback.innerHTML = '';
+      storyFallback.append(document.createTextNode(`${content.historia.video.fallbackText} `));
+      if (fallbackLink) {
+        if (typeof content.historia.video.fallbackLinkLabel === 'string') {
+          fallbackLink.textContent = content.historia.video.fallbackLinkLabel;
+        }
+        if (typeof content.historia.video.fallbackLinkUrl === 'string') {
+          fallbackLink.setAttribute('href', content.historia.video.fallbackLinkUrl);
+        }
+      }
+      if (fallbackLink) {
+        storyFallback.appendChild(fallbackLink);
+      }
+      storyFallback.append(document.createTextNode('.'));
+    }
+    setNodeText('#historia .story-video-note', content.historia?.video?.note);
+
+    if (Array.isArray(content.historia?.tabs)) {
+      const storyTabNodes = Array.from(document.querySelectorAll('#historia .story-tab'));
+      content.historia.tabs.forEach((tabConfig, index) => {
+        const tabNode = storyTabNodes[index];
+        if (!tabNode) return;
+        if (typeof tabConfig.label === 'string') {
+          tabNode.textContent = tabConfig.label;
+        }
+        if (typeof tabConfig.id === 'string') {
+          tabNode.dataset.storyId = tabConfig.id;
+        }
+      });
+    }
+    if (Array.isArray(content.historia?.timeline)) {
+      const timelineNodes = Array.from(document.querySelectorAll('#historia .story-timeline-item'));
+      timelineNodes.forEach((timelineNode, index) => {
+        const timelineItem = content.historia.timeline[index];
+        if (!timelineItem) return;
+        const yearNode = timelineNode.querySelector('span');
+        const textNode = timelineNode.querySelector('p');
+        if (yearNode && typeof timelineItem.year === 'string') {
+          yearNode.textContent = timelineItem.year;
+        }
+        if (textNode && typeof timelineItem.text === 'string') {
+          textNode.textContent = timelineItem.text;
+        }
+      });
+    }
+
+    setNodeText('#roteiro .section-header .section-kicker', content.roteiro?.header?.kicker);
+    setNodeText('#roteiro .section-header h2', content.roteiro?.header?.title);
+    setNodeText('#roteiro .section-header p', content.roteiro?.header?.description);
+    if (Array.isArray(content.roteiro?.steps)) {
+      const stepNodes = Array.from(document.querySelectorAll('#roteiro .step-card'));
+      stepNodes.forEach((stepNode, index) => {
+        const stepConfig = content.roteiro.steps[index];
+        if (!stepConfig) return;
+        const numberNode = stepNode.querySelector('.step-number');
+        const titleNode = stepNode.querySelector('h3');
+        const textNode = stepNode.querySelector('p');
+        if (numberNode && typeof stepConfig.number === 'string') {
+          numberNode.textContent = stepConfig.number;
+        }
+        if (titleNode && typeof stepConfig.title === 'string') {
+          titleNode.textContent = stepConfig.title;
+        }
+        if (textNode && typeof stepConfig.text === 'string') {
+          textNode.textContent = stepConfig.text;
+        }
+        stepNode.classList.toggle('highlight', Boolean(stepConfig.highlight));
+      });
+    }
+
+    setNodeText('#misterios .section-header .section-kicker', content.misterios?.header?.kicker);
+    setNodeText('#misterios .section-header h2', content.misterios?.header?.title);
+    setNodeText('#misterios .section-header p', content.misterios?.header?.description);
+    if (Array.isArray(content.misterios?.cards)) {
+      const cardNodes = Array.from(document.querySelectorAll('#misterios .mystery-card'));
+      cardNodes.forEach((cardNode, index) => {
+        const cardConfig = content.misterios.cards[index];
+        if (!cardConfig) return;
+        const dayNode = cardNode.querySelector('.mystery-day');
+        const titleNode = cardNode.querySelector('h3');
+        const listNode = cardNode.querySelector('ul');
+        if (dayNode && typeof cardConfig.day === 'string') {
+          dayNode.textContent = cardConfig.day;
+        }
+        if (titleNode && typeof cardConfig.title === 'string') {
+          titleNode.textContent = cardConfig.title;
+        }
+        if (listNode && Array.isArray(cardConfig.items)) {
+          listNode.innerHTML = '';
+          cardConfig.items.forEach((itemText, itemIndex) => {
+            const itemNode = document.createElement('li');
+            itemNode.textContent = formatMysteryItemLabel(itemText, itemIndex);
+            listNode.appendChild(itemNode);
+          });
+        }
+      });
+    }
+
+    setNodeText('#cantos .section-header .section-kicker', content.cantos?.header?.kicker);
+    setNodeText('#cantos .section-header h2', content.cantos?.header?.title);
+    setNodeText('#cantos .section-header p', content.cantos?.header?.description);
+    setNodeText('#song-fetch-form label[for=\"song-search-query\"]', content.cantos?.search?.menuLabel);
+    setNodeAttr('#song-search-query', 'placeholder', content.cantos?.search?.menuPlaceholder);
+    setNodeText('#song-fetch-form-cantos label[for=\"song-search-query-cantos\"]', content.cantos?.search?.cantosLabel);
+    setNodeAttr('#song-search-query-cantos', 'placeholder', content.cantos?.search?.cantosPlaceholder);
+    setNodeAttr('#song-search-trigger', 'aria-label', content.cantos?.search?.searchButtonLabel);
+    setNodeAttr('#song-search-trigger', 'title', content.cantos?.search?.searchButtonLabel);
+    setNodeAttr('#song-search-trigger-cantos', 'aria-label', content.cantos?.search?.searchButtonLabel);
+    setNodeAttr('#song-search-trigger-cantos', 'title', content.cantos?.search?.searchButtonLabel);
+    setNodeAttr('#song-search-clear', 'aria-label', content.cantos?.search?.clearButtonLabel);
+    setNodeAttr('#song-search-clear', 'title', content.cantos?.search?.clearButtonLabel);
+    setNodeAttr('#song-search-clear-cantos', 'aria-label', content.cantos?.search?.clearButtonLabel);
+    setNodeAttr('#song-search-clear-cantos', 'title', content.cantos?.search?.clearButtonLabel);
+    setNodeText('#song-favorites-title', content.cantos?.favorites?.title);
+    setNodeText('#song-favorites-description', content.cantos?.favorites?.description);
+    setNodeText('#cantos .booklet-cantos-header:not(.song-favorites-header) .section-kicker', content.cantos?.booklet?.kicker);
+    setNodeText('#cantos .booklet-cantos-header:not(.song-favorites-header) h3', content.cantos?.booklet?.title);
+    setNodeText('#cantos .booklet-cantos-header:not(.song-favorites-header) p', content.cantos?.booklet?.description);
+    if (Array.isArray(content.cantos?.booklet?.items)) {
+      const bookletList = document.getElementById('booklet-cantos-list');
+      if (bookletList) {
+        bookletList.innerHTML = '';
+        content.cantos.booklet.items.forEach((item) => {
+          if (!item || typeof item.title !== 'string') return;
+
+          const li = document.createElement('li');
+          li.className = 'booklet-cantos-item';
+
+          const head = document.createElement('div');
+          head.className = 'booklet-cantos-head';
+
+          const searchButton = document.createElement('button');
+          searchButton.type = 'button';
+          searchButton.className = 'booklet-cantos-search-btn';
+          const query = (typeof item.searchQuery === 'string' && item.searchQuery.trim())
+            ? item.searchQuery.trim()
+            : item.title;
+          searchButton.dataset.bookletSongQuery = query;
+          searchButton.setAttribute('aria-label', `Buscar "${query}"`);
+          searchButton.setAttribute('title', `Buscar "${query}"`);
+          searchButton.innerHTML = SONG_SEARCH_BUTTON_ICON;
+
+          const title = document.createElement('strong');
+          title.className = 'booklet-cantos-title';
+          title.textContent = item.title;
+
+          const meta = document.createElement('p');
+          meta.className = 'booklet-cantos-meta';
+          const pageLabel = typeof item.page === 'string' && item.page.trim()
+            ? `Pág. ${item.page.trim()}`
+            : '';
+          const statusLabel = typeof item.status === 'string' ? item.status : '';
+          meta.textContent = [pageLabel, statusLabel].filter(Boolean).join(' | ');
+
+          head.appendChild(searchButton);
+          head.appendChild(title);
+          li.appendChild(head);
+          if (meta.textContent) {
+            li.appendChild(meta);
+          }
+          bookletList.appendChild(li);
+        });
+      }
+    }
+    setNodeAttr('.song-modal-close', 'aria-label', readSongMessage('closeModalAria', 'Fechar cifra'));
+    setNodeText('#fetched-song-title', readSongMessage('loadedSongTitle', 'Música carregada'));
+    setNodeText('#fetched-song-meta', readSongMessage('originalKeyUnknownTemplate', 'Tom original: -'));
+    setNodeText('.song-modal-tone-label', readSongMessage('toneLabel', 'Tom:'));
+    setNodeAttr('#song-tone-grid', 'aria-label', readSongMessage('tonePickerAriaLabel', 'Escolher tom'));
+    setNodeText('#song-tone-reset', readSongMessage('toneResetLabel', 'Restaurar'));
+    setNodeText('#favorite-confirm-title', readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito'));
+    setNodeText('#favorite-confirm-cancel', readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar'));
+    setNodeText('#favorite-confirm-accept', readSongMessage('favoriteRemoveConfirmAccept', 'Remover'));
+    setNodeText(
+      '#favorite-confirm-message',
+      readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?')
+    );
+
+    setNodeText('#oracoes .section-header .section-kicker', content.oracoes?.header?.kicker);
+    setNodeText('#oracoes .section-header h2', content.oracoes?.header?.title);
+    setNodeText('#oracoes .section-header p', content.oracoes?.header?.description);
+    if (Array.isArray(content.oracoes?.items)) {
+      const prayerGrid = document.querySelector('#oracoes .prayer-grid');
+      const openLabel = content.oracoes?.accordion?.openLabel || 'Ocultar oração';
+      const closedLabel = content.oracoes?.accordion?.closedLabel || 'Ver oração';
+      if (prayerGrid) {
+        prayerGrid.innerHTML = '';
+        content.oracoes.items.forEach((prayerConfig) => {
+          if (!prayerConfig || typeof prayerConfig.title !== 'string') return;
+
+          const prayerNode = document.createElement('article');
+          prayerNode.className = 'prayer-card';
+          prayerNode.setAttribute('data-accordion', '');
+
+          const headNode = document.createElement('div');
+          headNode.className = 'prayer-card-head';
+
+          const titleNode = document.createElement('h3');
+          titleNode.textContent = prayerConfig.title;
+
+          const triggerNode = document.createElement('button');
+          triggerNode.className = 'accordion-trigger';
+          triggerNode.type = 'button';
+          triggerNode.setAttribute('data-accordion-trigger', '');
+          triggerNode.dataset.openLabel = openLabel;
+          triggerNode.dataset.closedLabel = closedLabel;
+
+          const bodyNode = document.createElement('div');
+          bodyNode.className = 'accordion-body';
+          bodyNode.setAttribute('data-accordion-body', '');
+
+          const textNode = document.createElement('p');
+          textNode.textContent = typeof prayerConfig.text === 'string' ? prayerConfig.text : '';
+
+          bodyNode.appendChild(textNode);
+          headNode.appendChild(titleNode);
+          headNode.appendChild(triggerNode);
+          prayerNode.appendChild(headNode);
+          prayerNode.appendChild(bodyNode);
+          prayerGrid.appendChild(prayerNode);
+        });
+      }
+    }
+
+    setNodeText('#santuarios .section-header .section-kicker', content.santuarios?.header?.kicker);
+    setNodeText('#santuarios .section-header h2', content.santuarios?.header?.title);
+    setNodeText('#santuarios .section-header p', content.santuarios?.header?.description);
+    if (Array.isArray(content.santuarios?.items)) {
+      const sanctuaryList = document.getElementById('santuarios-list');
+      if (sanctuaryList) {
+        sanctuaryList.innerHTML = '';
+        content.santuarios.items.forEach((item) => {
+          if (!item || typeof item.name !== 'string') return;
+
+          const card = document.createElement('article');
+          card.className = 'sanctuary-card';
+
+          const title = document.createElement('h3');
+          title.textContent = item.name;
+          card.appendChild(title);
+
+          if (typeof item.city === 'string' && item.city.trim()) {
+            const city = document.createElement('p');
+            city.className = 'sanctuary-city';
+            city.textContent = item.city;
+            card.appendChild(city);
+          }
+
+          if (typeof item.description === 'string' && item.description.trim()) {
+            const description = document.createElement('p');
+            description.textContent = item.description;
+            card.appendChild(description);
+          }
+
+          if (typeof item.url === 'string' && item.url.trim()) {
+            const action = document.createElement('a');
+            action.className = 'btn btn-ghost sanctuary-link';
+            action.href = item.url;
+            action.target = '_blank';
+            action.rel = 'noopener';
+            action.textContent = item.linkLabel || 'Abrir';
+            card.appendChild(action);
+          }
+
+          sanctuaryList.appendChild(card);
+        });
+      }
+    }
+
+    setNodeText('#sementes .section-header .section-kicker', content.sementes?.header?.kicker);
+    setNodeText('#sementes .section-header h2', content.sementes?.header?.title);
+    setNodeText('#sementes .section-header p', content.sementes?.header?.description);
+    setNodeText('#sementes .sementes-badge', content.sementes?.card?.badge);
+    setNodeText('#sementes .sementes-card h3', content.sementes?.card?.title);
+    setNodeText('#sementes .sementes-card p:nth-of-type(2)', content.sementes?.card?.text);
+    updateLinksFromConfig(
+      Array.from(document.querySelectorAll('#sementes .sementes-actions a')),
+      content.sementes?.actions || []
+    );
+
+    setNodeText('#recursos .section-header .section-kicker', content.recursos?.header?.kicker);
+    setNodeText('#recursos .section-header h2', content.recursos?.header?.title);
+    setNodeText('#recursos .section-header p', content.recursos?.header?.description);
+    if (Array.isArray(content.recursos?.items)) {
+      const resourceNodes = Array.from(document.querySelectorAll('#recursos .resource-card'));
+      resourceNodes.forEach((resourceNode, index) => {
+        const resourceConfig = content.recursos.items[index];
+        if (!resourceConfig) return;
+        const titleNode = resourceNode.querySelector('h3');
+        const textNode = resourceNode.querySelector('p');
+        if (titleNode && typeof resourceConfig.title === 'string') {
+          titleNode.textContent = resourceConfig.title;
+        }
+        if (textNode && typeof resourceConfig.text === 'string') {
+          textNode.textContent = resourceConfig.text;
+        }
+      });
+    }
+
+    setNodeText('.site-footer .footer-row p', content.footer?.text);
+    setNodeText('.site-footer .footer-row a', content.footer?.backToTopLabel);
+
+    setNodeAttr('#mystery-modal-links', 'aria-label', content.misterios?.modal?.linksAriaLabel);
+    setNodeAttr('.mystery-modal-close', 'aria-label', content.misterios?.modal?.closeAriaLabel);
+    setNodeText('#mystery-jaculatory-toggle', content.misterios?.modal?.toggleShow);
+    setNodeText('#mystery-jaculatory-panel .mystery-jaculatory-title', content.misterios?.modal?.jaculatoryTitle);
+    if (Array.isArray(content.misterios?.modal?.jaculatoryItems)) {
+      const jaculatoryList = document.querySelector('#mystery-jaculatory-panel .mystery-jaculatory-list');
+      if (jaculatoryList) {
+        jaculatoryList.innerHTML = '';
+        content.misterios.modal.jaculatoryItems.forEach((line) => {
+          const lineNode = document.createElement('li');
+          lineNode.textContent = line;
+          jaculatoryList.appendChild(lineNode);
+        });
+      }
+    }
+  };
+
+  applyPortalContentToDom(portalContent);
+  let activeMenuLevel = menuRootLevel;
+
+  const transitionMenuLevel = (fromLevel, toLevel) => {
+    if (!fromLevel || !toLevel || fromLevel === toLevel) return;
+    const fromContainsTo = fromLevel.contains(toLevel);
+
+    toLevel.hidden = false;
+    toLevel.setAttribute('aria-hidden', 'false');
+    if (!fromContainsTo) {
+      fromLevel.hidden = true;
+      fromLevel.setAttribute('aria-hidden', 'true');
+    }
+  };
 
   const closeMenuDropdowns = () => {
-    menuDropdowns.forEach((dropdown) => {
-      dropdown.removeAttribute('open');
+    if (!menuList || !menuRootLevel) return;
+
+    menuList.querySelectorAll('.dl-submenu').forEach((submenu) => {
+      submenu.hidden = true;
+      submenu.setAttribute('aria-hidden', 'true');
+    });
+
+    menuRootLevel.hidden = false;
+    menuRootLevel.setAttribute('aria-hidden', 'false');
+    activeMenuLevel = menuRootLevel;
+    menuList.classList.remove('is-submenu-open');
+    menuList.querySelectorAll('.menu-item-parent.is-submenu-open').forEach((item) => {
+      item.classList.remove('is-submenu-open');
+    });
+
+    menuParentTriggers.forEach((trigger) => {
+      trigger.setAttribute('aria-expanded', 'false');
     });
   };
 
@@ -40,8 +609,9 @@
   const closeMainMenu = () => {
     if (!menuToggle || !menuList) return;
     menuToggle.setAttribute('aria-expanded', 'false');
-    menuToggle.setAttribute('aria-label', 'Abrir menu');
+    menuToggle.setAttribute('aria-label', readUiMessage('menu.openAria', 'Abrir menu'));
     menuList.classList.remove('open');
+    closeMenuDropdowns();
   };
 
   const syncHeaderHeight = () => {
@@ -206,86 +776,99 @@
   };
 
   if (menuToggle && menuList) {
-    const hasMouseHover = window.matchMedia('(hover: hover) and (pointer: fine)');
-    const shouldHandleMouseDropdown = () => hasMouseHover.matches && !isCompactMenuViewport();
+    closeMenuDropdowns();
 
-    menuDropdowns.forEach((dropdown) => {
-      const summary = dropdown.querySelector('summary');
-      let closeDropdownTimer = null;
+    menuParentTriggers.forEach((trigger) => {
+      const parentItem = trigger.closest('.menu-item-parent');
+      const submenu = parentItem ? parentItem.querySelector(':scope > .dl-submenu') : null;
+      if (!submenu) return;
 
-      const clearCloseDropdownTimer = () => {
-        if (closeDropdownTimer !== null) {
-          window.clearTimeout(closeDropdownTimer);
-          closeDropdownTimer = null;
+      trigger.setAttribute('aria-haspopup', 'true');
+      trigger.setAttribute('aria-expanded', 'false');
+      submenu.hidden = true;
+      submenu.setAttribute('aria-hidden', 'true');
+
+      trigger.addEventListener('click', () => {
+        if (!menuList.classList.contains('open')) return;
+        const fromLevel = activeMenuLevel || menuRootLevel;
+        if (!fromLevel || fromLevel === submenu) return;
+        const activeParentItem = parentItem instanceof HTMLElement ? parentItem : null;
+        if (activeParentItem) {
+          menuList.classList.add('is-submenu-open');
+          menuList.querySelectorAll('.menu-item-parent.is-submenu-open').forEach((item) => {
+            if (item !== activeParentItem) {
+              item.classList.remove('is-submenu-open');
+            }
+          });
+          activeParentItem.classList.add('is-submenu-open');
         }
-      };
 
-      dropdown.addEventListener('mouseenter', () => {
-        if (!shouldHandleMouseDropdown()) return;
-        clearCloseDropdownTimer();
-        closeMenuDropdowns();
-        dropdown.setAttribute('open', '');
-      });
-
-      dropdown.addEventListener('mouseleave', () => {
-        if (!shouldHandleMouseDropdown()) return;
-        clearCloseDropdownTimer();
-        closeDropdownTimer = window.setTimeout(() => {
-          dropdown.removeAttribute('open');
-          closeDropdownTimer = null;
-        }, 120);
-      });
-
-      if (summary) {
-        summary.addEventListener('click', (event) => {
-          if (!shouldHandleMouseDropdown()) return;
-          event.preventDefault();
-          clearCloseDropdownTimer();
-          const shouldOpen = !dropdown.hasAttribute('open');
-          closeMenuDropdowns();
-          if (shouldOpen) {
-            dropdown.setAttribute('open', '');
+        menuParentTriggers.forEach((itemTrigger) => {
+          if (itemTrigger !== trigger) {
+            itemTrigger.setAttribute('aria-expanded', 'false');
           }
         });
-      }
+        trigger.setAttribute('aria-expanded', 'true');
+        activeMenuLevel = submenu;
+        transitionMenuLevel(fromLevel, submenu);
+      });
+    });
+
+    menuBackTriggers.forEach((trigger) => {
+      trigger.addEventListener('click', () => {
+        if (!menuList.classList.contains('open')) return;
+        const currentLevel = trigger.closest('.dl-submenu');
+        if (!currentLevel) return;
+
+        const parentItem = currentLevel.parentElement;
+        if (!(parentItem instanceof HTMLElement)) return;
+        const parentTrigger = parentItem.querySelector(':scope > .menu-parent-trigger');
+        if (parentTrigger) {
+          parentTrigger.setAttribute('aria-expanded', 'false');
+        }
+        parentItem.classList.remove('is-submenu-open');
+        menuList.classList.remove('is-submenu-open');
+
+        const parentLevel = parentItem.parentElement;
+        if (!(parentLevel instanceof HTMLElement)) return;
+        activeMenuLevel = parentLevel;
+        transitionMenuLevel(currentLevel, parentLevel);
+      });
     });
 
     menuToggle.addEventListener('click', () => {
       const expanded = menuToggle.getAttribute('aria-expanded') === 'true';
       const nextState = !expanded;
       menuToggle.setAttribute('aria-expanded', String(nextState));
-      menuToggle.setAttribute('aria-label', nextState ? 'Fechar menu' : 'Abrir menu');
-      menuList.classList.toggle('open', nextState);
-      if (!nextState) {
+      menuToggle.setAttribute(
+        'aria-label',
+        nextState
+          ? readUiMessage('menu.closeAria', 'Fechar menu')
+          : readUiMessage('menu.openAria', 'Abrir menu')
+      );
+      if (nextState) {
         closeMenuDropdowns();
       }
+      menuList.classList.toggle('open', nextState);
+      if (!nextState) closeMainMenu();
     });
 
     if (menuCloseButtons.length) {
       menuCloseButtons.forEach((button) => {
         button.addEventListener('click', () => {
-          closeMenuDropdowns();
           closeMainMenu();
         });
       });
     }
 
-    menuList.querySelectorAll('a').forEach((link) => {
-      link.addEventListener('click', () => {
-        closeMenuDropdowns();
-        if (isCompactMenuViewport()) {
-          closeMainMenu();
-        }
-      });
+    menuList.querySelectorAll('a[href]').forEach((link) => {
+      link.addEventListener('click', () => closeMainMenu());
     });
 
     document.addEventListener('click', (event) => {
       const isInsideMenu = menuList.contains(event.target) || menuToggle.contains(event.target);
       if (!isInsideMenu) {
-        closeMenuDropdowns();
-        if (isCompactMenuViewport()) {
-          closeMainMenu();
-        }
+        closeMainMenu();
       }
     });
   }
@@ -346,8 +929,18 @@
 
     if (themeToggleBtn) {
       themeToggleBtn.setAttribute('aria-pressed', String(isDark));
-      themeToggleBtn.setAttribute('aria-label', isDark ? 'Ativar tema claro' : 'Ativar tema escuro');
-      themeToggleBtn.setAttribute('title', isDark ? 'Tema escuro ativo' : 'Tema claro ativo');
+      themeToggleBtn.setAttribute(
+        'aria-label',
+        isDark
+          ? readUiMessage('theme.enableLight', 'Ativar tema claro')
+          : readUiMessage('theme.enableDark', 'Ativar tema escuro')
+      );
+      themeToggleBtn.setAttribute(
+        'title',
+        isDark
+          ? readUiMessage('theme.darkActive', 'Tema escuro ativo')
+          : readUiMessage('theme.lightActive', 'Tema claro ativo')
+      );
     }
 
     try {
@@ -366,7 +959,8 @@
     });
   }
 
-  const portalModeEnabled = PORTAL_MODE_ENABLED && !isCompactMenuViewport();
+  // Keep mobile-like flow on all viewports to avoid losing context while scrolling long content.
+  const portalModeEnabled = false;
   document.body.classList.toggle('portal-mode', portalModeEnabled);
   const isLandscapeMobileViewport = () => document.body.classList.contains('landscape-mobile');
   if (portalModeEnabled) {
@@ -384,16 +978,11 @@
       const target = document.getElementById(href.slice(1));
       if (!target) return;
 
-      event.preventDefault();
       if (portalModeEnabled) {
+        event.preventDefault();
         setPortalActiveSection(target.id, { updateHash: true, behavior: 'auto' });
       } else {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setActiveSectionLink(target.id);
-
-        if (window.history.replaceState) {
-          window.history.replaceState(null, '', `#${target.id}`);
-        }
       }
     });
   });
@@ -527,8 +1116,17 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => applyMobileLandscapeViewport('resize'));
   }
-  window.addEventListener('touchstart', () => {
+  window.addEventListener('touchstart', (event) => {
     if (!document.body.classList.contains('landscape-mobile')) return;
+    const hasOpenModal = Boolean(document.querySelector('.mystery-modal.open, .song-modal.open'));
+    if (hasOpenModal) return;
+    const touchTarget = event.target;
+    if (touchTarget instanceof Element) {
+      const isInteractive = touchTarget.closest(
+        'a, button, input, textarea, select, label, [role="button"]'
+      );
+      if (isInteractive) return;
+    }
     attemptHideMobileBrowserBars();
   }, { passive: true });
 
@@ -590,8 +1188,20 @@
         const isYoutubeOrigin = hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com');
         if (!isYoutubeOrigin) return;
 
-        const payload = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
-        if (payload.includes('"error":153') || payload.includes('"errorCode":153')) {
+        const payload = typeof event.data === 'string'
+          ? event.data
+          : (
+            event.data && typeof event.data === 'object'
+              ? JSON.stringify(event.data)
+              : ''
+          );
+        if (
+          typeof payload === 'string'
+          && (
+            payload.includes('"error":153')
+            || payload.includes('"errorCode":153')
+          )
+        ) {
           showVideoFallback();
         }
       } catch (err) {
@@ -600,38 +1210,11 @@
     });
   }
 
-  const storyData = {
-    origem: {
-      eyebrow: 'Capitulo 1',
-      title: 'Mater Ter Admirabilis',
-      text: 'A expressao "Tres Vezes Admiravel" vem da tradicao mariana e ganhou destaque em Ingolstadt. Em Schoenstatt, o titulo passa a ser vivido como caminho pedagogico de alianca com Maria.',
-      meta: 'Raiz historica: Ingolstadt, sec. XVII'
-    },
-    alianca: {
-      eyebrow: 'Capitulo 2',
-      title: 'Alianca de Amor em Schoenstatt',
-      text: 'Em 18 de outubro de 1914, nasce a Alianca de Amor no Santuario Original. Essa experiencia marca o inicio da espiritualidade de Schoenstatt e seu modo proprio de viver com Maria.',
-      meta: 'Marco historico: 18/10/1914'
-    },
-    nome: {
-      eyebrow: 'Capitulo 3',
-      title: 'Mae e Rainha Tres Vezes Admiravel',
-      text: 'Entre 1915 e 1916, com a presenca da imagem da MTA no Santuario, o titulo mariano vai sendo consolidado na vida do movimento: Maria como Mae, Rainha e educadora dos coracoes.',
-      meta: 'Consolidacao do titulo: 1915-1916'
-    },
-    peregrina: {
-      eyebrow: 'Capitulo 4',
-      title: 'Da capela para as familias',
-      text: 'Em 1950, Joao Pozzobon inicia a Campanha da Mae Peregrina no Brasil. A imagem sai em missao e a espiritualidade chega as casas, aos doentes e aos grupos de terco.',
-      meta: 'Campanha da Mae Peregrina: desde 1950'
-    },
-    hoje: {
-      eyebrow: 'Capitulo 5',
-      title: 'O chamado de hoje',
-      text: 'Rezar o terco com a Mae Rainha e renovar a alianca no cotidiano: familia, trabalho, comunidade e missao. A historia continua quando a oracao se torna vida concreta.',
-      meta: 'Aplicacao pastoral: comunidade e familia'
-    }
-  };
+  const storyData = (
+    portalContent?.historia?.stories && typeof portalContent.historia.stories === 'object'
+      ? portalContent.historia.stories
+      : {}
+  );
 
   const storyTabs = document.querySelectorAll('.story-tab');
   const storyEyebrow = document.getElementById('story-eyebrow');
@@ -666,108 +1249,16 @@
     }
   }
 
-  const mysteryByDay = {
-    0: {
-      day: 'Domingo',
-      title: 'Mistérios Gloriosos',
-      items: [
-        'Ressurreição de Jesus',
-        'Ascensão de Jesus ao Céu',
-        'Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração',
-        'Assunção de Maria ao Céu em corpo e alma',
-        'Coroação de Nossa Senhora como Rainha do Céu e da Terra'
-      ]
-    },
-    1: {
-      day: 'Segunda-feira',
-      title: 'Mistérios Gozosos',
-      items: [
-        'Anunciação do Anjo a Nossa Senhora',
-        'Visita de Nossa Senhora à sua prima Santa Isabel',
-        'Nascimento de Jesus na gruta de Belém',
-        'Apresentação do Menino Jesus no Templo',
-        'Perda e encontro do Menino Jesus no Templo'
-      ]
-    },
-    2: {
-      day: 'Terca-feira',
-      title: 'Mistérios Dolorosos',
-      items: [
-        'Agonia de Jesus no Horto das Oliveiras',
-        'Flagelação de Jesus',
-        'Jesus é coroado de espinhos',
-        'Jesus sobe o Monte Calvário com a cruz às costas',
-        'Crucificação e morte de Jesus'
-      ]
-    },
-    3: {
-      day: 'Quarta-feira',
-      title: 'Mistérios Gloriosos',
-      items: [
-        'Ressurreição de Jesus',
-        'Ascensão de Jesus ao Céu',
-        'Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração',
-        'Assunção de Maria ao Céu em corpo e alma',
-        'Coroação de Nossa Senhora como Rainha do Céu e da Terra'
-      ]
-    },
-    4: {
-      day: 'Quinta-feira',
-      title: 'Mistérios Luminosos',
-      items: [
-        'Batismo de Jesus nas águas do rio Jordão',
-        'Jesus revela-Se nas Bodas de Caná',
-        'Jesus anuncia o Reino de Deus com o convite à conversão',
-        'A Transfiguração de Jesus',
-        'A instituição da Eucaristia'
-      ]
-    },
-    5: {
-      day: 'Sexta-feira',
-      title: 'Mistérios Dolorosos',
-      items: [
-        'Agonia de Jesus no Horto das Oliveiras',
-        'Flagelação de Jesus',
-        'Jesus é coroado de espinhos',
-        'Jesus sobe o Monte Calvário com a cruz às costas',
-        'Crucificação e morte de Jesus'
-      ]
-    },
-    6: {
-      day: 'Sabado',
-      title: 'Mistérios Gozosos',
-      items: [
-        'Anunciação do Anjo a Nossa Senhora',
-        'Visita de Nossa Senhora à sua prima Santa Isabel',
-        'Nascimento de Jesus na gruta de Belém',
-        'Apresentação do Menino Jesus no Templo',
-        'Perda e encontro do Menino Jesus no Templo'
-      ]
-    }
-  };
-
-  const mysteryMeditations = {
-    "Anunciação do Anjo a Nossa Senhora": "Mãe, as palavras do Anjo perturbaram-Te. Não duvidaste, mas ficaste confusa... Deus olhou para a tua pequenez. Faz-nos entender o valor dos pequenos \"sim\" que Deus espera de nós, dia a dia, e dá-nos a graça de aceitar com confiança os Seus planos, mesmo sendo diferentes dos nossos.",
-    "Visita de Nossa Senhora à sua prima Santa Isabel": "Mãe, caminhas até à casa de Isabel, a quem vais servir. Comunicas alegria e graça, porque levas Jesus dentro de Ti. Dá-nos, também a nós, a consciência de sermos teus instrumentos, mensageiros de Jesus, caminhando ao encontro da vida.",
-    "Nascimento de Jesus na gruta de Belém": "Mãe, no pobre e pequeno estábulo de Belém, dás à luz o Senhor do mundo, pois não havia para Ele lugar na hospedaria. Também no mundo de hoje, Deus não tem lugar na vida dos homens. Por isso, Mãe, transforma os nossos corações, para que aprendamos a criar espaço para Jesus e, assim, Ele possa nascer em nós, cada dia.",
-    "Apresentação do Menino Jesus no Templo": "Mãe, no Templo ofereces, sem reservas, o teu Filho ao Pai e com Ele renovas também a tua entrega. Ajuda-nos para que, como Tu, também nós sejamos capazes de oferecer hoje a Deus tudo o que nos preocupa, renovando o nosso \"sim\" a tudo o que são os planos d'Ele para nós.",
-    "Perda e encontro do Menino Jesus no Templo": "Mãe, muitas vezes Deus põe-Te à prova e assim prepara o teu coração para sacrifícios maiores. Ele trata-Te duramente, para que um dia possas permanecer de pé junto à cruz do teu Filho. Ajuda-nos, querida Mãe, a também permanecermos serenos quando Deus nos manda duras provas de fé. Pedimos-Te que nos ensines o caminho de volta ao coração do Pai, sempre que nos encontrarmos perdidos na confusão do mundo ou na intranquilidade do nosso coração.",
-    "Batismo de Jesus nas águas do rio Jordão": "Mãe, o teu Filho, na sua humildade, quis ser como um de nós, homens, recebendo o Batismo. Fez-nos assim entender que, ao tornarmo-nos filhos de Deus e seus irmãos, a nossa missão pessoal ficou intimamente ligada à sua. Que a consciência desta dignidade nos leve a caminhar na vida como teu Filho Jesus, seguros na força do Espírito Santo que recebemos pelo Batismo e abertos aos planos de Deus.",
-    "Jesus revela-Se nas Bodas de Caná": "Mãe, em Caná revelaste-nos que estás atenta às pessoas, que vês o que falta nas nossas vidas e que entregas a teu Filho as situações que precisam de uma solução: \"Eles não têm mais vinho\". Cheia de confiança dirigiste-Te aos serventes dizendo: \"Fazei o que Ele vos disser\". Muitas vezes, na nossa vida, o amor também se esvazia, \"falta o vinho\". Ajuda-nos, Mãe, nesses momentos, a confiar como Tu em Jesus, a fazer as pequenas coisas que Ele nos diz, para que, apesar da nossa pequenez, Ele possa abrir os nossos corações para o verdadeiro amor.",
-    "Jesus anuncia o Reino de Deus com o convite à conversão": "Mãe, certamente te sentiste inquieta com teu Filho quando começou a anunciar a Boa Nova; certamente quiseste estar a seu lado; também, com certeza, sentiste arder em Ti a esperança de um mundo novo. Na sua pregação, Jesus lançou os fundamentos de um mundo novo, onde reinam o amor, a partilha, o perdão, a fraternidade. Contigo, Mãe, queremos aprender a esperança nas suas palavras.",
-    "A Transfiguração de Jesus": "Mãe, estiveste sempre tão perto de Jesus! Mãe de Deus! Tu sabias que a transfiguração significava uma palavra de ânimo para os apóstolos; aí se manifestou a glória de Jesus e se confirmou que Ele é, apesar da cruz que se aproxima, o Filho amado de Deus. Que esta certeza faça crescer em nós o entusiasmo por viver como verdadeiros cristãos, assumindo com tranquilidade e alegria a nossa cruz como caminho para a Ressurreição.",
-    "A instituição da Eucaristia": "Mãe, encontraste-Te com teu Filho muito antes de nós! Muito antes Te apercebeste do seu grande amor. Jesus quis que cada um de nós também se encontrasse com Ele na Eucaristia: a comunhão é o momento do encontro máximo de dois amores, e nessa oferta está também cada um de nós, entregando-se por inteiro, com tudo o que faz parte da sua vida, em favor de todos os homens. Querida Mãe, sabes que temos um caminho interior a percorrer, para que a comunhão aconteça em nós. Ensina-nos a dar esses passos, de coração aberto; estamos seguros de que Tu nos levarás ao verdadeiro encontro com Jesus.",
-    "Agonia de Jesus no Horto das Oliveiras": "Mãe, a angústia pelo sofrimento faz o teu Filho sofrer. Mas nada O retém na Sua entrega e espírito de sacrifício pelo Pai e por nós. Faz que, também nós, saibamos alimentar-nos da oração e oferecer com amor todos os nossos sofrimentos e assim colaborar com Jesus na salvação do mundo.",
-    "Flagelação de Jesus": "Mãe, a cada chicotada, teu Filho sofre em silêncio por amor a nós. Que todos nós, \"tocados\" pelo olhar de Jesus, procuremos afastar da nossa vida tudo o que não é digno do seu amor.",
-    "Jesus é coroado de espinhos": "Jesus é coroado de espinhos, é gozado como rei dos judeus, é gozado na sua missão. Não há compaixão. Ajuda-nos, Mãe, a corrigir a nossa tendência à rebeldia contra tudo o que não nos agrada e a querermos representar mais do que somos. Faz-nos entender que somente chegaremos à verdadeira grandeza, se soubermos levar com dignidade a coroa de espinhos que a vida nos impõe.",
-    "Jesus sobe o Monte Calvário com a cruz às costas": "Mãe, com amor imenso, o teu Filho leva a pesada cruz que nós, por nossa fuga ao sofrimento, Lhe colocamos sobre os ombros. Acompanhando-O, ajudaste-O espiritualmente a levar a cruz. Dá-nos a tua mão e ensina-nos, Mãe, a perdoar quem nos ofende, a abrir os nossos braços e o nosso coração e a sermos capazes de ter gestos corajosos de paz e perdão.",
-    "Crucificação e morte de Jesus": "Mãe, antes de morrer, Jesus entregou-Te ao discípulo amado no qual viu toda a humanidade: \"Eis aí o teu filho\". A S. João (como se a todos nós) disse: \"Eis aí a tua Mãe\". Jesus deixou-Te como nossa Mãe e a Ti pedimos que nos ajudes a entender o sentido do sofrimento e a aceitar com amor as nossas cruzes e dores para as oferecer alegremente a Deus.",
-    "Ressurreição de Jesus": "Jesus está vivo, Mãe! Apareceu aos discípulos de Emaús, a Maria Madalena e ficará presente para sempre. Ele venceu a morte e o pecado. Ajuda-nos a descobrir este Cristo vivo na nossa vida, em cada pessoa e em tudo à nossa volta e dá-nos as graças de que necessitamos para resistir ao mal, nos levantarmos sempre de novo do erro e do desânimo e sermos capazes de recomeçar todos os dias.",
-    "Ascensão de Jesus ao Céu": "Mãe, contemplas a subida do teu Filho ao Céu, o seu regresso ao Pai. A sua felicidade é também a tua. Ajuda-nos a manter sempre viva a ligação ao coração de Jesus, porque Ele é o caminho para o Pai. Contigo queremos transformar a nossa vida no projeto que Deus pensou para nós.",
-    "Descida do Espírito Santo sobre Nossa Senhora e os Apóstolos, reunidos no Cenáculo, em oração": "Mãe, na tua presença os apóstolos recebem uma missão que os ultrapassa: o Espírito Santo transforma-os em homens corajosos, fiéis anunciadores do Evangelho. Dispõe também as nossas almas à atuação do Espírito de Deus. Que Ele nos queime com o fogo do seu amor, nos transforme e nos ajude a anunciarmos o Evangelho pela palavra e pelo testemunho da nossa vida.",
-    "Assunção de Maria ao Céu em corpo e alma": "Mãe, como viveste com o teu Filho, com Ele amaste e sofreste, assim, ao terminar a tua existência, Ele Te leva, em corpo e alma, para o Céu. Quando nos consagramos a Ti, querida Mãe, estamos a partilhar do amor de Jesus que Te quis perto d'Ele para sempre. Faz-nos viver fielmente essa entrega e confiança nas coisas pequenas de cada dia.",
-    "Coroação de Nossa Senhora como Rainha do Céu e da Terra": "Mãe, reinas no Céu e reinas no mundo, podendo assim distribuir as graças do Céu. Hoje queremos coroar-Te como Rainha do nosso coração, queremos entregar-Te o poder sobre a nossa vida e pomos nas tuas mãos as nossas inquietações. Educa-nos, fortalece-nos nas dificuldades e guia-nos rumo ao Céu."
-  };
+  const mysteryByDay = (
+    portalContent?.misterios?.byDay && typeof portalContent.misterios.byDay === 'object'
+      ? portalContent.misterios.byDay
+      : {}
+  );
+  const mysteryMeditations = (
+    portalContent?.misterios?.meditations && typeof portalContent.misterios.meditations === 'object'
+      ? portalContent.misterios.meditations
+      : {}
+  );
 
   const mysteryModal = document.getElementById('mystery-modal');
   const mysteryModalLinks = document.getElementById('mystery-modal-links');
@@ -779,6 +1270,14 @@
   const mysteryModalCloseButtons = document.querySelectorAll('[data-mystery-modal-close]');
   let lastFocusedMystery = null;
 
+  const ensureMysteryNavBeforeTitle = () => {
+    if (!mysteryModalLinks) return;
+    const headingNode = mysteryModal?.querySelector('.mystery-modal-heading');
+    if (!headingNode || mysteryModalLinks.nextElementSibling === headingNode) return;
+    headingNode.insertAdjacentElement('beforebegin', mysteryModalLinks);
+  };
+  ensureMysteryNavBeforeTitle();
+
   const mysteryItemsByGroup = Object.values(mysteryByDay).reduce((acc, slot) => {
     if (!acc[slot.title]) {
       acc[slot.title] = slot.items.slice();
@@ -788,7 +1287,7 @@
 
   const resolveMysteryGroupTitle = (group) => {
     const rawGroup = (group || '').trim();
-    if (!rawGroup) return 'Mistério do Terço';
+    if (!rawGroup) return readMysteryMessage('groupFallback', 'Mistério do Terço');
     if (mysteryItemsByGroup[rawGroup]) return rawGroup;
 
     const normalized = rawGroup
@@ -796,11 +1295,11 @@
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
 
-    if (normalized.includes('gozoso')) return 'Mistérios Gozosos';
-    if (normalized.includes('doloroso')) return 'Mistérios Dolorosos';
-    if (normalized.includes('glorioso')) return 'Mistérios Gloriosos';
-    if (normalized.includes('luminoso')) return 'Mistérios Luminosos';
-    return rawGroup;
+    if (normalized.includes('gozoso')) return readMysteryMessage('groupGozosos', 'Mistérios Gozosos');
+    if (normalized.includes('doloroso')) return readMysteryMessage('groupDolorosos', 'Mistérios Dolorosos');
+    if (normalized.includes('glorioso')) return readMysteryMessage('groupGloriosos', 'Mistérios Gloriosos');
+    if (normalized.includes('luminoso')) return readMysteryMessage('groupLuminosos', 'Mistérios Luminosos');
+    return rawGroup || readMysteryMessage('unknownGroup', 'Mistério do Terço');
   };
 
   const renderMysteryModalLinks = (groupTitle, activeTitle) => {
@@ -815,10 +1314,13 @@
       const link = document.createElement('a');
       link.href = '#';
       link.className = 'mystery-modal-link';
-      link.textContent = `${index + 1}º Mistério`;
+      link.textContent = readMysteryMessage('modalLinkLabel', '{index}º Mistério', { index: index + 1 });
       link.dataset.shortLabel = String(index + 1);
       link.title = itemTitle;
-      link.setAttribute('aria-label', `${index + 1}º Mistério: ${itemTitle}`);
+      link.setAttribute('aria-label', readMysteryMessage('modalLinkAria', '{index}º Mistério: {title}', {
+        index: index + 1,
+        title: itemTitle
+      }));
 
       if (itemTitle === activeTitle) {
         link.classList.add('is-active');
@@ -834,9 +1336,70 @@
     });
   };
 
+  let modalLockedScrollX = 0;
+  let modalLockedScrollY = 0;
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open';
+
+  const runWithInstantScrollBehavior = (callback) => {
+    if (typeof callback !== 'function') return;
+    const root = document.documentElement;
+    const previousBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+    try {
+      callback();
+    } finally {
+      if (previousBehavior) {
+        root.style.scrollBehavior = previousBehavior;
+      } else {
+        root.style.removeProperty('scroll-behavior');
+      }
+    }
+  };
+
+  const restoreModalLockedWindowScroll = () => {
+    runWithInstantScrollBehavior(() => {
+      window.scrollTo(modalLockedScrollX, modalLockedScrollY);
+    });
+  };
+
+  const hasAnyOpenModal = () => Boolean(document.querySelector(MODAL_OPEN_SELECTOR));
+
+  const focusWithoutScrollingPage = (element) => {
+    if (!(element instanceof HTMLElement)) return;
+    if (!element.isConnected) return;
+    try {
+      element.focus({ preventScroll: true });
+    } catch (err) {
+      element.focus();
+    }
+  };
+
+  const lockBodyModalScroll = () => {
+    if (document.body.classList.contains('has-modal-open')) return;
+    modalLockedScrollX = window.scrollX || window.pageXOffset || 0;
+    modalLockedScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.setProperty('--modal-lock-scroll-y', `-${modalLockedScrollY}px`);
+    document.documentElement.classList.add('has-modal-open');
+    document.body.classList.add('has-modal-open');
+  };
+
+  const unlockBodyModalScroll = () => {
+    if (!document.body.classList.contains('has-modal-open')) return;
+    document.documentElement.classList.remove('has-modal-open');
+    document.body.classList.remove('has-modal-open');
+    document.body.style.removeProperty('--modal-lock-scroll-y');
+    restoreModalLockedWindowScroll();
+    window.requestAnimationFrame(() => {
+      restoreModalLockedWindowScroll();
+    });
+  };
+
   const syncBodyModalLock = () => {
-    const hasAnyOpenModal = Boolean(document.querySelector('.mystery-modal.open, .song-modal.open'));
-    document.body.classList.toggle('has-modal-open', hasAnyOpenModal);
+    if (hasAnyOpenModal()) {
+      lockBodyModalScroll();
+      return;
+    }
+    unlockBodyModalScroll();
   };
 
   const setMysteryJaculatoryVisible = (visible) => {
@@ -845,15 +1408,19 @@
     mysteryJaculatoryPanel.hidden = !visible;
     mysteryJaculatoryToggle.classList.toggle('is-active', visible);
     mysteryJaculatoryToggle.setAttribute('aria-expanded', String(visible));
-    mysteryJaculatoryToggle.textContent = visible ? 'Ocultar jaculatoria' : 'Exibir jaculatoria';
+    mysteryJaculatoryToggle.textContent = visible
+      ? readMysteryMessage('toggleHide', 'Ocultar jaculatória')
+      : readMysteryMessage('toggleShow', 'Exibir jaculatória');
   };
 
   const openMysteryModal = (title, group) => {
     if (!mysteryModal || !mysteryModalTitle || !mysteryModalText || !mysteryModalGroup) return;
 
+    ensureMysteryNavBeforeTitle();
     const shouldResetJaculatory = !mysteryModal.classList.contains('open');
     const resolvedGroup = resolveMysteryGroupTitle(group);
-    const meditation = mysteryMeditations[title] || 'Meditacao em preparacao. Em breve o texto completo deste misterio estara disponivel.';
+    const meditation = mysteryMeditations[title]
+      || readMysteryMessage('emptyMeditation', 'Meditação em preparação. Em breve o texto completo deste mistério estará disponível.');
     mysteryModalTitle.textContent = title;
     mysteryModalText.textContent = meditation;
     mysteryModalGroup.textContent = resolvedGroup;
@@ -868,14 +1435,17 @@
 
   const closeMysteryModal = () => {
     if (!mysteryModal) return;
+    const focusTarget = lastFocusedMystery instanceof HTMLElement ? lastFocusedMystery : null;
     mysteryModal.classList.remove('open');
     mysteryModal.setAttribute('aria-hidden', 'true');
     setMysteryJaculatoryVisible(false);
     syncBodyModalLock();
-    if (lastFocusedMystery) {
-      lastFocusedMystery.focus();
-      lastFocusedMystery = null;
+    if (!hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
     }
+    lastFocusedMystery = null;
   };
 
   const bindMysteryItem = (element) => {
@@ -887,9 +1457,9 @@
     element.setAttribute('tabindex', '0');
 
     const handleOpen = () => {
-      const title = element.textContent.trim();
+      const title = element.textContent.trim().replace(/^\d+\s*[ºo]\s+/i, '');
       const fallbackGroup = element.closest('.mystery-card')?.querySelector('h3')?.textContent?.trim();
-      const group = element.dataset.mysteryGroup || fallbackGroup || 'Misterio do Terco';
+      const group = element.dataset.mysteryGroup || fallbackGroup || readMysteryMessage('groupFallback', 'Mistério do Terço');
       lastFocusedMystery = element;
       openMysteryModal(title, group);
     };
@@ -924,9 +1494,9 @@
     titleEl.textContent = daySlot.title;
     dayEl.textContent = daySlot.day;
     listEl.innerHTML = '';
-    daySlot.items.forEach((item) => {
+    daySlot.items.forEach((item, itemIndex) => {
       const li = document.createElement('li');
-      li.textContent = item;
+      li.textContent = formatMysteryItemLabel(item, itemIndex);
       li.dataset.mysteryGroup = daySlot.title;
       listEl.appendChild(li);
     });
@@ -935,30 +1505,149 @@
   document.querySelectorAll('.mystery-card li, #today-mystery-list li').forEach(bindMysteryItem);
 
   const accordions = document.querySelectorAll('[data-accordion]');
+  const defaultOpenAccordion = document.querySelector('#oracoes [data-accordion]');
+  let accordionViewportGuardTimer = null;
+  const ACCORDION_EYE_OPEN_ICON = [
+    '<span class="accordion-trigger-icon accordion-trigger-icon-open" aria-hidden="true">',
+    '<svg viewBox="0 0 24 24" focusable="false">',
+    '<path class="eye-lash" d="M4.2 8.4l-1.4-1.4M7 7.1 6 5.3M10.2 6.4 9.8 4.4M13.8 6.4l.4-2M17 7.1l1-1.8M19.8 8.4l1.4-1.4"></path>',
+    '<path class="eye-outline" d="M2 12c2.5-3.7 5.9-5.5 10-5.5s7.5 1.8 10 5.5c-2.5 3.7-5.9 5.5-10 5.5S4.5 15.7 2 12Z"></path>',
+    '<circle class="eye-pupil" cx="12" cy="12" r="3.4"></circle>',
+    '<circle class="eye-glint" cx="10.8" cy="10.8" r="0.85"></circle>',
+    '</svg>',
+    '</span>'
+  ].join('');
+  const ACCORDION_EYE_CLOSED_ICON = [
+    '<span class="accordion-trigger-icon accordion-trigger-icon-closed" aria-hidden="true">',
+    '<svg viewBox="0 0 24 24" focusable="false">',
+    '<path class="eye-closed-arc" d="M3 11.6c2.2 2.4 5.2 3.6 9 3.6s6.8-1.2 9-3.6"></path>',
+    '<path class="eye-lash" d="M4.3 11.6l-1.5 1.3M7.2 13.3l-1 1.8M10.3 14.4l-.3 2.1M13.7 14.4l.3 2.1M16.8 13.3l1 1.8M19.7 11.6l1.5 1.3"></path>',
+    '</svg>',
+    '</span>'
+  ].join('');
+
+  const ensureAccordionTriggerIconMarkup = (button) => {
+    if (!(button instanceof HTMLElement)) return;
+    if (button.querySelector('.accordion-trigger-icon')) return;
+
+    button.innerHTML = [
+      ACCORDION_EYE_OPEN_ICON,
+      ACCORDION_EYE_CLOSED_ICON,
+      '<span class="accordion-trigger-label"></span>'
+    ].join('');
+  };
+
+  const getAccordionScrollContainer = (element) => {
+    if (!(element instanceof Element)) {
+      return document.scrollingElement || document.documentElement;
+    }
+
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const styles = window.getComputedStyle(current);
+      const overflowY = styles.overflowY || '';
+      const isScrollable = /(auto|scroll|overlay)/i.test(overflowY)
+        && current.scrollHeight > current.clientHeight + 1;
+      if (isScrollable) return current;
+      current = current.parentElement;
+    }
+
+    return document.scrollingElement || document.documentElement;
+  };
+
+  const keepAccordionTriggerVisible = (trigger) => {
+    if (!(trigger instanceof HTMLElement)) return;
+    const scrollContainer = getAccordionScrollContainer(trigger);
+    const triggerRect = trigger.getBoundingClientRect();
+    const headerOffset = (siteHeader ? siteHeader.offsetHeight : 0) + 8;
+    let minTop = headerOffset;
+
+    if (
+      scrollContainer !== document.scrollingElement
+      && scrollContainer !== document.documentElement
+      && scrollContainer !== document.body
+      && scrollContainer instanceof HTMLElement
+    ) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      minTop = containerRect.top + 8;
+    }
+
+    if (triggerRect.top >= minTop) return;
+    const delta = triggerRect.top - minTop;
+
+    if (
+      scrollContainer === document.scrollingElement
+      || scrollContainer === document.documentElement
+      || scrollContainer === document.body
+    ) {
+      window.scrollBy(0, delta);
+      return;
+    }
+
+    scrollContainer.scrollTop += delta;
+  };
+
+  const scheduleAccordionViewportGuard = (trigger) => {
+    window.requestAnimationFrame(() => keepAccordionTriggerVisible(trigger));
+
+    if (accordionViewportGuardTimer) {
+      window.clearTimeout(accordionViewportGuardTimer);
+      accordionViewportGuardTimer = null;
+    }
+
+    // Re-check after accordion transition to avoid the trigger escaping above the viewport.
+    accordionViewportGuardTimer = window.setTimeout(() => {
+      keepAccordionTriggerVisible(trigger);
+      accordionViewportGuardTimer = null;
+    }, 380);
+  };
 
   const setAccordionState = (card, open) => {
     const button = card.querySelector('[data-accordion-trigger]');
     const body = card.querySelector('[data-accordion-body]');
     if (!button || !body) return;
+    ensureAccordionTriggerIconMarkup(button);
 
-    const closedLabel = button.dataset.closedLabel || 'Ver';
-    const openLabel = button.dataset.openLabel || 'Ocultar';
+    const closedLabel = button.dataset.closedLabel
+      || portalContent?.oracoes?.accordion?.closedLabel
+      || 'Ver oração';
+    const openLabel = button.dataset.openLabel
+      || portalContent?.oracoes?.accordion?.openLabel
+      || 'Ocultar oração';
+    const stateLabel = open ? openLabel : closedLabel;
+    const labelNode = button.querySelector('.accordion-trigger-label');
 
     card.classList.toggle('open', open);
     body.style.maxHeight = open ? `${body.scrollHeight}px` : '0px';
-    button.textContent = open ? openLabel : closedLabel;
+    button.dataset.eyeState = open ? 'closed' : 'open';
+    button.setAttribute('aria-label', stateLabel);
+    button.setAttribute('title', stateLabel);
     button.setAttribute('aria-expanded', String(open));
+    if (labelNode) {
+      labelNode.textContent = stateLabel;
+    }
   };
 
   accordions.forEach((card) => {
     const button = card.querySelector('[data-accordion-trigger]');
     if (!button) return;
 
-    setAccordionState(card, false);
+    setAccordionState(card, card === defaultOpenAccordion);
 
     button.addEventListener('click', () => {
       const isOpen = card.classList.contains('open');
-      setAccordionState(card, !isOpen);
+      if (isOpen) {
+        setAccordionState(card, false);
+        scheduleAccordionViewportGuard(button);
+        return;
+      }
+
+      accordions.forEach((otherCard) => {
+        if (otherCard === card) return;
+        setAccordionState(otherCard, false);
+      });
+      setAccordionState(card, true);
+      scheduleAccordionViewportGuard(button);
     });
   });
 
@@ -988,7 +1677,15 @@
   const songSearchResultsList = document.getElementById('song-search-results-list');
   const songSearchResultsCantos = document.getElementById('song-search-results-cantos');
   const songSearchResultsListCantos = document.getElementById('song-search-results-list-cantos');
+  const songFavoritesCard = document.getElementById('song-favorites-card');
+  const songFavoritesList = document.getElementById('song-favorites-list');
   const songToast = document.getElementById('song-toast');
+  const favoriteConfirmModal = document.getElementById('favorite-confirm-modal');
+  const favoriteConfirmTitle = document.getElementById('favorite-confirm-title');
+  const favoriteConfirmMessage = document.getElementById('favorite-confirm-message');
+  const favoriteConfirmCancelBtn = document.getElementById('favorite-confirm-cancel');
+  const favoriteConfirmAcceptBtn = document.getElementById('favorite-confirm-accept');
+  const favoriteConfirmCloseButtons = document.querySelectorAll('[data-favorite-confirm-close]');
   const songModal = document.getElementById('song-modal');
   const songModalDialog = songModal ? songModal.querySelector('.song-modal-dialog') : null;
   const songModalCloseButtons = document.querySelectorAll('[data-song-modal-close]');
@@ -1001,6 +1698,8 @@
   const songToneResetBtn = document.getElementById('song-tone-reset');
   const songToneGrid = document.getElementById('song-tone-grid');
   let lastFocusedSongTrigger = null;
+  let lastFocusedFavoriteConfirmTrigger = null;
+  let pendingFavoriteConfirmResolver = null;
   const songSearchWidgets = [
     {
       id: 'header',
@@ -1029,6 +1728,55 @@
     && widget.resultsContainer
     && widget.resultsList
   ));
+  const songSearchFallbackImage = portalContent?.cantos?.search?.resultFallbackImage || './assets/img/logo.png';
+  let songFavorites = [];
+  let songFavoritesLoading = false;
+  const songFavoritesByUrl = new Map();
+
+  const normalizeSongUrlKey = (url) => (url || '').trim().toLowerCase();
+  const normalizeSongFavorite = (rawFavorite) => {
+    const favorite = asObject(rawFavorite);
+    const url = (favorite.url || favorite.song_url || '').trim();
+    const lyricsText = String(favorite.lyrics_text || favorite.lyricsText || '');
+    const chordsText = String(favorite.chords_text || favorite.chordsText || '');
+    const hasLyrics = Boolean(favorite.has_lyrics) || Boolean(favorite.hasLyrics) || Boolean(lyricsText.trim());
+    const hasChords = Boolean(favorite.has_chords) || Boolean(favorite.hasChords) || Boolean(chordsText.trim());
+
+    return {
+      id: Number(favorite.id) || 0,
+      url,
+      title: (favorite.title || '').trim() || readSongMessage('defaultSongTitle', 'Música'),
+      artist: (favorite.artist || '').trim(),
+      source: (favorite.source || '').trim(),
+      sourceLabel: resolveSongSourceLabel(
+        (favorite.source || '').trim(),
+        (favorite.source_label || favorite.sourceLabel || '').trim()
+      ),
+      imageUrl: (favorite.image_url || favorite.imageUrl || '').trim(),
+      spotifyUrl: (favorite.spotify_url || favorite.spotifyUrl || '').trim(),
+      youtubeUrl: (favorite.youtube_url || favorite.youtubeUrl || '').trim(),
+      lyricsSource: (favorite.lyrics_source || favorite.lyricsSource || '').trim(),
+      lyricsSourceUrl: (favorite.lyrics_source_url || favorite.lyricsSourceUrl || '').trim(),
+      lyricsText,
+      chordsSource: (favorite.chords_source || favorite.chordsSource || '').trim(),
+      chordsSourceUrl: (favorite.chords_source_url || favorite.chordsSourceUrl || '').trim(),
+      chordsOriginalKey: (favorite.chords_original_key || favorite.chordsOriginalKey || '').trim(),
+      chordsText,
+      hasLyrics,
+      hasChords,
+      updatedAtUtc: (favorite.updated_at_utc || favorite.updatedAtUtc || '').trim(),
+      createdAtUtc: (favorite.created_at_utc || favorite.createdAtUtc || '').trim(),
+    };
+  };
+
+  const rebuildSongFavoritesIndex = () => {
+    songFavoritesByUrl.clear();
+    songFavorites.forEach((favorite) => {
+      const key = normalizeSongUrlKey(favorite.url);
+      if (!key) return;
+      songFavoritesByUrl.set(key, favorite);
+    });
+  };
 
   const resolveSongSearchWidget = (preferredWidget = null) => {
     if (!songSearchWidgets.length) return null;
@@ -1082,6 +1830,14 @@
     semitones: 0,
     originalContent: '',
     contentType: 'chords'
+  };
+  const resolveSongSourceLabel = (source, explicitSourceLabel = '') => {
+    const trimmedExplicit = (explicitSourceLabel || '').trim();
+    if (trimmedExplicit) return trimmedExplicit;
+
+    if (source === 'cifraclub') return readSongMessage('sourceLabelCifraClub', 'Cifra Club');
+    if (source === 'letras') return readSongMessage('sourceLabelLetras', 'Letras.mus.br');
+    return readSongMessage('sourceLabelCifras', 'Cifras');
   };
 
   const canonicalNote = (rawNote) => {
@@ -1173,7 +1929,7 @@
   const showSongToast = (message, type = '') => {
     if (!songToast) return;
     songToast.textContent = message || '';
-    songToast.classList.remove('is-warning', 'is-visible');
+    songToast.classList.remove('is-warning', 'is-success', 'is-error', 'is-visible');
     if (type) {
       songToast.classList.add(type);
     }
@@ -1227,19 +1983,99 @@
 
   const closeSongModal = () => {
     if (!songModal) return;
+    const focusTarget = lastFocusedSongTrigger instanceof HTMLElement ? lastFocusedSongTrigger : null;
     songModal.classList.remove('open');
     songModal.setAttribute('aria-hidden', 'true');
     syncBodyModalLock();
-    if (lastFocusedSongTrigger) {
-      lastFocusedSongTrigger.focus();
-      lastFocusedSongTrigger = null;
+    if (!hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
     }
+    lastFocusedSongTrigger = null;
+  };
+
+  const resolvePendingFavoriteConfirm = (confirmed) => {
+    if (!pendingFavoriteConfirmResolver) return;
+    const resolve = pendingFavoriteConfirmResolver;
+    pendingFavoriteConfirmResolver = null;
+    resolve(Boolean(confirmed));
+  };
+
+  const closeFavoriteConfirmModal = (confirmed = false) => {
+    if (!favoriteConfirmModal) {
+      resolvePendingFavoriteConfirm(confirmed);
+      return;
+    }
+    const focusTarget = (
+      lastFocusedFavoriteConfirmTrigger instanceof HTMLElement
+        ? lastFocusedFavoriteConfirmTrigger
+        : null
+    );
+    favoriteConfirmModal.classList.remove('open');
+    favoriteConfirmModal.setAttribute('aria-hidden', 'true');
+    syncBodyModalLock();
+    resolvePendingFavoriteConfirm(confirmed);
+    if (!hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+    lastFocusedFavoriteConfirmTrigger = null;
+  };
+
+  const openFavoriteConfirmModal = (triggerElement = null, songTitle = '') => {
+    const safeSongTitle = (songTitle || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+    const message = readSongMessage(
+      'favoriteRemoveConfirmMessageWithTitle',
+      'Deseja remover "{title}" dos favoritos?',
+      { title: safeSongTitle }
+    );
+
+    if (!favoriteConfirmModal || !favoriteConfirmMessage || !favoriteConfirmAcceptBtn) {
+      return Promise.resolve(window.confirm(message));
+    }
+
+    if (favoriteConfirmTitle) {
+      favoriteConfirmTitle.textContent = readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito');
+    }
+    if (favoriteConfirmCancelBtn) {
+      favoriteConfirmCancelBtn.textContent = readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar');
+    }
+    favoriteConfirmAcceptBtn.textContent = readSongMessage('favoriteRemoveConfirmAccept', 'Remover');
+    favoriteConfirmMessage.textContent = message;
+
+    if (pendingFavoriteConfirmResolver) {
+      resolvePendingFavoriteConfirm(false);
+    }
+
+    const fallbackFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedFavoriteConfirmTrigger = triggerElement || fallbackFocus;
+    favoriteConfirmModal.classList.add('open');
+    favoriteConfirmModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    window.requestAnimationFrame(() => {
+      focusWithoutScrollingPage(favoriteConfirmAcceptBtn);
+    });
+
+    return new Promise((resolve) => {
+      pendingFavoriteConfirmResolver = resolve;
+    });
   };
 
   if (songModalCloseButtons.length) {
     songModalCloseButtons.forEach((button) => {
       button.addEventListener('click', closeSongModal);
     });
+  }
+
+  if (favoriteConfirmCloseButtons.length) {
+    favoriteConfirmCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => closeFavoriteConfirmModal(false));
+    });
+  }
+  if (favoriteConfirmAcceptBtn) {
+    favoriteConfirmAcceptBtn.addEventListener('click', () => closeFavoriteConfirmModal(true));
   }
 
   const syncSongSearchClearButtons = () => {
@@ -1264,7 +2100,7 @@
   };
 
   const currentKeyLabel = () => {
-    if (!songState.originalRoot) return 'Nao informado';
+    if (!songState.originalRoot) return readSongMessage('notInformed', 'Não informado');
     const preferFlat = songState.originalRoot.includes('b');
     const currentRoot = transposeRoot(songState.originalRoot, songState.semitones, preferFlat);
     return `${currentRoot}${songState.originalSuffix || ''}`;
@@ -1297,7 +2133,7 @@
       songModalToneRow.classList.toggle('is-disabled', !hasRoot);
     }
     if (songModalToneLabel) {
-      songModalToneLabel.textContent = 'Tom:';
+      songModalToneLabel.textContent = readSongMessage('toneLabel', 'Tom:');
     }
   };
 
@@ -1305,20 +2141,22 @@
     if (!songState.loaded) return;
 
     const displayTitle = songState.artist
-      ? `${songState.title || 'Musica'} - ${songState.artist}`
-      : (songState.title || 'Musica carregada');
+      ? `${songState.title || readSongMessage('defaultSongTitle', 'Música')} - ${songState.artist}`
+      : (songState.title || readSongMessage('loadedSongTitle', 'Música carregada'));
 
     if (fetchedSongTitle) {
       fetchedSongTitle.textContent = displayTitle;
     }
 
     if (fetchedSongMeta) {
-      const sourceLabel = songState.sourceLabel || 'Portal';
+      const sourceLabel = songState.sourceLabel || readSongMessage('sourceDefault', 'Portal');
+      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
       if (songState.contentType === 'lyrics') {
-        fetchedSongMeta.textContent = `Fonte: ${sourceLabel}`;
+        fetchedSongMeta.textContent = `${sourcePrefix} ${sourceLabel}`;
       } else {
-        const original = songState.originalKey || 'Nao informado';
-        fetchedSongMeta.textContent = `Tom original: ${original} | Fonte: ${sourceLabel}`;
+        const original = songState.originalKey || readSongMessage('notInformed', 'Não informado');
+        const originalPrefix = readSongMessage('originalKeyPrefix', 'Tom original:');
+        fetchedSongMeta.textContent = `${originalPrefix} ${original} | ${sourcePrefix} ${sourceLabel}`;
       }
     }
 
@@ -1338,26 +2176,62 @@
   const setSongActionLoading = (button, loading, fallbackLabel) => {
     if (!button) return;
     if (loading) {
-      button.dataset.originalLabel = button.textContent || fallbackLabel;
+      if (!button.dataset.originalHtml) {
+        button.dataset.originalHtml = button.innerHTML || '';
+      }
+      if (!button.dataset.originalLabel) {
+        button.dataset.originalLabel = button.textContent || fallbackLabel;
+      }
+      if (!button.dataset.originalTitle) {
+        button.dataset.originalTitle = button.getAttribute('title') || '';
+      }
+      if (!button.dataset.originalAriaLabel) {
+        button.dataset.originalAriaLabel = button.getAttribute('aria-label') || '';
+      }
       button.disabled = true;
-      button.textContent = 'Carregando...';
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+      const loadingLabel = readSongMessage('loadingAction', 'Carregando...');
+      button.setAttribute('title', loadingLabel);
+      button.setAttribute('aria-label', loadingLabel);
       return;
     }
 
     button.disabled = false;
-    button.textContent = button.dataset.originalLabel || fallbackLabel;
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+    if (button.dataset.originalHtml) {
+      button.innerHTML = button.dataset.originalHtml;
+    } else {
+      button.textContent = button.dataset.originalLabel || fallbackLabel;
+    }
+    if (button.dataset.originalTitle) {
+      button.setAttribute('title', button.dataset.originalTitle);
+    } else {
+      button.removeAttribute('title');
+    }
+    if (button.dataset.originalAriaLabel) {
+      button.setAttribute('aria-label', button.dataset.originalAriaLabel);
+    } else if (fallbackLabel) {
+      button.setAttribute('aria-label', fallbackLabel);
+    } else {
+      button.removeAttribute('aria-label');
+    }
+    delete button.dataset.originalHtml;
     delete button.dataset.originalLabel;
+    delete button.dataset.originalTitle;
+    delete button.dataset.originalAriaLabel;
   };
 
   async function loadSongFromUrl(url, triggerButton = null, selectedResult = null) {
     const safeUrl = (url || '').trim();
     if (!safeUrl) {
-      setSongFeedback('A opcao selecionada nao possui um link valido de cifra.', 'is-error');
+      setSongFeedback(readSongMessage('invalidChordLink', 'A opção selecionada não possui um link válido de cifra.'), 'is-error');
       return;
     }
 
-    setSongActionLoading(triggerButton, true, 'Cifra');
-    setSongFeedback('Carregando cifra selecionada...', 'is-loading');
+    setSongActionLoading(triggerButton, true, readSongMessage('chordsButton', 'Cifra'));
+    setSongFeedback(readSongMessage('loadingChord', 'Carregando cifra selecionada...'), 'is-loading');
 
     try {
       const response = await fetch('/api/songs/fetch', {
@@ -1368,9 +2242,9 @@
         body: JSON.stringify({ url: safeUrl })
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || 'Nao foi possivel carregar a cifra.';
+        const message = payload?.detail?.message || payload?.message || readSongMessage('chordFetchErrorApi', 'Não foi possível carregar a cifra.');
         throw new Error(message);
       }
 
@@ -1378,10 +2252,10 @@
       const selectedArtist = (selectedResult?.artist || '').trim();
       const keyParts = splitKey(payload.original_key || '');
       songState.loaded = true;
-      songState.title = selectedTitle || payload.title || 'Musica';
+      songState.title = selectedTitle || payload.title || readSongMessage('defaultSongTitle', 'Música');
       songState.artist = selectedArtist || payload.artist || '';
       songState.source = payload.source || '';
-      songState.sourceLabel = payload.source_label || (payload.source === 'cifraclub' ? 'Cifra Club' : 'Cifras');
+      songState.sourceLabel = resolveSongSourceLabel(songState.source, payload.source_label || '');
       songState.sourceUrl = payload.url || safeUrl;
       songState.originalKey = payload.original_key || '';
       songState.originalRoot = keyParts ? keyParts.root : null;
@@ -1396,12 +2270,12 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback('Cifra carregada. Ajuste o tom abaixo do titulo.', 'is-success');
+      setSongFeedback(readSongMessage('chordLoaded', 'Cifra carregada. Ajuste o tom abaixo do título.'), 'is-success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Falha ao carregar a cifra.';
+      const message = err instanceof Error ? err.message : readSongMessage('chordLoadError', 'Falha ao carregar a cifra.');
       setSongFeedback(message, 'is-error');
     } finally {
-      setSongActionLoading(triggerButton, false, 'Cifra');
+      setSongActionLoading(triggerButton, false, readSongMessage('chordsButton', 'Cifra'));
     }
   }
 
@@ -1411,12 +2285,12 @@
     const sourceUrl = (result?.url || '').trim();
 
     if (!title && !sourceUrl) {
-      setSongFeedback('Nao foi possivel identificar a musica para buscar a letra.', 'is-error');
+      setSongFeedback(readSongMessage('invalidLyricsTarget', 'Não foi possível identificar a música para buscar a letra.'), 'is-error');
       return;
     }
 
-    setSongActionLoading(triggerButton, true, 'Letra');
-    setSongFeedback('Buscando letra no Letras.mus.br...', 'is-loading');
+    setSongActionLoading(triggerButton, true, readSongMessage('lyricsButton', 'Letra'));
+    setSongFeedback(readSongMessage('loadingLyrics', 'Buscando letra no Letras.mus.br...'), 'is-loading');
 
     try {
       const response = await fetch('/api/songs/fetch-lyrics', {
@@ -1431,9 +2305,9 @@
         })
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || 'Nao foi possivel carregar a letra.';
+        const message = payload?.detail?.message || payload?.message || readSongMessage('lyricsFetchErrorApi', 'Não foi possível carregar a letra.');
         const code = payload?.detail?.code || payload?.code || '';
         const error = new Error(message);
         if (code) {
@@ -1443,10 +2317,10 @@
       }
 
       songState.loaded = true;
-      songState.title = title || payload.title || 'Musica';
+      songState.title = title || payload.title || readSongMessage('defaultSongTitle', 'Música');
       songState.artist = artist || payload.artist || '';
       songState.source = payload.source || 'letras';
-      songState.sourceLabel = payload.source_label || 'Letras.mus.br';
+      songState.sourceLabel = resolveSongSourceLabel(songState.source, payload.source_label || '');
       songState.sourceUrl = payload.url || sourceUrl;
       songState.originalKey = '';
       songState.originalRoot = null;
@@ -1461,22 +2335,22 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback('Letra carregada com sucesso.', 'is-success');
+      setSongFeedback(readSongMessage('lyricsLoaded', 'Letra carregada com sucesso.'), 'is-success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Falha ao carregar a letra.';
+      const message = err instanceof Error ? err.message : readSongMessage('lyricsLoadError', 'Falha ao carregar a letra.');
       const isLyricsNotFound = (
         err
         && typeof err === 'object'
         && 'code' in err
         && err.code === 'lyrics_not_found'
-      ) || message === 'Nao foi possivel carregar a letra no Letras.mus.br para esta musica.';
+      ) || message === readSongMessage('lyricsNotFoundApiMessage', 'Não foi possível carregar a letra no Letras.mus.br para esta música.');
 
       if (isLyricsNotFound) {
-        showSongToast('Nao encontramos a letra no Letras.mus.br para esta musica.', 'is-warning');
+        showSongToast(readSongMessage('lyricsNotFoundToast', 'Não encontramos a letra no Letras.mus.br para esta música.'), 'is-warning');
       }
       setSongFeedback(message, 'is-error');
     } finally {
-      setSongActionLoading(triggerButton, false, 'Letra');
+      setSongActionLoading(triggerButton, false, readSongMessage('lyricsButton', 'Letra'));
     }
   }
 
@@ -1513,6 +2387,518 @@
     '<path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12 9.545 15.568z"></path>',
     '</svg>'
   ].join('');
+  const LYRICS_ACTION_ICON = [
+    '<svg class="song-search-action-icon song-search-action-icon-lyrics" viewBox="0 0 24 24" aria-hidden="true">',
+    '<path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M17 11a5 5 0 0 1-10 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M12 16v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M9 20h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '</svg>'
+  ].join('');
+  const CHORDS_ACTION_ICON = [
+    '<svg class="song-search-action-icon song-search-action-icon-chords" viewBox="0 0 24 24" aria-hidden="true">',
+    '<path d="M12 3.4 18 7.6V13c0 3.9-2.4 6.5-6 8-3.6-1.5-6-4.1-6-8V7.6L12 3.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '<path d="M10 9h4M10 12h4M10 15h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>',
+    '</svg>'
+  ].join('');
+  const FAVORITE_STAR_OUTLINE_ICON = [
+    '<svg class="song-search-action-icon" viewBox="0 0 24 24" aria-hidden="true">',
+    '<path d="M12 3.4l2.7 5.5 6 .9-4.3 4.2 1 5.9-5.4-2.8-5.4 2.8 1-5.9L3.3 9.8l6-.9L12 3.4z"></path>',
+    '</svg>',
+  ].join('');
+  const FAVORITE_STAR_FILLED_ICON = [
+    '<svg class="song-search-action-icon" viewBox="0 0 24 24" aria-hidden="true">',
+    '<path d="M12 3.4l2.7 5.5 6 .9-4.3 4.2 1 5.9-5.4-2.8-5.4 2.8 1-5.9L3.3 9.8l6-.9L12 3.4z"></path>',
+    '</svg>',
+  ].join('');
+
+  const setFavoriteButtonState = (button, isSaved, isLoading = false) => {
+    if (!(button instanceof HTMLElement)) return;
+
+    button.classList.toggle('is-active', Boolean(isSaved));
+    button.disabled = Boolean(isLoading || !(button.dataset.songUrlKey || '').trim());
+    button.innerHTML = isSaved ? FAVORITE_STAR_FILLED_ICON : FAVORITE_STAR_OUTLINE_ICON;
+    button.title = isSaved
+      ? readSongMessage('favoriteButtonRemove', 'Remover favorito')
+      : readSongMessage('favoriteButtonAdd', 'Favoritar');
+    button.setAttribute(
+      'aria-label',
+      isSaved
+        ? readSongMessage('favoriteAriaRemove', 'Remover música dos favoritos')
+        : readSongMessage('favoriteAriaAdd', 'Salvar música nos favoritos')
+    );
+  };
+
+  const applyFavoriteStateToRenderedButtons = (urlKey, isSaved) => {
+    if (!urlKey) return;
+    document
+      .querySelectorAll(`.song-search-action-favorite[data-song-url-key="${urlKey}"]`)
+      .forEach((button) => setFavoriteButtonState(button, isSaved, false));
+  };
+
+  const openSongFavoriteCached = (favorite, mode, triggerButton) => {
+    const safeFavorite = asObject(favorite);
+    const isLyricsMode = mode === 'lyrics';
+    const content = String(isLyricsMode ? (safeFavorite.lyricsText || '') : (safeFavorite.chordsText || ''));
+    if (!content.trim()) {
+      if (isLyricsMode) {
+        loadLyricsFromService({
+          title: safeFavorite.title || '',
+          artist: safeFavorite.artist || '',
+          url: safeFavorite.url || '',
+        }, triggerButton);
+      } else {
+        loadSongFromUrl(safeFavorite.url || '', triggerButton, {
+          title: safeFavorite.title || '',
+          artist: safeFavorite.artist || '',
+        });
+      }
+      return;
+    }
+
+    const fallbackLabel = isLyricsMode
+      ? readSongMessage('lyricsButton', 'Letra')
+      : readSongMessage('chordsButton', 'Cifra');
+    setSongActionLoading(triggerButton, true, fallbackLabel);
+    setSongFeedback(
+      isLyricsMode
+        ? readSongMessage('loadingLyrics', 'Buscando letra no Letras.mus.br...')
+        : readSongMessage('loadingChord', 'Carregando cifra selecionada...'),
+      'is-loading'
+    );
+
+    try {
+      songState.loaded = true;
+      songState.title = (safeFavorite.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+      songState.artist = (safeFavorite.artist || '').trim();
+      songState.semitones = 0;
+      songState.originalContent = content;
+
+      if (isLyricsMode) {
+        songState.source = (safeFavorite.lyricsSource || '').trim() || 'letras';
+        songState.sourceLabel = resolveSongSourceLabel(songState.source, '');
+        songState.sourceUrl = (safeFavorite.lyricsSourceUrl || safeFavorite.url || '').trim();
+        songState.originalKey = '';
+        songState.originalRoot = null;
+        songState.originalSuffix = '';
+        songState.contentType = 'lyrics';
+      } else {
+        songState.source = (safeFavorite.chordsSource || safeFavorite.source || '').trim();
+        songState.sourceLabel = resolveSongSourceLabel(songState.source, '');
+        songState.sourceUrl = (safeFavorite.chordsSourceUrl || safeFavorite.url || '').trim();
+        songState.originalKey = (safeFavorite.chordsOriginalKey || '').trim();
+        const keyParts = splitKey(songState.originalKey);
+        songState.originalRoot = keyParts ? keyParts.root : null;
+        songState.originalSuffix = keyParts ? keyParts.suffix : '';
+        songState.contentType = 'chords';
+      }
+
+      if (fetchedSongCard) {
+        fetchedSongCard.hidden = false;
+      }
+
+      renderFetchedSong();
+      openSongModal(triggerButton);
+      setSongFeedback(
+        isLyricsMode
+          ? readSongMessage('favoriteCachedLyricsLoaded', 'Letra carregada dos favoritos.')
+          : readSongMessage('favoriteCachedChordsLoaded', 'Cifra carregada dos favoritos.'),
+        'is-success'
+      );
+    } finally {
+      setSongActionLoading(triggerButton, false, fallbackLabel);
+    }
+  };
+
+  const renderSongFavorites = () => {
+    if (!songFavoritesCard || !songFavoritesList) return;
+
+    songFavoritesList.innerHTML = '';
+    songFavoritesCard.hidden = false;
+    if (songFavoritesLoading) {
+      const loadingItem = document.createElement('li');
+      loadingItem.className = 'booklet-cantos-item song-favorite-item song-favorites-empty song-favorites-loading';
+      loadingItem.textContent = readSongMessage('favoritesLoading', 'Carregando favoritos...');
+      songFavoritesList.appendChild(loadingItem);
+      return;
+    }
+
+    if (!songFavorites.length) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'booklet-cantos-item song-favorite-item song-favorites-empty';
+      emptyItem.textContent = readSongMessage('favoritesEmpty', 'Nenhuma música favoritada ainda.');
+      songFavoritesList.appendChild(emptyItem);
+      return;
+    }
+    songFavorites.forEach((favorite) => {
+      const item = document.createElement('li');
+      item.className = 'booklet-cantos-item song-favorite-item';
+
+      const head = document.createElement('div');
+      head.className = 'booklet-cantos-head song-favorite-head';
+
+      const query = [favorite.title, favorite.artist].filter(Boolean).join(' ').trim() || favorite.title;
+      const searchButton = document.createElement('button');
+      searchButton.type = 'button';
+      searchButton.className = 'booklet-cantos-search-btn';
+      searchButton.dataset.bookletSongQuery = query;
+      searchButton.setAttribute(
+        'aria-label',
+        readSongMessage('favoriteSearchAria', 'Buscar "{query}"', { query })
+      );
+      searchButton.setAttribute(
+        'title',
+        readSongMessage('favoriteSearchAria', 'Buscar "{query}"', { query })
+      );
+      searchButton.innerHTML = SONG_SEARCH_BUTTON_ICON;
+
+      const title = document.createElement('strong');
+      title.className = 'booklet-cantos-title';
+      title.textContent = favorite.title || readSongMessage('defaultSongTitle', 'Música');
+      const headActions = document.createElement('div');
+      headActions.className = 'song-favorite-head-actions';
+
+      const meta = document.createElement('p');
+      meta.className = 'booklet-cantos-meta';
+      const singerPrefix = readSongMessage('singerPrefix', 'Cantor:');
+      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
+      meta.textContent = favorite.artist
+        ? `${singerPrefix} ${favorite.artist} | ${sourcePrefix} ${favorite.sourceLabel}`
+        : `${sourcePrefix} ${favorite.sourceLabel}`;
+
+      const externalQuery = buildExternalSongSearchQuery({
+        title: favorite.title,
+        artist: favorite.artist,
+      });
+
+      const spotifyAction = document.createElement('a');
+      spotifyAction.className = 'song-search-action song-search-action-external';
+      spotifyAction.classList.add('song-favorite-action-spotify');
+      spotifyAction.innerHTML = SPOTIFY_ACTION_ICON;
+      spotifyAction.title = readSongMessage('spotifyTitle', 'Abrir no Spotify');
+      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria', 'Abrir no Spotify'));
+      spotifyAction.href = favorite.spotifyUrl || buildExternalSongSearchUrl('spotify', externalQuery);
+      spotifyAction.target = '_blank';
+      spotifyAction.rel = 'noopener noreferrer';
+      if (!spotifyAction.href) {
+        spotifyAction.classList.add('is-disabled');
+        spotifyAction.setAttribute('aria-disabled', 'true');
+      }
+
+      const youtubeAction = document.createElement('a');
+      youtubeAction.className = 'song-search-action song-search-action-external';
+      youtubeAction.classList.add('song-favorite-action-youtube');
+      youtubeAction.innerHTML = YOUTUBE_ACTION_ICON;
+      youtubeAction.title = readSongMessage('youtubeTitle', 'Abrir no YouTube');
+      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria', 'Abrir no YouTube'));
+      youtubeAction.href = favorite.youtubeUrl || buildExternalSongSearchUrl('youtube', externalQuery);
+      youtubeAction.target = '_blank';
+      youtubeAction.rel = 'noopener noreferrer';
+      if (!youtubeAction.href) {
+        youtubeAction.classList.add('is-disabled');
+        youtubeAction.setAttribute('aria-disabled', 'true');
+      }
+
+      const lyricAction = document.createElement('button');
+      lyricAction.type = 'button';
+      lyricAction.className = 'song-search-action song-favorite-head-action';
+      lyricAction.classList.add('song-favorite-action-lyrics');
+      lyricAction.innerHTML = LYRICS_ACTION_ICON;
+      lyricAction.title = readSongMessage('lyricsButton', 'Letra');
+      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
+      lyricAction.disabled = !favorite.hasLyrics && !favorite.url;
+      lyricAction.addEventListener('click', () => openSongFavoriteCached(favorite, 'lyrics', lyricAction));
+
+      const chordAction = document.createElement('button');
+      chordAction.type = 'button';
+      chordAction.className = 'song-search-action song-favorite-head-action';
+      chordAction.classList.add('song-favorite-action-chords');
+      chordAction.innerHTML = CHORDS_ACTION_ICON;
+      chordAction.title = readSongMessage('chordsButton', 'Cifra');
+      chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
+      chordAction.disabled = !favorite.hasChords && !favorite.url;
+      chordAction.addEventListener('click', () => openSongFavoriteCached(favorite, 'chords', chordAction));
+
+      headActions.appendChild(spotifyAction);
+      headActions.appendChild(youtubeAction);
+      headActions.appendChild(lyricAction);
+      headActions.appendChild(chordAction);
+
+      head.appendChild(searchButton);
+      head.appendChild(title);
+      head.appendChild(headActions);
+      item.appendChild(head);
+      item.appendChild(meta);
+      songFavoritesList.appendChild(item);
+    });
+    scheduleSongFavoritesLayoutSync();
+  };
+
+  const applySongFavorites = (favorites) => {
+    songFavorites = Array.isArray(favorites)
+      ? favorites.map(normalizeSongFavorite).filter((favorite) => Boolean(normalizeSongUrlKey(favorite.url)))
+      : [];
+    rebuildSongFavoritesIndex();
+    renderSongFavorites();
+    document.querySelectorAll('.song-search-action-favorite').forEach((button) => {
+      const urlKey = normalizeSongUrlKey(button.dataset.songUrlKey || '');
+      setFavoriteButtonState(button, Boolean(urlKey && songFavoritesByUrl.has(urlKey)), false);
+    });
+  };
+
+  const upsertSongFavorite = (favoritePayload) => {
+    const favorite = normalizeSongFavorite(favoritePayload);
+    const urlKey = normalizeSongUrlKey(favorite.url);
+    if (!urlKey) return null;
+
+    const existingIndex = songFavorites.findIndex((item) => normalizeSongUrlKey(item.url) === urlKey);
+    if (existingIndex >= 0) {
+      songFavorites[existingIndex] = favorite;
+    } else {
+      songFavorites.unshift(favorite);
+    }
+
+    rebuildSongFavoritesIndex();
+    renderSongFavorites();
+    applyFavoriteStateToRenderedButtons(urlKey, true);
+    return favorite;
+  };
+
+  const removeSongFavoriteByUrl = (urlKey) => {
+    if (!urlKey) return false;
+    const previousCount = songFavorites.length;
+    songFavorites = songFavorites.filter((item) => normalizeSongUrlKey(item.url) !== urlKey);
+    if (songFavorites.length === previousCount) return false;
+    rebuildSongFavoritesIndex();
+    renderSongFavorites();
+    applyFavoriteStateToRenderedButtons(urlKey, false);
+    return true;
+  };
+
+  const saveSongFavorite = async (result, triggerButton, widget = null) => {
+    const safeResult = asObject(result);
+    const sourceUrl = (safeResult.url || '').trim();
+    const urlKey = normalizeSongUrlKey(sourceUrl);
+    if (!sourceUrl || !urlKey) {
+      setSongFeedback(
+        readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.'),
+        'is-error',
+        widget
+      );
+      return;
+    }
+
+    if (songFavoritesByUrl.has(urlKey)) {
+      const favoriteTitle = (safeResult.title || songFavoritesByUrl.get(urlKey)?.title || '').trim();
+      const shouldRemove = await openFavoriteConfirmModal(triggerButton, favoriteTitle);
+      if (!shouldRemove) {
+        setFavoriteButtonState(triggerButton, true, false);
+        return;
+      }
+      setFavoriteButtonState(triggerButton, true, true);
+      setSongFeedback(
+        readSongMessage('favoriteButtonRemoving', 'Removendo favorito...'),
+        'is-loading',
+        widget
+      );
+      try {
+        const response = await fetch(`/api/songs/favorites?url=${encodeURIComponent(sourceUrl)}`, {
+          method: 'DELETE',
+        });
+        const payload = asObject(await response.json().catch(() => ({})));
+        if (!response.ok || !payload.ok) {
+          const message = payload?.detail?.message
+            || payload?.message
+            || readSongMessage('favoriteRemoveError', 'Não foi possível remover o favorito.');
+          throw new Error(message);
+        }
+
+        removeSongFavoriteByUrl(urlKey);
+        setSongFeedback(
+          readSongMessage('favoriteRemoveSuccess', 'Favorito removido.'),
+          'is-success',
+          widget
+        );
+      } catch (err) {
+        const message = err instanceof Error
+          ? err.message
+          : readSongMessage('favoriteRemoveError', 'Não foi possível remover o favorito.');
+        setSongFeedback(message, 'is-error', widget);
+        setFavoriteButtonState(triggerButton, true, false);
+      }
+      return;
+    }
+
+    setFavoriteButtonState(triggerButton, false, true);
+    setSongFeedback(
+      readSongMessage('favoriteButtonSaving', 'Salvando favorito...'),
+      'is-loading',
+      widget
+    );
+
+    try {
+      const externalQuery = buildExternalSongSearchQuery(safeResult);
+      const response = await fetch('/api/songs/favorites', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: sourceUrl,
+          title: safeResult.title || '',
+          artist: safeResult.artist || '',
+          source: safeResult.source || '',
+          source_label: safeResult.source_label || '',
+          image_url: safeResult.image_url || '',
+          spotify_url: buildExternalSongSearchUrl('spotify', externalQuery),
+          youtube_url: buildExternalSongSearchUrl('youtube', externalQuery),
+        }),
+      });
+
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        const message = payload?.detail?.message
+          || payload?.message
+          || readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.');
+        throw new Error(message);
+      }
+
+      const savedFavorite = upsertSongFavorite(payload.favorite);
+      if (savedFavorite) {
+        const savedKey = normalizeSongUrlKey(savedFavorite.url);
+        applyFavoriteStateToRenderedButtons(savedKey, true);
+      }
+      setSongFeedback(
+        readSongMessage('favoriteSaveSuccess', 'Música salva nos favoritos.'),
+        'is-success',
+        widget
+      );
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.');
+      setSongFeedback(message, 'is-error', widget);
+      setFavoriteButtonState(triggerButton, false, false);
+    }
+  };
+
+  const fetchSongFavorites = async () => {
+    songFavoritesLoading = true;
+    renderSongFavorites();
+    try {
+      const response = await fetch('/api/songs/favorites');
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload?.detail?.message
+          || payload?.message
+          || readSongMessage('favoritesLoadError', 'Não foi possível carregar os favoritos.')
+        );
+      }
+
+      songFavoritesLoading = false;
+      applySongFavorites(Array.isArray(payload.favorites) ? payload.favorites : []);
+    } catch (err) {
+      songFavoritesLoading = false;
+      songFavorites = [];
+      rebuildSongFavoritesIndex();
+      renderSongFavorites();
+    }
+  };
+
+  const hasWrappedSongTitle = (element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const styles = window.getComputedStyle(element);
+    const rawLineHeight = styles.lineHeight || '';
+    let lineHeight = Number.parseFloat(rawLineHeight);
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+      const fontSize = Number.parseFloat(styles.fontSize || '');
+      lineHeight = Number.isFinite(fontSize) && fontSize > 0 ? (fontSize * 1.3) : 0;
+    } else if (!rawLineHeight.endsWith('px')) {
+      const fontSize = Number.parseFloat(styles.fontSize || '');
+      if (Number.isFinite(fontSize) && fontSize > 0) {
+        lineHeight *= fontSize;
+      }
+    }
+
+    const rectHeight = element.getBoundingClientRect().height;
+    if (lineHeight > 0 && rectHeight > (lineHeight * 1.35)) {
+      return true;
+    }
+
+    if (element.textContent && element.textContent.trim()) {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const textRects = Array.from(range.getClientRects()).filter((rect) => (
+        rect.width > 0 && rect.height > 0
+      ));
+      if (textRects.length > 1) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const syncSongSearchResultItemLayout = (item) => {
+    if (!(item instanceof HTMLElement)) return;
+    const titleNode = item.querySelector('.song-search-info strong');
+    const isWrapped = hasWrappedSongTitle(titleNode);
+    item.classList.toggle('is-title-wrapped', isWrapped);
+  };
+
+  const syncSongFavoriteItemLayout = (item) => {
+    if (!(item instanceof HTMLElement)) return;
+    const titleNode = item.querySelector('.song-favorite-head .booklet-cantos-title');
+    const isWrapped = hasWrappedSongTitle(titleNode);
+    item.classList.toggle('is-title-wrapped', isWrapped);
+  };
+
+  const syncSongSearchResultsLayout = (targetWidget = null) => {
+    if (!songSearchWidgets.length) return;
+    const targetWidgets = targetWidget ? [targetWidget] : songSearchWidgets;
+    targetWidgets.forEach((widget) => {
+      widget.resultsList.querySelectorAll('.song-search-item').forEach((item) => {
+        syncSongSearchResultItemLayout(item);
+      });
+    });
+  };
+
+  const syncSongFavoritesLayout = () => {
+    if (!songFavoritesList) return;
+    songFavoritesList.querySelectorAll('.song-favorite-item').forEach((item) => {
+      syncSongFavoriteItemLayout(item);
+    });
+  };
+
+  let songSearchLayoutFrame = null;
+  const scheduleSongSearchResultsLayoutSync = (targetWidget = null) => {
+    if (songSearchLayoutFrame !== null) return;
+    songSearchLayoutFrame = window.requestAnimationFrame(() => {
+      songSearchLayoutFrame = null;
+      syncSongSearchResultsLayout(targetWidget);
+      window.requestAnimationFrame(() => {
+        syncSongSearchResultsLayout(targetWidget);
+      });
+      window.setTimeout(() => {
+        syncSongSearchResultsLayout(targetWidget);
+      }, 120);
+    });
+  };
+
+  let songFavoritesLayoutFrame = null;
+  const scheduleSongFavoritesLayoutSync = () => {
+    if (songFavoritesLayoutFrame !== null) return;
+    songFavoritesLayoutFrame = window.requestAnimationFrame(() => {
+      songFavoritesLayoutFrame = null;
+      syncSongFavoritesLayout();
+      window.requestAnimationFrame(() => {
+        syncSongFavoritesLayout();
+      });
+      window.setTimeout(() => {
+        syncSongFavoritesLayout();
+      }, 120);
+    });
+  };
 
   const renderSongSearchResults = (results, targetWidget = null) => {
     if (!songSearchWidgets.length) return;
@@ -1540,20 +2926,26 @@
       avatar.className = 'song-search-avatar';
       avatar.loading = 'lazy';
       avatar.decoding = 'async';
-      avatar.alt = result.artist ? `Foto de ${result.artist}` : 'Imagem da musica';
-      avatar.src = (result.image_url || '').trim() || './assets/img/logo.png';
+      avatar.alt = result.artist
+        ? readSongMessage('avatarAltWithArtist', 'Foto de {artist}', { artist: result.artist })
+        : readSongMessage('avatarAltFallback', 'Imagem da música');
+      avatar.src = (result.image_url || '').trim() || songSearchFallbackImage;
       avatar.addEventListener('error', () => {
-        avatar.src = './assets/img/logo.png';
+        avatar.src = songSearchFallbackImage;
       });
 
       const info = document.createElement('div');
       info.className = 'song-search-info';
       const title = document.createElement('strong');
-      title.textContent = result.title || 'Musica';
+      title.textContent = result.title || readSongMessage('defaultSongTitle', 'Música');
       const meta = document.createElement('p');
       const artist = (result.artist || '').trim();
-      const sourceLabel = result.source_label || (result.source === 'cifraclub' ? 'Cifra Club' : 'Cifras');
-      meta.textContent = artist ? `Cantor: ${artist} | Fonte: ${sourceLabel}` : `Fonte: ${sourceLabel}`;
+      const sourceLabel = resolveSongSourceLabel(result.source, result.source_label || '');
+      const singerPrefix = readSongMessage('singerPrefix', 'Cantor:');
+      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
+      meta.textContent = artist
+        ? `${singerPrefix} ${artist} | ${sourcePrefix} ${sourceLabel}`
+        : `${sourcePrefix} ${sourceLabel}`;
       info.appendChild(title);
       info.appendChild(meta);
       main.appendChild(avatar);
@@ -1562,12 +2954,25 @@
       const actions = document.createElement('div');
       actions.className = 'song-search-actions';
       const externalQuery = buildExternalSongSearchQuery(result);
+      const urlKey = normalizeSongUrlKey(result.url);
+
+      const favoriteAction = document.createElement('button');
+      favoriteAction.type = 'button';
+      favoriteAction.className = 'song-search-action song-search-action-favorite';
+      favoriteAction.dataset.songUrlKey = urlKey;
+      setFavoriteButtonState(favoriteAction, Boolean(urlKey && songFavoritesByUrl.has(urlKey)), false);
+      favoriteAction.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        saveSongFavorite(result, favoriteAction, activeWidget);
+      });
 
       const spotifyAction = document.createElement('a');
       spotifyAction.className = 'song-search-action song-search-action-external';
+      spotifyAction.classList.add('song-search-action-spotify');
       spotifyAction.innerHTML = SPOTIFY_ACTION_ICON;
-      spotifyAction.title = 'Abrir no Spotify';
-      spotifyAction.setAttribute('aria-label', 'Abrir no Spotify');
+      spotifyAction.title = readSongMessage('spotifyTitle', 'Abrir no Spotify');
+      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria', 'Abrir no Spotify'));
       const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
       if (spotifyUrl) {
         spotifyAction.href = spotifyUrl;
@@ -1580,9 +2985,10 @@
 
       const youtubeAction = document.createElement('a');
       youtubeAction.className = 'song-search-action song-search-action-external';
+      youtubeAction.classList.add('song-search-action-youtube');
       youtubeAction.innerHTML = YOUTUBE_ACTION_ICON;
-      youtubeAction.title = 'Abrir no YouTube';
-      youtubeAction.setAttribute('aria-label', 'Abrir no YouTube');
+      youtubeAction.title = readSongMessage('youtubeTitle', 'Abrir no YouTube');
+      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria', 'Abrir no YouTube'));
       const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
       if (youtubeUrl) {
         youtubeAction.href = youtubeUrl;
@@ -1596,7 +3002,13 @@
       const lyricAction = document.createElement('button');
       lyricAction.type = 'button';
       lyricAction.className = 'song-search-action';
-      lyricAction.textContent = 'Letra';
+      lyricAction.classList.add('song-search-action-lyrics');
+      lyricAction.innerHTML = [
+        LYRICS_ACTION_ICON,
+        `<span class="song-search-action-label">${readSongMessage('lyricsButton', 'Letra')}</span>`
+      ].join('');
+      lyricAction.title = readSongMessage('lyricsButton', 'Letra');
+      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
       lyricAction.disabled = !result.title && !result.url;
       lyricAction.addEventListener('click', () => {
         loadLyricsFromService(result, lyricAction);
@@ -1605,7 +3017,13 @@
       const chordAction = document.createElement('button');
       chordAction.type = 'button';
       chordAction.className = 'song-search-action';
-      chordAction.textContent = 'Cifra';
+      chordAction.classList.add('song-search-action-chords');
+      chordAction.innerHTML = [
+        CHORDS_ACTION_ICON,
+        `<span class="song-search-action-label">${readSongMessage('chordsButton', 'Cifra')}</span>`
+      ].join('');
+      chordAction.title = readSongMessage('chordsButton', 'Cifra');
+      chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
       chordAction.disabled = !result.url;
       chordAction.addEventListener('click', () => {
         loadSongFromUrl(result.url || '', chordAction, result);
@@ -1615,6 +3033,7 @@
       actions.appendChild(youtubeAction);
       actions.appendChild(lyricAction);
       actions.appendChild(chordAction);
+      actions.appendChild(favoriteAction);
 
       item.appendChild(main);
       item.appendChild(actions);
@@ -1623,6 +3042,7 @@
 
     activeWidget.resultsContainer.hidden = false;
     hideSongSearchResultsExcept(activeWidget);
+    scheduleSongSearchResultsLayoutSync(activeWidget);
   };
 
   if (songToneGrid) {
@@ -1682,7 +3102,7 @@
       clearSongSearchResults();
       setSongFeedback('');
       if (!fromTyping) {
-        setFetchSubmitState(false, 'Buscar musica');
+        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
     }
@@ -1690,9 +3110,13 @@
     if (query.length < SONG_SEARCH_MIN_CHARS) {
       clearSongSearchResults(activeWidget);
       hideSongSearchResultsExcept(activeWidget);
-      setSongFeedback(`Digite pelo menos ${SONG_SEARCH_MIN_CHARS} caracteres para buscar.`, '', activeWidget);
+      setSongFeedback(
+        readSongMessage('searchMinChars', 'Digite pelo menos {count} caracteres para buscar.', { count: SONG_SEARCH_MIN_CHARS }),
+        '',
+        activeWidget
+      );
       if (!fromTyping) {
-        setFetchSubmitState(false, 'Buscar musica');
+        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
     }
@@ -1706,13 +3130,17 @@
       if (!cachedResults.length) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
-        setSongFeedback('Nenhuma musica encontrada para este nome.', '', activeWidget);
+        setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
       } else {
         renderSongSearchResults(cachedResults, activeWidget);
-        setSongFeedback(`${cachedResults.length} opcoes encontradas. Escolha letra ou cifra para abrir.`, 'is-success', activeWidget);
+        const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: cachedResults.length });
+        setSongFeedback(foundMessage, 'is-success', activeWidget);
+        if (!fromTyping) {
+          showSongToast(foundMessage, 'is-success');
+        }
       }
       if (!fromTyping) {
-        setFetchSubmitState(false, 'Buscar musica');
+        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
     }
@@ -1727,9 +3155,9 @@
       : null;
 
     if (!fromTyping) {
-      setFetchSubmitState(true, 'Buscando...');
+      setFetchSubmitState(true, readSongMessage('searchButtonLoading', 'Buscando...'));
     }
-    setSongFeedback('Buscando musicas nos portais...', 'is-loading', activeWidget);
+    setSongFeedback(readSongMessage('searchingSources', 'Buscando músicas nos portais...'), 'is-loading', activeWidget);
     hideSongSearchResultsExcept(activeWidget);
 
     try {
@@ -1742,9 +3170,9 @@
         signal: songSearchAbortController ? songSearchAbortController.signal : undefined
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || 'Nao foi possivel buscar musicas agora.';
+        const message = payload?.detail?.message || payload?.message || readSongMessage('searchErrorApi', 'Não foi possível buscar músicas agora.');
         throw new Error(message);
       }
 
@@ -1761,24 +3189,28 @@
       if (!results.length) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
-        setSongFeedback('Nenhuma musica encontrada para este nome.', '', activeWidget);
+        setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
         return;
       }
 
       renderSongSearchResults(results, activeWidget);
-      setSongFeedback(`${results.length} opcoes encontradas. Escolha letra ou cifra para abrir.`, 'is-success', activeWidget);
+      const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: results.length });
+      setSongFeedback(foundMessage, 'is-success', activeWidget);
+      if (!fromTyping) {
+        showSongToast(foundMessage, 'is-success');
+      }
     } catch (err) {
       if (err && typeof err === 'object' && err.name === 'AbortError') {
         return;
       }
-      const message = err instanceof Error ? err.message : 'Falha ao buscar musicas.';
+      const message = err instanceof Error ? err.message : readSongMessage('searchError', 'Falha ao buscar músicas.');
       setSongFeedback(message, 'is-error', activeWidget);
     } finally {
       if (requestId === songSearchRequestId) {
         songSearchAbortController = null;
       }
       if (!fromTyping) {
-        setFetchSubmitState(false, 'Buscar musica');
+        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
     }
   };
@@ -1796,7 +3228,20 @@
     }
   };
 
+  void fetchSongFavorites();
+
   if (songSearchWidgets.length) {
+    window.addEventListener('resize', () => {
+      scheduleSongSearchResultsLayoutSync();
+      scheduleSongFavoritesLayoutSync();
+    }, { passive: true });
+    if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+      document.fonts.ready.then(() => {
+        scheduleSongSearchResultsLayoutSync();
+        scheduleSongFavoritesLayoutSync();
+      }).catch(() => {});
+    }
+
     syncSongSearchClearButtons();
 
     songSearchWidgets.forEach((widget) => {
@@ -1867,6 +3312,43 @@
     document.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
+      const targetElement = target instanceof Element ? target : null;
+      const bookletSearchButton = targetElement
+        ? targetElement.closest('.booklet-cantos-search-btn')
+        : null;
+      if (bookletSearchButton instanceof HTMLElement) {
+        const query = (bookletSearchButton.dataset.bookletSongQuery || '').trim();
+        if (!query) return;
+        const cantosWidget = songSearchWidgets.find((widget) => widget.id === 'cantos')
+          || resolveSongSearchWidget();
+        if (!cantosWidget || !cantosWidget.input) return;
+
+        cantosWidget.input.value = query;
+        syncSongSearchInputs(cantosWidget.input);
+        syncSongSearchClearButtons();
+        void executeSongSearch(query, { fromTyping: false, widget: cantosWidget });
+        return;
+      }
+
+      const clickedInsideSongModal = Boolean(
+        targetElement
+        && songModal
+        && targetElement.closest('#song-modal')
+      );
+      if (clickedInsideSongModal) return;
+      const songModalIsOpen = Boolean(songModal && songModal.classList.contains('open'));
+      if (songModalIsOpen) return;
+      const clickedInsideFavoriteConfirmModal = Boolean(
+        targetElement
+        && favoriteConfirmModal
+        && targetElement.closest('#favorite-confirm-modal')
+      );
+      if (clickedInsideFavoriteConfirmModal) return;
+      const favoriteConfirmModalIsOpen = Boolean(
+        favoriteConfirmModal
+        && favoriteConfirmModal.classList.contains('open')
+      );
+      if (favoriteConfirmModalIsOpen) return;
 
       const clickedInsideSongSearch = songSearchWidgets.some((widget) => (
         (widget.form && widget.form.contains(target))
@@ -1877,6 +3359,20 @@
       ));
 
       if (clickedInsideSongSearch) return;
+      const clickedInsideOpenModalDialog = Boolean(
+        targetElement
+        && (
+          (songModal && songModal.classList.contains('open') && targetElement.closest('.song-modal-dialog'))
+          || (mysteryModal && mysteryModal.classList.contains('open') && targetElement.closest('.mystery-modal-dialog'))
+          || (
+            favoriteConfirmModal
+            && favoriteConfirmModal.classList.contains('open')
+            && targetElement.closest('.favorite-confirm-dialog')
+          )
+        )
+      );
+      if (clickedInsideOpenModalDialog) return;
+
       hideSongSearchResultsExcept();
     });
   }
@@ -1954,14 +3450,15 @@
     }
 
     if (event.key === 'Escape') {
-      closeMenuDropdowns();
-      if (isCompactMenuViewport()) {
-        closeMainMenu();
-      }
+      closeMainMenu();
     }
 
     if (event.key === 'Escape' && mysteryModal && mysteryModal.classList.contains('open')) {
       closeMysteryModal();
+    }
+
+    if (event.key === 'Escape' && favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
+      closeFavoriteConfirmModal(false);
     }
 
     if (event.key === 'Escape' && songModal && songModal.classList.contains('open')) {
@@ -1969,3 +3466,4 @@
     }
   });
 })();
+

@@ -17,8 +17,28 @@ services:
       - backend/.env
     environment:
       WATCHFILES_FORCE_POLLING: "true"
-    ports:
-      - "${PORT_HTTP:-8000}:8000"
+    expose:
+      - "8000"
     volumes:
       - ./:/app
     restart: unless-stopped
+
+  proxy:
+    image: caddy:2.8.4-alpine
+    container_name: schoenstatt-proxy
+    depends_on:
+      - portal
+    environment:
+      SITE_DOMAIN: "${SITE_DOMAIN:-app.eaintegrations.com}"
+    ports:
+      - "${PORT_HTTP_ALT:-80}:80"
+      - "${PORT_HTTPS_ALT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -2822,7 +2822,7 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 .song-favorite-head .booklet-cantos-title {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: 58px;
   line-height: 1.2;
   margin: 0;
   min-width: 0;
@@ -2831,8 +2831,8 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 .song-favorite-head-actions {
   margin-left: auto;
   display: grid;
-  grid-template-columns: repeat(2, 24px);
-  grid-template-rows: repeat(2, 24px);
+  grid-template-columns: repeat(2, 34px);
+  grid-template-rows: repeat(2, 34px);
   grid-template-areas:
     "lyrics chords"
     "spotify youtube";
@@ -2841,9 +2841,9 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
   justify-content: end;
   justify-items: center;
   column-gap: 1px;
-  row-gap: 0;
+  row-gap: 1px;
   flex: 0 0 auto;
-  min-height: 48px;
+  min-height: 58px;
   align-self: center;
 }
 
@@ -2864,10 +2864,10 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 }
 
 .song-favorite-head-actions .song-search-action {
-  width: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  height: 24px;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2878,10 +2878,10 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 }
 
 .song-favorite-head-actions .song-favorite-head-action {
-  width: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  height: 24px;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  height: 34px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -2895,10 +2895,10 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 }
 
 .song-favorite-head-actions .song-favorite-head-action .song-search-action-icon {
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
@@ -3521,9 +3521,9 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 
 .song-search-action-lyrics,
 .song-search-action-chords {
-  width: 26px;
-  min-width: 26px;
-  min-height: 32px;
+  width: 30px;
+  min-width: 30px;
+  min-height: 34px;
   height: 34px;
   border: 0;
   background: transparent;
@@ -3542,10 +3542,10 @@ body.theme-dark .mystery-song-assign-item.is-assigned:focus-visible {
 
 .song-search-action-lyrics .song-search-action-icon,
 .song-search-action-chords .song-search-action-icon {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
@@ -3794,6 +3794,15 @@ body.theme-dark .song-modal .song-head {
   white-space: pre-wrap;
   overflow-x: auto;
   background: rgba(251, 247, 239, 0.76);
+}
+
+.fetched-song-lyrics .song-chord-token {
+  color: #b3261e;
+  font-weight: 800;
+}
+
+body.theme-dark .fetched-song-lyrics .song-chord-token {
+  color: #ff8a80;
 }
 
 .song-card,
@@ -4534,10 +4543,10 @@ body.portal-mode .site-footer {
   }
 
 .menu-song-search .song-search-actions {
-  width: 149px;
-  min-width: 149px;
+  width: 209px;
+  min-width: 209px;
   display: grid;
-  grid-template-columns: repeat(6, 24px);
+  grid-template-columns: repeat(6, 34px);
   gap: 1px;
   align-self: center;
 }
@@ -4569,10 +4578,10 @@ body.portal-mode .site-footer {
 
   .menu-song-search .song-search-actions .song-search-action-lyrics,
   .menu-song-search .song-search-actions .song-search-action-chords {
-    width: 24px;
-    min-width: 24px;
-    min-height: 28px;
-    height: 28px;
+    width: 30px;
+    min-width: 30px;
+    min-height: 34px;
+    height: 34px;
     justify-self: center;
   }
 
@@ -4816,8 +4825,8 @@ body.portal-mode .site-footer {
   .song-search-actions .song-search-action.song-search-action-lyrics,
   .song-search-actions .song-search-action.song-search-action-chords {
     flex: 0 0 auto;
-    width: 24px;
-    min-width: 24px;
+    width: 30px;
+    min-width: 30px;
     padding: 0;
     gap: 0;
   }
@@ -4845,10 +4854,10 @@ body.portal-mode .site-footer {
   }
 
   .menu-song-search .song-search-actions {
-    width: 149px;
-    min-width: 149px;
+    width: 209px;
+    min-width: 209px;
     display: grid;
-    grid-template-columns: repeat(6, 24px);
+    grid-template-columns: repeat(6, 34px);
     gap: 1px;
     justify-content: stretch;
   }
@@ -4880,10 +4889,10 @@ body.portal-mode .site-footer {
 
   .menu-song-search .song-search-actions .song-search-action-lyrics,
   .menu-song-search .song-search-actions .song-search-action-chords {
-    width: 24px;
-    min-width: 24px;
-    min-height: 28px;
-    height: 28px;
+    width: 30px;
+    min-width: 30px;
+    min-height: 34px;
+    height: 34px;
     justify-self: center;
   }
 

@@ -2735,6 +2735,22 @@
     });
   };
 
+  const escapeHtmlText = (value) => (
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  );
+
+  const renderChordTokensHtml = (value) => (
+    escapeHtmlText(value).replace(
+      /\[[^\]\r\n]+\]/g,
+      (token) => `<span class="song-chord-token">${token}</span>`
+    )
+  );
+
   const setSongFeedback = (message, type = '') => {
     if (!message) return;
     const normalizedType = (
@@ -3183,7 +3199,11 @@
       ? transposeBracketedChords(songState.originalContent, songState.semitones, preferFlat)
       : (songState.originalContent || '');
     if (fetchedSongLyrics) {
-      fetchedSongLyrics.textContent = visibleContent;
+      if (songState.contentType === 'chords') {
+        fetchedSongLyrics.innerHTML = renderChordTokensHtml(visibleContent);
+      } else {
+        fetchedSongLyrics.textContent = visibleContent;
+      }
       fetchedSongLyrics.scrollTop = 0;
     }
 

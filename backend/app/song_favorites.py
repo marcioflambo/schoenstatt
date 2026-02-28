@@ -8,6 +8,7 @@ from urllib.parse import quote_plus
 
 from pydantic import BaseModel
 
+from .json_store_db import load_store, save_store
 from .songs import fetch_lyrics_from_letras, fetch_song_from_url
 
 
@@ -27,6 +28,7 @@ class SongFavoriteReorderRequest(BaseModel):
 
 
 _STORE_LOCK = RLock()
+_STORE_KEY = 'song_favorites'
 
 
 def _normalize_spaces(value: str | None) -> str:
@@ -142,7 +144,19 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path) -> dict[str, object]:
+def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+    if database_url:
+        database_store = load_store(database_url, _STORE_KEY)
+        if database_store is not None:
+            return _normalize_store(database_store)
+
+        if file_path.exists():
+            file_store = _read_store(file_path, database_url=None)
+            save_store(database_url, _STORE_KEY, _normalize_store(file_store))
+            return _normalize_store(file_store)
+
+        return _empty_store()
+
     if not file_path.exists():
         return _empty_store()
 
@@ -156,11 +170,16 @@ def _read_store(file_path: Path) -> dict[str, object]:
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object]) -> None:
+def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+    normalized_store = _normalize_store(store)
+    if database_url:
+        save_store(database_url, _STORE_KEY, normalized_store)
+        return
+
     file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = file_path.with_suffix(f'{file_path.suffix}.tmp')
 
-    payload = json.dumps(store, ensure_ascii=False, indent=2)
+    payload = json.dumps(normalized_store, ensure_ascii=False, indent=2)
     try:
         temp_path.write_text(payload, encoding='utf-8')
         temp_path.replace(file_path)
@@ -203,9 +222,12 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def list_song_favorites(favorites_file: Path) -> list[dict[str, object]]:
+def list_song_favorites(
+    favorites_file: Path,
+    database_url: str | None = None,
+) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(favorites_file)
+        store = _read_store(favorites_file, database_url=database_url)
         rows = store.get('favorites')
         favorite_rows = rows if isinstance(rows, list) else []
 
@@ -233,6 +255,7 @@ def list_song_favorites(favorites_file: Path) -> list[dict[str, object]]:
 def save_song_favorite(
     favorites_file: Path,
     payload: SongFavoriteCreateRequest,
+    database_url: str | None = None,
 ) -> dict[str, object]:
     source_url = _normalize_spaces(payload.url)
     if not source_url:
@@ -279,7 +302,7 @@ def save_song_favorite(
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
-        store = _read_store(favorites_file)
+        store = _read_store(favorites_file, database_url=database_url)
         rows = store.get('favorites')
         favorite_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
         max_order = max(
@@ -338,19 +361,23 @@ def save_song_favorite(
 
         store['last_id'] = max(_coerce_int(store.get('last_id'), 0), favorite_id)
         store['favorites'] = favorite_rows
-        _write_store(favorites_file, store)
+        _write_store(favorites_file, store, database_url=database_url)
 
     return _row_to_payload(row)
 
 
-def delete_song_favorite(favorites_file: Path, url: str) -> bool:
+def delete_song_favorite(
+    favorites_file: Path,
+    url: str,
+    database_url: str | None = None,
+) -> bool:
     source_url = _normalize_spaces(url)
     if not source_url:
         raise ValueError('Informe um link valido de cifra para remover o favorito.')
 
     target_key = _normalize_song_url_key(source_url)
     with _STORE_LOCK:
-        store = _read_store(favorites_file)
+        store = _read_store(favorites_file, database_url=database_url)
         rows = store.get('favorites')
         favorite_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -367,12 +394,16 @@ def delete_song_favorite(favorites_file: Path, url: str) -> bool:
 
         if removed:
             store['favorites'] = kept_rows
-            _write_store(favorites_file, store)
+            _write_store(favorites_file, store, database_url=database_url)
 
     return removed
 
 
-def reorder_song_favorites(favorites_file: Path, ordered_ids: list[int]) -> list[dict[str, object]]:
+def reorder_song_favorites(
+    favorites_file: Path,
+    ordered_ids: list[int],
+    database_url: str | None = None,
+) -> list[dict[str, object]]:
     seen_ids: set[int] = set()
     normalized_order: list[int] = []
     for raw_id in ordered_ids:
@@ -385,7 +416,7 @@ def reorder_song_favorites(favorites_file: Path, ordered_ids: list[int]) -> list
         normalized_order.append(favorite_id)
 
     with _STORE_LOCK:
-        store = _read_store(favorites_file)
+        store = _read_store(favorites_file, database_url=database_url)
         rows = store.get('favorites')
         favorite_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -396,7 +427,7 @@ def reorder_song_favorites(favorites_file: Path, ordered_ids: list[int]) -> list
         ]
         if not normalized_rows:
             store['favorites'] = normalized_rows
-            _write_store(favorites_file, store)
+            _write_store(favorites_file, store, database_url=database_url)
             return []
 
         favorites_by_id = {
@@ -433,6 +464,6 @@ def reorder_song_favorites(favorites_file: Path, ordered_ids: list[int]) -> list
                 row['order_index'] = index
 
         store['favorites'] = normalized_rows
-        _write_store(favorites_file, store)
+        _write_store(favorites_file, store, database_url=database_url)
 
-    return list_song_favorites(favorites_file)
+    return list_song_favorites(favorites_file, database_url=database_url)

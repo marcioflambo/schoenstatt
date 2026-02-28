@@ -37,10 +37,10 @@ Endpoints:
 - `POST /api/songs/search` (busca por nome da musica em Cifra Club e Cifras)
 - `POST /api/songs/fetch` (carrega a cifra pela URL escolhida)
 - `GET /api/songs/favorites` (lista musicas favoritadas com cache de letra/cifra)
-- `POST /api/songs/favorites` (salva/atualiza favorito em JSON local)
+- `POST /api/songs/favorites` (salva/atualiza favorito em PostgreSQL ou JSON fallback)
 - `DELETE /api/songs/favorites?url=...` (remove favorito pelo link da musica)
-- `GET /api/songs/custom` (lista musicas manuais em JSON local)
-- `POST /api/songs/custom` (cria musica manual em JSON local)
+- `GET /api/songs/custom` (lista musicas manuais em PostgreSQL ou JSON fallback)
+- `POST /api/songs/custom` (cria musica manual em PostgreSQL ou JSON fallback)
 - `PUT /api/songs/custom/{id}` (atualiza musica manual)
 - `DELETE /api/songs/custom/{id}` (inativa musica manual)
 - `PUT /api/songs/custom/{id}/restore` (reativa musica manual inativada)
@@ -96,7 +96,7 @@ Fluxo alinhado com o Docker Manager (Deploy your first container):
 
 ```powershell
 Copy-Item .env.hostinger.example .env.hostinger
-# Ajuste CORS_ALLOW_ORIGINS e APP_PORT
+# Ajuste DATABASE_URL, CORS_ALLOW_ORIGINS e APP_PORT
 ```
 
 1. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
@@ -107,5 +107,7 @@ Copy-Item .env.hostinger.example .env.hostinger
 
 Validacao apos deploy:
 - `http://IP_DA_VPS:8000/api/health`
+- `http://IP_DA_VPS:8000/api/db/ping`
+- confirme em `/api/health` que `songs_storage_backend` esta como `postgresql`
 
 Para dominio `maerainhavencedora.com.br` com HTTPS, configure o proxy reverso da Hostinger apontando para a porta `8000` do container.

@@ -9,6 +9,7 @@ from threading import RLock
 
 from pydantic import BaseModel
 
+from .json_store_db import load_store, save_store
 
 class MysterySongAssignmentUpsertRequest(BaseModel):
     group_title: str
@@ -26,6 +27,7 @@ class MysterySongAssignmentUpsertRequest(BaseModel):
 
 
 _STORE_LOCK = RLock()
+_STORE_KEY = 'mystery_song_assignments'
 
 
 def _normalize_spaces(value: str | None) -> str:
@@ -126,7 +128,19 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path) -> dict[str, object]:
+def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+    if database_url:
+        database_store = load_store(database_url, _STORE_KEY)
+        if database_store is not None:
+            return _normalize_store(database_store)
+
+        if file_path.exists():
+            file_store = _read_store(file_path, database_url=None)
+            save_store(database_url, _STORE_KEY, _normalize_store(file_store))
+            return _normalize_store(file_store)
+
+        return _empty_store()
+
     if not file_path.exists():
         return _empty_store()
 
@@ -140,11 +154,16 @@ def _read_store(file_path: Path) -> dict[str, object]:
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object]) -> None:
+def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+    normalized_store = _normalize_store(store)
+    if database_url:
+        save_store(database_url, _STORE_KEY, normalized_store)
+        return
+
     file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = file_path.with_suffix(f'{file_path.suffix}.tmp')
 
-    payload = json.dumps(store, ensure_ascii=False, indent=2)
+    payload = json.dumps(normalized_store, ensure_ascii=False, indent=2)
     try:
         temp_path.write_text(payload, encoding='utf-8')
         temp_path.replace(file_path)
@@ -180,9 +199,12 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def list_mystery_song_assignments(assignments_file: Path) -> list[dict[str, object]]:
+def list_mystery_song_assignments(
+    assignments_file: Path,
+    database_url: str | None = None,
+) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(assignments_file)
+        store = _read_store(assignments_file, database_url=database_url)
         rows = store.get('assignments')
         assignment_rows = rows if isinstance(rows, list) else []
 
@@ -208,6 +230,7 @@ def list_mystery_song_assignments(assignments_file: Path) -> list[dict[str, obje
 def upsert_mystery_song_assignment(
     assignments_file: Path,
     payload: MysterySongAssignmentUpsertRequest,
+    database_url: str | None = None,
 ) -> dict[str, object]:
     group_title = _normalize_spaces(payload.group_title)
     mystery_title = _normalize_mystery_title(payload.mystery_title)
@@ -223,7 +246,7 @@ def upsert_mystery_song_assignment(
     now_iso = _now_utc_iso()
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file)
+        store = _read_store(assignments_file, database_url=database_url)
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -269,7 +292,7 @@ def upsert_mystery_song_assignment(
             assignment_rows.append(row)
 
         store['assignments'] = assignment_rows
-        _write_store(assignments_file, store)
+        _write_store(assignments_file, store, database_url=database_url)
 
     return _row_to_payload(row)
 
@@ -278,6 +301,7 @@ def delete_mystery_song_assignment(
     assignments_file: Path,
     group_title: str,
     mystery_title: str,
+    database_url: str | None = None,
 ) -> bool:
     safe_group_title = _normalize_spaces(group_title)
     safe_mystery_title = _normalize_mystery_title(mystery_title)
@@ -287,7 +311,7 @@ def delete_mystery_song_assignment(
     assignment_key = _build_assignment_key(safe_group_title, safe_mystery_title)
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file)
+        store = _read_store(assignments_file, database_url=database_url)
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -311,6 +335,6 @@ def delete_mystery_song_assignment(
 
         if removed:
             store['assignments'] = kept_rows
-            _write_store(assignments_file, store)
+            _write_store(assignments_file, store, database_url=database_url)
 
     return removed

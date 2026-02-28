@@ -45,7 +45,7 @@ from .songs import (
 app = FastAPI(
     title='Portal Schoenstatt API',
     version='0.1.0',
-    description='Backend do portal com busca de musicas e favoritos locais em JSON.',
+    description='Backend do portal com busca de musicas e persistencia local (JSON) ou PostgreSQL.',
 )
 
 app.add_middleware(
@@ -72,6 +72,7 @@ def api_health() -> dict[str, object]:
         'status': 'ok',
         'service': 'portal-schoenstatt-api',
         'database_configured': bool(settings.database_url),
+        'songs_storage_backend': 'postgresql' if settings.database_url else 'json',
         'song_favorites_store': str(settings.song_favorites_file),
         'custom_songs_store': str(settings.custom_songs_file),
         'mystery_song_assignments_store': str(settings.mystery_song_assignments_file),
@@ -90,14 +91,20 @@ def api_db_ping() -> dict[str, object]:
 def api_songs_status() -> dict[str, object]:
     return {
         'status': 'prepared',
-        'message': 'Conectividade pronta. Criacao de tabelas e CRUD de musicas sera adicionada na proxima etapa.',
+        'message': (
+            'Persistencia pronta. '
+            'Com DATABASE_URL definido, favoritos/musicas manuais/vinculos sao salvos no PostgreSQL.'
+        ),
     }
 
 
 @app.get('/api/songs/favorites')
 def api_song_favorites_list() -> dict[str, object]:
     try:
-        favorites = list_song_favorites(settings.song_favorites_file)
+        favorites = list_song_favorites(
+            settings.song_favorites_file,
+            database_url=settings.database_url,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
 
@@ -111,7 +118,11 @@ def api_song_favorites_list() -> dict[str, object]:
 @app.post('/api/songs/favorites')
 def api_song_favorites_save(payload: SongFavoriteCreateRequest) -> dict[str, object]:
     try:
-        favorite = save_song_favorite(settings.song_favorites_file, payload)
+        favorite = save_song_favorite(
+            settings.song_favorites_file,
+            payload,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -126,7 +137,11 @@ def api_song_favorites_save(payload: SongFavoriteCreateRequest) -> dict[str, obj
 @app.delete('/api/songs/favorites')
 def api_song_favorites_delete(url: str = Query(..., min_length=1)) -> dict[str, object]:
     try:
-        removed = delete_song_favorite(settings.song_favorites_file, url)
+        removed = delete_song_favorite(
+            settings.song_favorites_file,
+            url,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -141,7 +156,11 @@ def api_song_favorites_delete(url: str = Query(..., min_length=1)) -> dict[str, 
 @app.put('/api/songs/favorites/order')
 def api_song_favorites_reorder(payload: SongFavoriteReorderRequest) -> dict[str, object]:
     try:
-        favorites = reorder_song_favorites(settings.song_favorites_file, payload.ordered_ids)
+        favorites = reorder_song_favorites(
+            settings.song_favorites_file,
+            payload.ordered_ids,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -157,7 +176,10 @@ def api_song_favorites_reorder(payload: SongFavoriteReorderRequest) -> dict[str,
 @app.get('/api/mysteries/song-assignments')
 def api_mystery_song_assignments_list() -> dict[str, object]:
     try:
-        assignments = list_mystery_song_assignments(settings.mystery_song_assignments_file)
+        assignments = list_mystery_song_assignments(
+            settings.mystery_song_assignments_file,
+            database_url=settings.database_url,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
 
@@ -171,7 +193,11 @@ def api_mystery_song_assignments_list() -> dict[str, object]:
 @app.post('/api/mysteries/song-assignments')
 def api_mystery_song_assignments_upsert(payload: MysterySongAssignmentUpsertRequest) -> dict[str, object]:
     try:
-        assignment = upsert_mystery_song_assignment(settings.mystery_song_assignments_file, payload)
+        assignment = upsert_mystery_song_assignment(
+            settings.mystery_song_assignments_file,
+            payload,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -193,6 +219,7 @@ def api_mystery_song_assignments_delete(
             settings.mystery_song_assignments_file,
             group_title,
             mystery_title,
+            database_url=settings.database_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -208,7 +235,11 @@ def api_mystery_song_assignments_delete(
 @app.get('/api/songs/custom')
 def api_custom_songs_list(include_inactive: bool = Query(False)) -> dict[str, object]:
     try:
-        songs = list_custom_songs(settings.custom_songs_file, include_inactive=include_inactive)
+        songs = list_custom_songs(
+            settings.custom_songs_file,
+            include_inactive=include_inactive,
+            database_url=settings.database_url,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
 
@@ -222,7 +253,11 @@ def api_custom_songs_list(include_inactive: bool = Query(False)) -> dict[str, ob
 @app.post('/api/songs/custom')
 def api_custom_songs_create(payload: CustomSongUpsertRequest) -> dict[str, object]:
     try:
-        song = create_custom_song(settings.custom_songs_file, payload)
+        song = create_custom_song(
+            settings.custom_songs_file,
+            payload,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -237,7 +272,11 @@ def api_custom_songs_create(payload: CustomSongUpsertRequest) -> dict[str, objec
 @app.put('/api/songs/custom/order')
 def api_custom_songs_reorder(payload: CustomSongReorderRequest) -> dict[str, object]:
     try:
-        songs = reorder_custom_songs(settings.custom_songs_file, payload.ordered_ids)
+        songs = reorder_custom_songs(
+            settings.custom_songs_file,
+            payload.ordered_ids,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:
@@ -253,7 +292,12 @@ def api_custom_songs_reorder(payload: CustomSongReorderRequest) -> dict[str, obj
 @app.put('/api/songs/custom/{song_id}')
 def api_custom_songs_update(song_id: int, payload: CustomSongUpsertRequest) -> dict[str, object]:
     try:
-        song = update_custom_song(settings.custom_songs_file, song_id, payload)
+        song = update_custom_song(
+            settings.custom_songs_file,
+            song_id,
+            payload,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if message == 'Musica manual nao encontrada.' else 400
@@ -270,7 +314,11 @@ def api_custom_songs_update(song_id: int, payload: CustomSongUpsertRequest) -> d
 @app.delete('/api/songs/custom/{song_id}')
 def api_custom_songs_delete(song_id: int) -> dict[str, object]:
     try:
-        removed = delete_custom_song(settings.custom_songs_file, song_id)
+        removed = delete_custom_song(
+            settings.custom_songs_file,
+            song_id,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if message == 'Musica manual nao encontrada.' else 400
@@ -287,7 +335,11 @@ def api_custom_songs_delete(song_id: int) -> dict[str, object]:
 @app.put('/api/songs/custom/{song_id}/restore')
 def api_custom_songs_restore(song_id: int) -> dict[str, object]:
     try:
-        song = restore_custom_song(settings.custom_songs_file, song_id)
+        song = restore_custom_song(
+            settings.custom_songs_file,
+            song_id,
+            database_url=settings.database_url,
+        )
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if message == 'Musica manual nao encontrada.' else 400

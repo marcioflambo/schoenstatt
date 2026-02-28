@@ -19,8 +19,8 @@
 
 ## Observacoes
 - Nesta fase, a API ja possui busca inicial de cifras por nome e leitura de cifra por URL.
-- Favoritos sao salvos localmente em `data/song_favorites.json` (ou no caminho definido por `SONG_FAVORITES_FILE`).
-- Musicas manuais sao salvas localmente em `data/custom_songs.json` (ou no caminho definido por `CUSTOM_SONGS_FILE`).
+- Com `DATABASE_URL` definido, favoritos, musicas manuais e atribuicoes de misterios sao salvos no PostgreSQL.
+- Sem `DATABASE_URL`, o fallback local usa `data/song_favorites.json`, `data/custom_songs.json` e `data/mystery_song_assignments.json`.
 
 ## Executar com Docker (hot reload)
 

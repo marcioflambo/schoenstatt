@@ -11,6 +11,7 @@ services:
       --proxy-headers
       --forwarded-allow-ips=*
     environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
       CORS_ALLOW_ORIGINS: "${CORS_ALLOW_ORIGINS:-https://maerainhavencedora.com.br,https://www.maerainhavencedora.com.br}"
       SONG_FAVORITES_FILE: /app/data/song_favorites.json
       CUSTOM_SONGS_FILE: /app/data/custom_songs.json

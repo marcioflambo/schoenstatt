@@ -96,18 +96,12 @@ Fluxo alinhado com o Docker Manager (Deploy your first container):
 
 ```powershell
 Copy-Item .env.hostinger.example .env.hostinger
-# Ajuste APP_IMAGE, CORS_ALLOW_ORIGINS e APP_PORT
+# Ajuste CORS_ALLOW_ORIGINS e APP_PORT
 ```
 
-1. Publique a imagem em um registry (Docker Hub/GHCR):
-
-```powershell
-docker build -t SEU_USUARIO_DOCKERHUB/schoenstatt:latest .
-docker push SEU_USUARIO_DOCKERHUB/schoenstatt:latest
-```
-
-2. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
-3. Cole o conteudo de `docker-compose.hostinger.yml` no editor `.yaml`.
+1. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
+2. Em `Project URL`, informe o repositorio: `https://github.com/marcioflambo/schoenstatt.git`.
+3. Em `Docker compose file`, use `docker-compose.hostinger.yml`.
 4. Na aba `Ambiente`, adicione as variaveis de `.env.hostinger`.
 5. Clique em `Deploy`.
 

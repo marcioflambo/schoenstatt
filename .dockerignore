@@ -14,3 +14,9 @@ __pycache__
 *.pyo
 *.log
 *.pdf
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+data

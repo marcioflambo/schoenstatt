@@ -1,0 +1,22 @@
+services:
+  portal:
+    container_name: schoenstatt-portal
+    command: >
+      uvicorn backend.app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --proxy-headers
+      --forwarded-allow-ips=*
+    environment:
+      CORS_ALLOW_ORIGINS: "${CORS_ALLOW_ORIGINS:-https://maerainhavencedora.com.br,https://www.maerainhavencedora.com.br}"
+      SONG_FAVORITES_FILE: /app/data/song_favorites.json
+      CUSTOM_SONGS_FILE: /app/data/custom_songs.json
+      MYSTERY_SONG_ASSIGNMENTS_FILE: /app/data/mystery_song_assignments.json
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - portal_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  portal_data:

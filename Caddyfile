@@ -1,4 +1,4 @@
-{$SITE_DOMAIN:app.eaintegrations.com} {
+{$SITE_DOMAIN:maerainhavencedora.com.br} {
 	encode zstd gzip
 	reverse_proxy portal:8000
 }

@@ -60,6 +60,11 @@ assets_dir = PROJECT_DIR / 'assets'
 if assets_dir.exists():
     app.mount('/assets', StaticFiles(directory=assets_dir), name='assets')
 
+ROOT_PUBLIC_FILES = {
+    'favicon.ico',
+    'robots.txt',
+}
+
 
 @app.get('/api/health')
 def api_health() -> dict[str, object]:
@@ -365,6 +370,9 @@ def site_manifest() -> FileResponse:
 @app.get('/{file_name}', include_in_schema=False)
 def top_level_files(file_name: str) -> FileResponse:
     safe_name = Path(file_name).name
+    if safe_name not in ROOT_PUBLIC_FILES:
+        raise HTTPException(status_code=404, detail='Arquivo nao encontrado')
+
     file_path = PROJECT_DIR / safe_name
 
     if not file_path.exists() or not file_path.is_file():

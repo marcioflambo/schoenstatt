@@ -29,7 +29,7 @@ services:
     depends_on:
       - portal
     environment:
-      SITE_DOMAIN: "${SITE_DOMAIN:-app.eaintegrations.com}"
+      SITE_DOMAIN: "${SITE_DOMAIN:-maerainhavencedora.com.br}"
     ports:
       - "${PORT_HTTP_ALT:-80}:80"
       - "${PORT_HTTPS_ALT:-443}:443"

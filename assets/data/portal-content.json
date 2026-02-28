@@ -224,8 +224,8 @@
       {
         "number": "4",
         "title": "Contas iniciais",
-        "text": "1 Pai-Nosso, 3 Ave-Marias e 1 Glória.",
-        "content": "Nas contas iniciais, rezar 1 Pai-Nosso, 3 Ave-Marias e 1 Glória ao Pai, pedindo crescimento na fé, na esperança e na caridade."
+        "text": "1 Pai-Nosso; 1ª: Deus salve virgem filha de Deus Pai - Ave Maria; 2ª: Deus salve virgem mãe de Deus Filho - Ave Maria; 3ª: Deus salve virgem esposa do Espírito Santo - Ave Maria; depois: Deus salve virgem templo e sacrário da Santíssima Trindade - Glória ao Pai.",
+        "content": "Nas contas iniciais, rezar 1 Pai-Nosso. Em seguida: 1ª Deus salve virgem filha de Deus Pai - Ave Maria; 2ª Deus salve virgem mãe de Deus Filho - Ave Maria; 3ª Deus salve virgem esposa do Espírito Santo - Ave Maria. Depois, Deus salve virgem templo e sacrário da Santíssima Trindade - Glória ao Pai."
       },
       {
         "number": "5",
@@ -242,8 +242,8 @@
       {
         "number": "7",
         "title": "Oração final",
-        "text": "Salve Rainha, oração da Mãe Rainha e intenções finais.",
-        "content": "Após a quinta dezena, rezar a Salve Rainha, a oração da Mãe Rainha e apresentar as intenções finais, agradecendo as graças recebidas."
+        "text": "Agradecimento final, Salve Rainha, oração da Mãe Rainha e intenções finais.",
+        "content": "Após a quinta dezena, rezar o agradecimento final: \"Infinitas graças vos damos, ó Soberana Rainha, pelos benefícios que todos os dias recebemos de vossas mãos maternais. Dignai-vos, agora e para sempre tomar-nos debaixo do vosso poderoso amparo e para mais vos agradecer, vos saudamos com uma Salve Rainha...\" Em seguida, rezar a Salve Rainha, a oração da Mãe Rainha e apresentar as intenções finais."
       },
       {
         "number": "8",
@@ -527,6 +527,10 @@
       {
         "title": "Oração de Fátima",
         "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o céu, principalmente as que mais precisarem."
+      },
+      {
+        "title": "Agradecimento Final",
+        "text": "Infinitas graças vos damos, ó Soberana Rainha, pelos benefícios que todos os dias recebemos de vossas mãos maternais. Dignai-vos, agora e para sempre tomar-nos debaixo do vosso poderoso amparo e para mais vos agradecer, vos saudamos com uma Salve Rainha..."
       },
       {
         "title": "Salve Rainha",

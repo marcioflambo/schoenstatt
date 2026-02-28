@@ -45,7 +45,7 @@ Endpoints:
 - `DELETE /api/songs/custom/{id}` (inativa musica manual)
 - `PUT /api/songs/custom/{id}/restore` (reativa musica manual inativada)
 
-## Docker
+## Docker (local)
 
 Subir o portal (site + API) com proxy HTTPS (Caddy + certificado valido):
 
@@ -62,7 +62,7 @@ Acessos:
 Para usar certificado publico (sem aviso de "inseguro"), defina o dominio:
 
 ```powershell
-$env:SITE_DOMAIN="app.eaintegrations.com"
+$env:SITE_DOMAIN="maerainhavencedora.com.br"
 docker compose up --build -d
 ```
 
@@ -89,3 +89,29 @@ Parar:
 ```powershell
 docker compose down
 ```
+
+## Docker (Hostinger - 1 container)
+
+Fluxo alinhado com o Docker Manager (Deploy your first container):
+
+```powershell
+Copy-Item .env.hostinger.example .env.hostinger
+# Ajuste APP_IMAGE, CORS_ALLOW_ORIGINS e APP_PORT
+```
+
+1. Publique a imagem em um registry (Docker Hub/GHCR):
+
+```powershell
+docker build -t SEU_USUARIO_DOCKERHUB/schoenstatt:latest .
+docker push SEU_USUARIO_DOCKERHUB/schoenstatt:latest
+```
+
+2. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
+3. Cole o conteudo de `docker-compose.hostinger.yml` no editor `.yaml`.
+4. Na aba `Ambiente`, adicione as variaveis de `.env.hostinger`.
+5. Clique em `Deploy`.
+
+Validacao apos deploy:
+- `http://IP_DA_VPS:8000/api/health`
+
+Para dominio `maerainhavencedora.com.br` com HTTPS, configure o proxy reverso da Hostinger apontando para a porta `8000` do container.

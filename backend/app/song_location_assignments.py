@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -13,10 +11,11 @@ from pydantic import BaseModel
 from .json_store_db import load_store, save_store
 from .song_favorites import SongFavoriteCreateRequest, save_song_favorite
 
-class MysterySongAssignmentUpsertRequest(BaseModel):
-    group_title: str
-    group_day: str = ''
-    mystery_title: str
+
+class SongLocationAssignmentUpsertRequest(BaseModel):
+    location_id: str
+    location_label: str = ''
+    location_path: list[str] = []
     song_title: str = ''
     song_artist: str = ''
     song_url: str = ''
@@ -29,37 +28,12 @@ class MysterySongAssignmentUpsertRequest(BaseModel):
 
 
 _STORE_LOCK = RLock()
-_STORE_KEY = 'mystery_song_assignments'
+_STORE_KEY = 'song_location_assignments'
 _LOGGER = logging.getLogger("uvicorn.error")
 
 
 def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
-
-
-def _normalize_mystery_title(value: str | None) -> str:
-    title = _normalize_spaces(value)
-    if not title:
-        return ''
-    return re.sub(r'^\d+\s*[ºo]\s+', '', title, flags=re.IGNORECASE).strip()
-
-
-def _normalize_key_token(value: str | None) -> str:
-    normalized = _normalize_spaces(value)
-    if not normalized:
-        return ''
-    ascii_folded = unicodedata.normalize('NFD', normalized)
-    ascii_folded = ''.join(char for char in ascii_folded if unicodedata.category(char) != 'Mn')
-    return _normalize_spaces(ascii_folded).lower()
-
-
-def _canonical_group_key(value: str | None) -> str:
-    token = _normalize_key_token(value).replace('misterios', '')
-    return _normalize_spaces(token)
-
-
-def _build_assignment_key(group_title: str, mystery_title: str) -> str:
-    return f'{_canonical_group_key(group_title)}|{_normalize_key_token(_normalize_mystery_title(mystery_title))}'
 
 
 def _now_utc_iso() -> str:
@@ -73,20 +47,22 @@ def _empty_store() -> dict[str, object]:
 
 
 def _normalize_assignment_row(raw_row: dict[str, object]) -> dict[str, object]:
-    group_title = _normalize_spaces(str(raw_row.get('group_title') or raw_row.get('groupTitle') or ''))
-    group_day = _normalize_spaces(str(raw_row.get('group_day') or raw_row.get('groupDay') or ''))
-    mystery_title = _normalize_mystery_title(str(raw_row.get('mystery_title') or raw_row.get('mysteryTitle') or ''))
-    assignment_key = _normalize_spaces(str(raw_row.get('assignment_key') or raw_row.get('assignmentKey') or ''))
-    if not assignment_key and group_title and mystery_title:
-        assignment_key = _build_assignment_key(group_title, mystery_title)
+    location_id = _normalize_spaces(str(raw_row.get('location_id') or raw_row.get('locationId') or ''))
+    location_label = _normalize_spaces(str(raw_row.get('location_label') or raw_row.get('locationLabel') or ''))
+    raw_path = raw_row.get('location_path')
+    if not isinstance(raw_path, list):
+        raw_path = raw_row.get('locationPath')
+    location_path = [
+        _normalize_spaces(str(item))
+        for item in raw_path
+        if isinstance(raw_path, list) and _normalize_spaces(str(item))
+    ] if isinstance(raw_path, list) else []
 
     return {
-        'assignment_key': assignment_key,
-        'group_key': _canonical_group_key(group_title),
-        'group_title': group_title,
-        'group_day': group_day,
-        'mystery_key': _normalize_key_token(mystery_title),
-        'mystery_title': mystery_title,
+        'assignment_key': location_id,
+        'location_id': location_id,
+        'location_label': location_label,
+        'location_path': location_path,
         'song_title': _normalize_spaces(str(raw_row.get('song_title') or raw_row.get('songTitle') or '')),
         'song_artist': _normalize_spaces(str(raw_row.get('song_artist') or raw_row.get('songArtist') or '')),
         'song_url': _normalize_spaces(str(raw_row.get('song_url') or raw_row.get('songUrl') or '')),
@@ -111,20 +87,20 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
         for item in raw_assignments:
             if isinstance(item, dict):
                 row = _normalize_assignment_row(item)
-                if row['assignment_key'] and row['group_title'] and row['mystery_title']:
+                if row['location_id']:
                     assignment_rows.append(row)
 
     deduped: dict[str, dict[str, object]] = {}
     for row in assignment_rows:
-        assignment_key = str(row.get('assignment_key') or '')
-        if not assignment_key:
+        location_id = str(row.get('location_id') or '')
+        if not location_id:
             continue
-        previous = deduped.get(assignment_key)
+        previous = deduped.get(location_id)
         if not previous:
-            deduped[assignment_key] = row
+            deduped[location_id] = row
             continue
         if str(row.get('updated_at_utc') or '') >= str(previous.get('updated_at_utc') or ''):
-            deduped[assignment_key] = row
+            deduped[location_id] = row
 
     return {
         'assignments': list(deduped.values()),
@@ -144,9 +120,9 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
     try:
         raw = json.loads(file_path.read_text(encoding='utf-8'))
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Arquivo de atribuicoes de musicas invalido: {file_path}') from exc
+        raise RuntimeError(f'Arquivo de atribuicoes por local invalido: {file_path}') from exc
     except OSError as exc:
-        raise RuntimeError(f'Falha ao ler arquivo de atribuicoes de musicas: {exc}') from exc
+        raise RuntimeError(f'Falha ao ler arquivo de atribuicoes por local: {exc}') from exc
 
     return _normalize_store(raw)
 
@@ -159,13 +135,12 @@ def _write_store(file_path: Path, store: dict[str, object], database_url: str | 
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = file_path.with_suffix(f'{file_path.suffix}.tmp')
-
     payload = json.dumps(normalized_store, ensure_ascii=False, indent=2)
     try:
         temp_path.write_text(payload, encoding='utf-8')
         temp_path.replace(file_path)
     except OSError as exc:
-        raise RuntimeError(f'Falha ao salvar arquivo de atribuicoes de musicas: {exc}') from exc
+        raise RuntimeError(f'Falha ao salvar arquivo de atribuicoes por local: {exc}') from exc
     finally:
         if temp_path.exists():
             try:
@@ -176,12 +151,10 @@ def _write_store(file_path: Path, store: dict[str, object], database_url: str | 
 
 def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
     return {
-        'assignment_key': row.get('assignment_key') or '',
-        'group_key': row.get('group_key') or '',
-        'group_title': row.get('group_title') or '',
-        'group_day': row.get('group_day') or '',
-        'mystery_key': row.get('mystery_key') or '',
-        'mystery_title': row.get('mystery_title') or '',
+        'assignment_key': row.get('assignment_key') or row.get('location_id') or '',
+        'location_id': row.get('location_id') or '',
+        'location_label': row.get('location_label') or '',
+        'location_path': row.get('location_path') if isinstance(row.get('location_path'), list) else [],
         'song_title': row.get('song_title') or '',
         'song_artist': row.get('song_artist') or '',
         'song_url': row.get('song_url') or '',
@@ -196,7 +169,7 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def list_mystery_song_assignments(
+def list_song_location_assignments(
     assignments_file: Path,
     database_url: str | None = None,
 ) -> list[dict[str, object]]:
@@ -213,34 +186,39 @@ def list_mystery_song_assignments(
     normalized_rows = [
         row
         for row in normalized_rows
-        if row['assignment_key'] and row['group_title'] and row['mystery_title']
+        if row['location_id']
     ]
     normalized_rows.sort(
         key=lambda row: (
-            str(row.get('group_title') or ''),
-            str(row.get('mystery_title') or ''),
+            ' > '.join(row.get('location_path') or []),
+            str(row.get('location_label') or ''),
+            str(row.get('location_id') or ''),
         )
     )
     return [_row_to_payload(row) for row in normalized_rows]
 
 
-def upsert_mystery_song_assignment(
+def upsert_song_location_assignment(
     assignments_file: Path,
-    payload: MysterySongAssignmentUpsertRequest,
+    payload: SongLocationAssignmentUpsertRequest,
     favorites_file: Path | None = None,
     database_url: str | None = None,
 ) -> dict[str, object]:
-    group_title = _normalize_spaces(payload.group_title)
-    mystery_title = _normalize_mystery_title(payload.mystery_title)
-    if not group_title or not mystery_title:
-        raise ValueError('Informe o grupo e o misterio para vincular a musica.')
+    location_id = _normalize_spaces(payload.location_id)
+    if not location_id:
+        raise ValueError('Informe o local para vincular a musica.')
 
     song_title = _normalize_spaces(payload.song_title)
     song_url = _normalize_spaces(payload.song_url)
     if not song_title and not song_url:
-        raise ValueError('Informe a musica para vincular ao misterio.')
+        raise ValueError('Informe a musica para vincular ao local.')
 
-    assignment_key = _build_assignment_key(group_title, mystery_title)
+    location_label = _normalize_spaces(payload.location_label)
+    location_path = [
+        _normalize_spaces(str(item))
+        for item in payload.location_path
+        if _normalize_spaces(str(item))
+    ]
     now_iso = _now_utc_iso()
 
     with _STORE_LOCK:
@@ -253,7 +231,7 @@ def upsert_mystery_song_assignment(
                 index
                 for index, item in enumerate(assignment_rows)
                 if isinstance(item, dict)
-                and _normalize_spaces(str(item.get('assignment_key') or '')) == assignment_key
+                and _normalize_spaces(str(item.get('location_id') or item.get('locationId') or '')) == location_id
             ),
             -1,
         )
@@ -265,12 +243,10 @@ def upsert_mystery_song_assignment(
             created_at_utc = now_iso
 
         row = {
-            'assignment_key': assignment_key,
-            'group_key': _canonical_group_key(group_title),
-            'group_title': group_title,
-            'group_day': _normalize_spaces(payload.group_day),
-            'mystery_key': _normalize_key_token(mystery_title),
-            'mystery_title': mystery_title,
+            'assignment_key': location_id,
+            'location_id': location_id,
+            'location_label': location_label,
+            'location_path': location_path,
             'song_title': song_title,
             'song_artist': _normalize_spaces(payload.song_artist),
             'song_url': song_url,
@@ -294,7 +270,6 @@ def upsert_mystery_song_assignment(
 
     assignment_payload = _row_to_payload(row)
 
-    # Keep song favorites in sync when a mystery receives a song with a valid source URL.
     if favorites_file is not None and song_url:
         try:
             save_song_favorite(
@@ -314,13 +289,11 @@ def upsert_mystery_song_assignment(
                 database_url=database_url,
             )
         except ValueError:
-            # Mystery assignments may use non-cifra links; skip favorite sync in this case.
             pass
         except Exception as exc:  # pragma: no cover - defensive fallback
             _LOGGER.warning(
-                "Falha ao sincronizar favorito a partir do misterio (group=%s, mystery=%s, url=%s): %s",
-                group_title,
-                mystery_title,
+                "Falha ao sincronizar favorito a partir do local (location_id=%s, url=%s): %s",
+                location_id,
                 song_url,
                 exc,
             )
@@ -328,18 +301,14 @@ def upsert_mystery_song_assignment(
     return assignment_payload
 
 
-def delete_mystery_song_assignment(
+def delete_song_location_assignment(
     assignments_file: Path,
-    group_title: str,
-    mystery_title: str,
+    location_id: str,
     database_url: str | None = None,
 ) -> bool:
-    safe_group_title = _normalize_spaces(group_title)
-    safe_mystery_title = _normalize_mystery_title(mystery_title)
-    if not safe_group_title or not safe_mystery_title:
-        raise ValueError('Informe o grupo e o misterio para remover a musica do misterio.')
-
-    assignment_key = _build_assignment_key(safe_group_title, safe_mystery_title)
+    safe_location_id = _normalize_spaces(location_id)
+    if not safe_location_id:
+        raise ValueError('Informe o local para remover a musica.')
 
     with _STORE_LOCK:
         store = _read_store(assignments_file, database_url=database_url)
@@ -351,21 +320,65 @@ def delete_mystery_song_assignment(
             for item in assignment_rows
             if isinstance(item, dict)
         ]
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if row['assignment_key'] and row['group_title'] and row['mystery_title']
-        ]
-
         kept_rows = [
             row
             for row in normalized_rows
-            if str(row.get('assignment_key') or '') != assignment_key
+            if str(row.get('location_id') or '') != safe_location_id
         ]
         removed = len(kept_rows) != len(normalized_rows)
-
         if removed:
             store['assignments'] = kept_rows
             _write_store(assignments_file, store, database_url=database_url)
 
     return removed
+
+
+def delete_song_location_assignments_by_location_ids(
+    assignments_file: Path,
+    location_ids: list[str] | set[str] | tuple[str, ...],
+    database_url: str | None = None,
+) -> dict[str, object]:
+    normalized_ids = {
+        _normalize_spaces(str(raw_id))
+        for raw_id in location_ids
+        if _normalize_spaces(str(raw_id))
+    }
+    if not normalized_ids:
+        return {
+            'removed': False,
+            'count': 0,
+            'removed_location_ids': [],
+        }
+
+    with _STORE_LOCK:
+        store = _read_store(assignments_file, database_url=database_url)
+        rows = store.get('assignments')
+        assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
+        normalized_rows = [
+            _normalize_assignment_row(item)
+            for item in assignment_rows
+            if isinstance(item, dict)
+        ]
+
+        removed_location_ids = sorted({
+            str(row.get('location_id') or '')
+            for row in normalized_rows
+            if str(row.get('location_id') or '') in normalized_ids
+        })
+        kept_rows = [
+            row
+            for row in normalized_rows
+            if str(row.get('location_id') or '') not in normalized_ids
+        ]
+
+        removed_count = len(normalized_rows) - len(kept_rows)
+        removed = removed_count > 0
+        if removed:
+            store['assignments'] = kept_rows
+            _write_store(assignments_file, store, database_url=database_url)
+
+    return {
+        'removed': removed,
+        'count': removed_count,
+        'removed_location_ids': removed_location_ids,
+    }

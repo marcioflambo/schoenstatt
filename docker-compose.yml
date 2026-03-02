@@ -1,9 +1,30 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: schoenstatt-postgres
+    environment:
+      POSTGRES_DB: "${LOCAL_POSTGRES_DB:-schoenstatt}"
+      POSTGRES_USER: "${LOCAL_POSTGRES_USER:-schoenstatt}"
+      POSTGRES_PASSWORD: "${LOCAL_POSTGRES_PASSWORD:-schoenstatt}"
+    ports:
+      - "${LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LOCAL_POSTGRES_USER:-schoenstatt} -d ${LOCAL_POSTGRES_DB:-schoenstatt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   portal:
     container_name: schoenstatt-portal
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
     command: >
       uvicorn backend.app.main:app
       --host 0.0.0.0
@@ -17,6 +38,7 @@ services:
       - backend/.env
     environment:
       WATCHFILES_FORCE_POLLING: "true"
+      DATABASE_URL: "${DATABASE_URL:-postgresql://schoenstatt:schoenstatt@postgres:5432/schoenstatt?sslmode=disable}"
     expose:
       - "8000"
     volumes:
@@ -40,5 +62,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   caddy_data:
   caddy_config:

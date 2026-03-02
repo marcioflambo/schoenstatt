@@ -123,12 +123,6 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
         database_store = load_store(database_url, _STORE_KEY)
         if database_store is not None:
             return _normalize_store(database_store)
-
-        if file_path.exists():
-            file_store = _read_store(file_path, database_url=None)
-            save_store(database_url, _STORE_KEY, _normalize_store(file_store))
-            return _normalize_store(file_store)
-
         return _empty_store()
 
     if not file_path.exists():

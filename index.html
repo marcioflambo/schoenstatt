@@ -57,14 +57,7 @@
             </ul>
           </li>
 
-          <li class="menu-item-parent">
-            <button type="button" class="menu-parent-trigger" aria-expanded="false"></button>
-            <ul class="dl-submenu" hidden>
-              <li class="dl-back"><button type="button" class="menu-back-trigger"></button></li>
-              <li><a href="#cantos"></a></li>
-              <li><a href="#recursos"></a></li>
-            </ul>
-          </li>
+          <li><a href="#cantos"></a></li>
 
           <li class="menu-item-parent">
             <button type="button" class="menu-parent-trigger" aria-expanded="false"></button>
@@ -577,6 +570,19 @@
     >
       <h3 id="favorite-confirm-title"></h3>
       <p id="favorite-confirm-message"></p>
+      <div id="favorite-confirm-password-wrap" class="favorite-confirm-password-wrap" hidden>
+        <label id="favorite-confirm-password-label" class="favorite-confirm-password-label" for="favorite-confirm-password-input">
+          Senha
+        </label>
+        <input
+          type="password"
+          id="favorite-confirm-password-input"
+          class="favorite-confirm-password-input"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p id="favorite-confirm-password-error" class="favorite-confirm-password-error" hidden></p>
+      </div>
       <div class="favorite-confirm-actions">
         <button type="button" id="favorite-confirm-cancel" class="btn btn-ghost" data-favorite-confirm-close></button>
         <button type="button" id="favorite-confirm-accept" class="btn btn-primary"></button>
@@ -606,6 +612,44 @@
       <p id="mystery-song-assign-song" class="mystery-song-assign-song"></p>
       <div id="mystery-song-assign-list" class="mystery-song-assign-list"></div>
     </article>
+  </div>
+
+  <div id="song-save-location-picker" class="song-save-location-picker" aria-hidden="true">
+    <header class="song-save-location-picker-head">
+      <div class="song-save-location-picker-head-main">
+        <p id="song-save-location-picker-song" class="song-save-location-picker-song"></p>
+        <div class="song-save-location-picker-breadcrumb-row">
+          <p id="song-save-location-picker-breadcrumb" class="song-save-location-picker-breadcrumb">Selecione o caminho</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        id="song-save-location-picker-close"
+        class="song-save-location-picker-close"
+        aria-label="Fechar seleção"
+      >
+        &times;
+      </button>
+    </header>
+    <div class="song-save-location-picker-tools">
+      <input
+        type="search"
+        id="song-save-location-picker-search"
+        class="song-save-location-picker-search"
+        placeholder="Buscar categoria ou local..."
+        aria-label="Buscar local de salvamento"
+        autocomplete="off"
+      />
+      <button
+        type="button"
+        id="song-save-location-picker-back"
+        class="song-save-location-picker-back"
+        hidden
+      >
+        Voltar
+      </button>
+    </div>
+    <div id="song-save-location-picker-list" class="song-save-location-picker-list"></div>
   </div>
 
   <div id="custom-song-modal" class="custom-song-modal" aria-hidden="true">
@@ -686,3 +730,4 @@
   <script src="./assets/js/portal.js"></script>
 </body>
 </html>
+

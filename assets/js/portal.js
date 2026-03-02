@@ -93,7 +93,7 @@
   );
   const loadPortalContent = async () => {
     try {
-      const response = await fetch(PORTAL_CONTENT_URL, { cache: 'no-store' });
+      const response = await fetch(PORTAL_CONTENT_URL, { cache: 'force-cache' });
       if (!response.ok) return null;
       const payload = await response.json();
       return payload && typeof payload === 'object' ? payload : null;
@@ -103,6 +103,11 @@
   };
 
   const portalContent = await loadPortalContent();
+  const runDeferredTask = (task, delayMs = 0) => {
+    window.setTimeout(() => {
+      void task();
+    }, Math.max(0, Number(delayMs) || 0));
+  };
   const readUiMessage = (path, fallback = '') => {
     const value = getNestedValue(portalContent, `uiMessages.${path}`);
     return typeof value === 'string' ? value : fallback;
@@ -533,6 +538,24 @@
     setNodeText('#favorite-confirm-title', readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito'));
     setNodeText('#favorite-confirm-cancel', readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar'));
     setNodeText('#favorite-confirm-accept', readSongMessage('favoriteRemoveConfirmAccept', 'Remover'));
+    setNodeText(
+      '#favorite-confirm-password-label',
+      readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+    );
+    setNodeText(
+      '#favorite-confirm-password-error',
+      readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+    );
+    setNodeAttr(
+      '#favorite-confirm-password-input',
+      'placeholder',
+      readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+    );
+    setNodeAttr(
+      '#favorite-confirm-password-input',
+      'aria-label',
+      readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+    );
     setNodeText('#custom-song-modal-title', readSongMessage('customSongModalTitle', 'Nova música manual'));
     setNodeText('#custom-song-title-label', readSongMessage('customSongTitleLabel', 'Título'));
     setNodeText('#custom-song-key-label', readSongMessage('customSongKeyLabel', 'Tom'));
@@ -551,6 +574,28 @@
     setNodeText(
       '#favorite-confirm-message',
       readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?')
+    );
+    setNodeText('#song-save-location-picker-breadcrumb', readMysteryMessage('assignCategorySelect', 'Selecione o caminho'));
+    setNodeText('#song-save-location-picker-back', readMysteryMessage('assignCategoryBack', 'Voltar'));
+    setNodeAttr(
+      '#song-save-location-picker-search',
+      'placeholder',
+      readMysteryMessage('assignSearchPlaceholder', 'Buscar categoria ou local...')
+    );
+    setNodeAttr(
+      '#song-save-location-picker-search',
+      'aria-label',
+      readMysteryMessage('assignSearchAria', 'Buscar local de salvamento')
+    );
+    setNodeAttr(
+      '#song-save-location-picker-close',
+      'aria-label',
+      readMysteryMessage('assignCategoryCloseAria', 'Fechar seleção')
+    );
+    setNodeAttr(
+      '#song-save-location-picker-close',
+      'title',
+      readMysteryMessage('assignCategoryCloseAria', 'Fechar seleção')
     );
 
     setNodeText('#oracoes .section-header .section-kicker', content.oracoes?.header?.kicker);
@@ -1206,6 +1251,10 @@
   if (mainElement) {
     mainElement.addEventListener('scroll', scheduleSectionSync, { passive: true });
     mainElement.addEventListener('wheel', (event) => {
+      if (isSongSaveLocationPickerOpen()) {
+        event.preventDefault();
+        return;
+      }
       if (!portalModeEnabled) return;
       if (isLandscapeMobileViewport()) return;
       if (Math.abs(event.deltaY) < 8) return;
@@ -1227,6 +1276,11 @@
     }, { passive: false });
 
     mainElement.addEventListener('touchstart', (event) => {
+      if (isSongSaveLocationPickerOpen()) {
+        touchStartY = null;
+        touchStartSectionScrollTop = 0;
+        return;
+      }
       if (!portalModeEnabled) return;
       if (isLandscapeMobileViewport()) {
         touchStartY = null;
@@ -1239,6 +1293,11 @@
     }, { passive: true });
 
     mainElement.addEventListener('touchend', (event) => {
+      if (isSongSaveLocationPickerOpen()) {
+        touchStartY = null;
+        touchStartSectionScrollTop = 0;
+        return;
+      }
       if (isLandscapeMobileViewport()) {
         touchStartY = null;
         touchStartSectionScrollTop = 0;
@@ -1484,9 +1543,42 @@
   const mysterySongAssignSong = document.getElementById('mystery-song-assign-song');
   const mysterySongAssignList = document.getElementById('mystery-song-assign-list');
   const mysterySongAssignCloseButtons = document.querySelectorAll('[data-mystery-song-assign-close]');
+  const songSaveLocationPicker = document.getElementById('song-save-location-picker');
+  const songSaveLocationPickerBreadcrumb = document.getElementById('song-save-location-picker-breadcrumb');
+  const songSaveLocationPickerSong = document.getElementById('song-save-location-picker-song');
+  const songSaveLocationPickerSearchInput = document.getElementById('song-save-location-picker-search');
+  const songSaveLocationPickerBackBtn = document.getElementById('song-save-location-picker-back');
+  const songSaveLocationPickerAddBtn = document.getElementById('song-save-location-picker-add');
+  const songSaveLocationPickerCloseBtn = document.getElementById('song-save-location-picker-close');
+  const songSaveLocationPickerList = document.getElementById('song-save-location-picker-list');
+  const songLocationCreateModal = document.getElementById('song-location-create-modal');
+  const songLocationCreateTitle = document.getElementById('song-location-create-title');
+  const songLocationCreateTargetHint = document.getElementById('song-location-create-target-hint');
+  const songLocationCreateParentSelect = document.getElementById('song-location-create-parent');
+  const songLocationCreateHint = document.getElementById('song-location-create-hint');
+  const songLocationCreateInput = document.getElementById('song-location-create-input');
+  const songLocationCreateCancelBtn = document.getElementById('song-location-create-cancel');
+  const songLocationCreateAcceptBtn = document.getElementById('song-location-create-accept');
+  const songLocationCreateCloseButtons = document.querySelectorAll('[data-song-location-create-close]');
   let lastFocusedMystery = null;
   let lastFocusedMysterySongAssignTrigger = null;
   let mysterySongAssignPendingSong = null;
+  let songSaveLocationPickerPendingSong = null;
+  let songSaveLocationPickerAnchor = null;
+  let songSaveLocationPickerAnchorRect = null;
+  let songSaveLocationPickerFocusTarget = null;
+  let songSaveLocationPickerPointer = null;
+  let songSaveLocationPickerPath = [];
+  let songSaveLocationPickerBaseDepth = 0;
+  let songSaveLocationPickerSearchQuery = '';
+  let songLocationCreateModalParentId = '';
+  let songLocationCreateModalParentLabel = '';
+  let songLocationCreateModalFocusTarget = null;
+  let songLocationCreateModalSubmitting = false;
+  const songSaveLocationPickerTextMeasureContext = (() => {
+    const canvas = document.createElement('canvas');
+    return canvas.getContext('2d');
+  })();
 
   const ensureMysteryNavBeforeTitle = () => {
     if (!mysteryModalLinks) return;
@@ -1573,10 +1665,238 @@
   let mysterySongAssignmentsLoading = false;
   let currentMysteryModalSelection = { title: '', group: '' };
   let mysteryModalSongLoading = false;
+  let songLocationTreeRoots = [];
+  let songLocationTreeLoading = false;
+  let songLocationAssignments = {};
+  let songLocationAssignmentsLoading = false;
+
+  const normalizeSongLocationNodePayload = (rawPayload) => {
+    const payload = asObject(rawPayload);
+    const nodeId = String(payload.node_id || payload.nodeId || payload.id || '').trim();
+    const parentId = String(payload.parent_id || payload.parentId || '').trim();
+    const label = String(payload.label || '').trim();
+    const assignmentMode = String(payload.assignment_mode || payload.assignmentMode || 'location').trim().toLowerCase() === 'mystery'
+      ? 'mystery'
+      : 'location';
+    const mysteryGroupTitle = String(payload.mystery_group_title || payload.mysteryGroupTitle || '').trim();
+    const mysteryTitle = normalizeMysteryName(payload.mystery_title || payload.mysteryTitle || '');
+    const rawChildren = Array.isArray(payload.children) ? payload.children : [];
+    const children = rawChildren
+      .map((child) => normalizeSongLocationNodePayload(child))
+      .filter((child) => Boolean(child.id && child.label));
+    const parsedOrderIndex = Number.parseInt(String(payload.order_index ?? payload.orderIndex ?? ''), 10);
+    const rawIsActive = Object.prototype.hasOwnProperty.call(payload, 'is_active')
+      ? payload.is_active
+      : payload.isActive;
+    const normalizedIsActiveToken = String(rawIsActive ?? '').trim().toLowerCase();
+    return {
+      id: nodeId,
+      parentId,
+      label,
+      orderIndex: Number.isInteger(parsedOrderIndex) && parsedOrderIndex > 0 ? parsedOrderIndex : 0,
+      assignmentMode,
+      mysteryGroupTitle,
+      mysteryTitle,
+      isActive: !(
+        rawIsActive === false
+        || rawIsActive === 0
+        || normalizedIsActiveToken === 'false'
+        || normalizedIsActiveToken === '0'
+        || normalizedIsActiveToken === 'no'
+        || normalizedIsActiveToken === 'off'
+        || normalizedIsActiveToken === 'inativo'
+      ),
+      deletedAtUtc: String(payload.deleted_at_utc || payload.deletedAtUtc || '').trim(),
+      children,
+    };
+  };
+
+  const normalizeSongLocationAssignmentPayload = (rawPayload) => {
+    const payload = asObject(rawPayload);
+    const rawPath = Array.isArray(payload.location_path)
+      ? payload.location_path
+      : (Array.isArray(payload.locationPath) ? payload.locationPath : []);
+    return {
+      assignmentKey: String(payload.assignment_key || payload.assignmentKey || payload.location_id || payload.locationId || '').trim(),
+      locationId: String(payload.location_id || payload.locationId || '').trim(),
+      locationLabel: String(payload.location_label || payload.locationLabel || '').trim(),
+      locationPath: rawPath.map((item) => String(item || '').trim()).filter(Boolean),
+      songTitle: String(payload.song_title || payload.songTitle || '').trim(),
+      songArtist: String(payload.song_artist || payload.songArtist || '').trim(),
+      songUrl: String(payload.song_url || payload.songUrl || '').trim(),
+      source: String(payload.source || '').trim(),
+      sourceLabel: String(payload.source_label || payload.sourceLabel || '').trim(),
+      imageUrl: String(payload.image_url || payload.imageUrl || '').trim(),
+      lyricsText: String(payload.lyrics_text || payload.lyricsText || ''),
+      lyricsSource: String(payload.lyrics_source || payload.lyricsSource || '').trim(),
+      lyricsSourceUrl: String(payload.lyrics_source_url || payload.lyricsSourceUrl || '').trim(),
+      createdAtUtc: String(payload.created_at_utc || payload.createdAtUtc || '').trim(),
+      updatedAtUtc: String(payload.updated_at_utc || payload.updatedAtUtc || '').trim(),
+    };
+  };
+
+  const getSongLocationAssignment = (locationId) => {
+    const safeLocationId = String(locationId || '').trim();
+    if (!safeLocationId) return {};
+    return asObject(songLocationAssignments[safeLocationId]);
+  };
 
   const getMysterySongAssignment = (groupTitle, mysteryTitle) => {
     const key = buildMysterySongAssignmentKey(groupTitle, mysteryTitle);
     return asObject(mysterySongAssignments[key]);
+  };
+
+  const buildSongPayloadFromFavorite = (favoritePayload) => {
+    const favorite = asObject(favoritePayload);
+    return {
+      title: String(favorite.title || favorite.songTitle || '').trim(),
+      artist: String(favorite.artist || favorite.songArtist || '').trim(),
+      url: String(favorite.url || favorite.songUrl || '').trim(),
+      source: String(favorite.source || '').trim(),
+      source_label: String(favorite.sourceLabel || favorite.source_label || '').trim(),
+      image_url: String(favorite.imageUrl || favorite.image_url || '').trim(),
+    };
+  };
+
+  const resolveMysteryItemLabel = (groupTitle, mysteryTitle) => {
+    const normalizedMysteryTitle = normalizeMysteryName(mysteryTitle);
+    if (!normalizedMysteryTitle) return '';
+    const groupItems = resolveMysteryGroupItems(groupTitle);
+    if (Array.isArray(groupItems) && groupItems.length) {
+      const targetKey = normalizeKeyToken(normalizedMysteryTitle);
+      const foundIndex = groupItems.findIndex((itemTitle) => normalizeKeyToken(itemTitle) === targetKey);
+      if (foundIndex >= 0) {
+        return formatMysteryItemLabel(groupItems[foundIndex], foundIndex);
+      }
+    }
+    return normalizedMysteryTitle;
+  };
+
+  const readSongIdentityForMatch = (songPayload) => {
+    const song = asObject(songPayload);
+    return {
+      urlKey: normalizeSongUrlKey(song.url || song.songUrl || song.song_url || ''),
+      titleArtistKey: normalizeSongTitleArtistKey(
+        song.title || song.songTitle || song.song_title || '',
+        song.artist || song.songArtist || song.song_artist || ''
+      ),
+      titleKey: normalizeSongMatchToken(song.title || song.songTitle || song.song_title || ''),
+    };
+  };
+
+  const isSongIdentityMatch = (songIdentity, targetIdentity) => {
+    const safeSongIdentity = asObject(songIdentity);
+    const safeTargetIdentity = asObject(targetIdentity);
+    const matchedByUrl = Boolean(
+      safeSongIdentity.urlKey
+      && safeTargetIdentity.urlKey
+      && safeSongIdentity.urlKey === safeTargetIdentity.urlKey
+    );
+    if (matchedByUrl) return true;
+
+    const matchedByTitleArtist = Boolean(
+      safeSongIdentity.titleArtistKey
+      && safeTargetIdentity.titleArtistKey
+      && safeSongIdentity.titleArtistKey === safeTargetIdentity.titleArtistKey
+    );
+    if (matchedByTitleArtist) return true;
+
+    return Boolean(
+      safeSongIdentity.titleKey
+      && safeTargetIdentity.titleKey
+      && safeSongIdentity.titleKey === safeTargetIdentity.titleKey
+    );
+  };
+
+  const resolveSongMysteryUsageLabels = (songPayload) => {
+    const songIdentity = readSongIdentityForMatch(songPayload);
+    const assignmentRows = Object.values(asObject(mysterySongAssignments));
+    if (!assignmentRows.length) return [];
+
+    const labels = [];
+    const seenLabels = new Set();
+    assignmentRows.forEach((assignmentPayload) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      if (!isSongIdentityMatch(songIdentity, assignmentIdentity)) return;
+
+      const groupTitle = String(assignment.groupTitle || assignment.group_title || '').trim();
+      const mysteryTitle = normalizeMysteryName(assignment.mysteryTitle || assignment.mystery_title || '');
+      if (!groupTitle || !mysteryTitle) return;
+
+      const itemLabel = resolveMysteryItemLabel(groupTitle, mysteryTitle);
+      const usageLabel = itemLabel ? `${groupTitle} > ${itemLabel}` : groupTitle;
+      const usageKey = normalizeSongMatchToken(usageLabel);
+      if (!usageKey || seenLabels.has(usageKey)) return;
+      seenLabels.add(usageKey);
+      labels.push(usageLabel);
+    });
+
+    labels.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
+    return labels;
+  };
+
+  const hasSongMysteryUsage = (songPayload) => {
+    const songIdentity = readSongIdentityForMatch(songPayload);
+    const assignmentRows = Object.values(asObject(mysterySongAssignments));
+    const mysteryMatch = assignmentRows.some((assignmentPayload) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      return isSongIdentityMatch(songIdentity, assignmentIdentity);
+    });
+    if (mysteryMatch) return true;
+
+    const locationRows = Object.values(asObject(songLocationAssignments));
+    return locationRows.some((assignmentPayload) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      return isSongIdentityMatch(songIdentity, assignmentIdentity);
+    });
+  };
+
+  const resolveSongLocationUsageLabels = (songPayload) => {
+    const songIdentity = readSongIdentityForMatch(songPayload);
+    const assignmentRows = Object.values(asObject(songLocationAssignments));
+    if (!assignmentRows.length) return [];
+
+    const labels = [];
+    const seenLabels = new Set();
+    assignmentRows.forEach((assignmentPayload) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      if (!isSongIdentityMatch(songIdentity, assignmentIdentity)) return;
+
+      const path = Array.isArray(assignment.locationPath)
+        ? assignment.locationPath.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+      const locationLabel = String(assignment.locationLabel || '').trim();
+      const usageLabel = path.length
+        ? path.join(' > ')
+        : locationLabel;
+      const usageKey = normalizeSongMatchToken(usageLabel);
+      if (!usageKey || seenLabels.has(usageKey)) return;
+      seenLabels.add(usageKey);
+      labels.push(usageLabel);
+    });
+
+    labels.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
+    return labels;
   };
 
   const cacheMysterySongAssignment = (payload) => {
@@ -1630,6 +1950,7 @@
       });
       mysterySongAssignments = nextAssignments;
       updateMysteryModalSongToggleState();
+      renderSongFavorites();
       return true;
     } catch (err) {
       return false;
@@ -1675,6 +1996,7 @@
         )
       );
     }
+    runDeferredTask(fetchSongFavorites, 80);
 
     const saved = cacheMysterySongAssignment(responsePayload.assignment);
     if (!saved) {
@@ -1710,6 +2032,1396 @@
     removeCachedMysterySongAssignment(safeGroupTitle, safeMysteryTitle);
     updateMysteryModalSongToggleState();
     return Boolean(responsePayload.removed);
+  };
+
+  const cacheSongLocationAssignment = (payload) => {
+    const normalized = normalizeSongLocationAssignmentPayload(payload);
+    const locationId = normalized.locationId;
+    if (!locationId) return null;
+    songLocationAssignments[locationId] = {
+      ...asObject(songLocationAssignments[locationId]),
+      ...normalized,
+      locationId,
+    };
+    return asObject(songLocationAssignments[locationId]);
+  };
+
+  const removeCachedSongLocationAssignment = (locationId) => {
+    const safeLocationId = String(locationId || '').trim();
+    if (!safeLocationId) return false;
+    if (!Object.prototype.hasOwnProperty.call(songLocationAssignments, safeLocationId)) {
+      return false;
+    }
+    delete songLocationAssignments[safeLocationId];
+    return true;
+  };
+
+  const fetchSongLocationAssignments = async () => {
+    if (songLocationAssignmentsLoading) return false;
+    songLocationAssignmentsLoading = true;
+    try {
+      const response = await fetch('/api/song-locations/assignments');
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload?.detail?.message
+          || payload?.message
+          || readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+        );
+      }
+      const nextAssignments = {};
+      const rows = Array.isArray(payload.assignments) ? payload.assignments : [];
+      rows.forEach((row) => {
+        const normalized = normalizeSongLocationAssignmentPayload(row);
+        if (!normalized.locationId) return;
+        nextAssignments[normalized.locationId] = normalized;
+      });
+      songLocationAssignments = nextAssignments;
+      renderSongFavorites();
+      renderSongSaveLocationPicker();
+      return true;
+    } catch (err) {
+      return false;
+    } finally {
+      songLocationAssignmentsLoading = false;
+    }
+  };
+
+  const createSongLocationNodeOnServer = async (label, parentId = '') => {
+    const safeLabel = String(label || '').trim();
+    if (!safeLabel) {
+      throw new Error(readMysteryMessage('assignCategoryAddInvalid', 'Informe um nome para o item.'));
+    }
+    const safeParentId = String(parentId || '').trim();
+    const response = await fetch('/api/song-locations/nodes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        parent_id: safeParentId || '',
+        label: safeLabel,
+      }),
+    });
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        responsePayload?.detail?.message
+        || responsePayload?.message
+        || readMysteryMessage('assignCategoryAddError', 'Não foi possível adicionar o item.')
+      );
+    }
+    return normalizeSongLocationNodePayload(responsePayload.node);
+  };
+
+  const deactivateSongLocationNodeOnServer = async (nodeId, password = '') => {
+    const safeNodeId = String(nodeId || '').trim();
+    const safePassword = String(password || '');
+    if (!safeNodeId) {
+      throw new Error(readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.'));
+    }
+    if (!safePassword.trim()) {
+      throw new Error(
+        readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+      );
+    }
+    const response = await fetch(`/api/song-locations/nodes/${encodeURIComponent(safeNodeId)}`, {
+      method: 'DELETE',
+      headers: {
+        'X-Location-Delete-Password': safePassword,
+      },
+    });
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      const defaultErrorMessage = response.status === 403
+        ? readMysteryMessage('assignCategoryDeactivatePasswordInvalid', 'Senha inválida para inativar o item.')
+        : readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.');
+      throw new Error(
+        responsePayload?.detail?.message
+        || responsePayload?.message
+        || defaultErrorMessage
+      );
+    }
+    return responsePayload;
+  };
+
+  const saveSongLocationAssignmentOnServer = async (target, payload) => {
+    const safeTarget = asObject(target);
+    const safePayload = asObject(payload);
+    const locationId = String(safeTarget.locationId || safeTarget.id || '').trim();
+    if (!locationId) {
+      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+    }
+    const locationLabel = String(safeTarget.locationLabel || safeTarget.label || '').trim();
+    const rawPath = Array.isArray(safeTarget.locationPath) ? safeTarget.locationPath : [];
+    const locationPath = rawPath.map((item) => String(item || '').trim()).filter(Boolean);
+
+    const response = await fetch('/api/song-locations/assignments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        location_id: locationId,
+        location_label: locationLabel,
+        location_path: locationPath,
+        song_title: String(safePayload.songTitle || safePayload.song_title || '').trim(),
+        song_artist: String(safePayload.songArtist || safePayload.song_artist || '').trim(),
+        song_url: String(safePayload.songUrl || safePayload.song_url || '').trim(),
+        source: String(safePayload.source || '').trim(),
+        source_label: String(safePayload.sourceLabel || safePayload.source_label || '').trim(),
+        image_url: String(safePayload.imageUrl || safePayload.image_url || '').trim(),
+        lyrics_text: String(safePayload.lyricsText || safePayload.lyrics_text || ''),
+        lyrics_source: String(safePayload.lyricsSource || safePayload.lyrics_source || '').trim(),
+        lyrics_source_url: String(safePayload.lyricsSourceUrl || safePayload.lyrics_source_url || '').trim(),
+      }),
+    });
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        responsePayload?.detail?.message
+        || responsePayload?.message
+        || readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.')
+      );
+    }
+
+    runDeferredTask(fetchSongFavorites, 80);
+    const saved = cacheSongLocationAssignment(responsePayload.assignment);
+    if (!saved) {
+      throw new Error(readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.'));
+    }
+    return saved;
+  };
+
+  const deleteSongLocationAssignmentOnServer = async (locationId) => {
+    const safeLocationId = String(locationId || '').trim();
+    if (!safeLocationId) {
+      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+    }
+
+    const response = await fetch(
+      `/api/song-locations/assignments?location_id=${encodeURIComponent(safeLocationId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        responsePayload?.detail?.message
+        || responsePayload?.message
+        || readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.')
+      );
+    }
+
+    removeCachedSongLocationAssignment(safeLocationId);
+    return Boolean(responsePayload.removed);
+  };
+
+  const normalizeSongLocationTreeRoots = (rawRoots) => (
+    (Array.isArray(rawRoots) ? rawRoots : [])
+      .map((row) => normalizeSongLocationNodePayload(row))
+      .filter((row) => Boolean(row.id && row.label))
+  );
+
+  const fetchSongLocationTree = async () => {
+    if (songLocationTreeLoading) return false;
+    songLocationTreeLoading = true;
+    try {
+      const response = await fetch('/api/song-locations');
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload?.detail?.message
+          || payload?.message
+          || readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+        );
+      }
+      songLocationTreeRoots = normalizeSongLocationTreeRoots(payload.tree);
+      renderSongSaveLocationPicker();
+      return Array.isArray(songLocationTreeRoots) && songLocationTreeRoots.length > 0;
+    } catch (err) {
+      return false;
+    } finally {
+      songLocationTreeLoading = false;
+    }
+  };
+
+  const isSongSaveLocationPickerOpen = () => Boolean(
+    songSaveLocationPicker
+    && songSaveLocationPicker.classList.contains('open')
+  );
+
+  const readSongSaveLocationPickerAnchorRect = (anchor) => {
+    if (!(anchor instanceof HTMLElement) || !anchor.isConnected) return null;
+    const rect = anchor.getBoundingClientRect();
+    if (
+      !Number.isFinite(rect.left)
+      || !Number.isFinite(rect.top)
+      || !Number.isFinite(rect.width)
+      || !Number.isFinite(rect.height)
+    ) {
+      return null;
+    }
+    return {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+
+  const resolveSongSaveLocationPickerAnchor = (triggerAnchor, activeAnchor) => {
+    const baseAnchor = triggerAnchor || activeAnchor;
+    if (!(baseAnchor instanceof HTMLElement) || !baseAnchor.isConnected) return null;
+    const songItemAnchor = baseAnchor.closest('.song-favorite-item, .song-search-item');
+    if (songItemAnchor instanceof HTMLElement && songItemAnchor.isConnected) {
+      return songItemAnchor;
+    }
+    return baseAnchor;
+  };
+
+  const normalizeSongSaveLocationPickerPointer = (rawPointer) => {
+    const payload = asObject(rawPointer);
+    const candidateX = Number(payload.x ?? payload.clientX ?? payload.pointerX ?? Number.NaN);
+    const candidateY = Number(payload.y ?? payload.clientY ?? payload.pointerY ?? Number.NaN);
+    if (!Number.isFinite(candidateX) || !Number.isFinite(candidateY)) {
+      return null;
+    }
+    return {
+      x: candidateX,
+      y: candidateY,
+    };
+  };
+
+  const positionSongSaveLocationPicker = () => {
+    if (!songSaveLocationPicker || !isSongSaveLocationPickerOpen()) return;
+    const anchor = (
+      songSaveLocationPickerAnchor instanceof HTMLElement
+      && songSaveLocationPickerAnchor.isConnected
+    )
+      ? songSaveLocationPickerAnchor
+      : null;
+
+    const viewportPadding = 8;
+    const anchorRect = anchor
+      ? readSongSaveLocationPickerAnchorRect(anchor)
+      : songSaveLocationPickerAnchorRect;
+    const readElementRenderWidth = (element) => {
+      if (!(element instanceof HTMLElement)) return 0;
+      return Math.max(
+        element.offsetWidth || 0,
+        element.clientWidth || 0,
+        element.scrollWidth || 0
+      );
+    };
+    const measureNodeTextWidth = (element) => {
+      if (!(element instanceof HTMLElement) || !songSaveLocationPickerTextMeasureContext) return 0;
+      const content = String(element.textContent || '').trim();
+      if (!content) return 0;
+      const styles = window.getComputedStyle(element);
+      const font = styles.font || [
+        styles.fontStyle,
+        styles.fontVariant,
+        styles.fontWeight,
+        styles.fontSize,
+        styles.lineHeight ? `/${styles.lineHeight}` : '',
+        styles.fontFamily,
+      ].filter(Boolean).join(' ');
+      songSaveLocationPickerTextMeasureContext.font = font || '700 13px sans-serif';
+      return Math.ceil(songSaveLocationPickerTextMeasureContext.measureText(content).width);
+    };
+    const viewportMaxWidth = Math.max(160, window.innerWidth - (viewportPadding * 2));
+    const maxWidth = viewportMaxWidth;
+    const maxTitleWidth = Math.max(
+      0,
+      ...Array.from(songSaveLocationPickerList?.querySelectorAll('.song-save-location-picker-item-title') || [])
+        .map((node) => measureNodeTextWidth(node))
+    );
+    const maxMetaWidth = Math.max(
+      0,
+      ...Array.from(songSaveLocationPickerList?.querySelectorAll('.song-save-location-picker-item-meta') || [])
+        .map((node) => measureNodeTextWidth(node))
+    );
+    const songLineWidth = measureNodeTextWidth(songSaveLocationPickerSong);
+    const breadcrumbWidth = measureNodeTextWidth(songSaveLocationPickerBreadcrumb);
+    const listWidthTarget = Math.max(maxTitleWidth, maxMetaWidth) + 88;
+    const headerWidthTarget = Math.max(songLineWidth, breadcrumbWidth) + 94;
+    songSaveLocationPicker.style.width = 'auto';
+    songSaveLocationPicker.style.minWidth = '170px';
+    songSaveLocationPicker.style.maxWidth = `${Math.round(maxWidth)}px`;
+    const measuredWidth = Math.max(
+      250,
+      listWidthTarget,
+      headerWidthTarget,
+      readElementRenderWidth(songSaveLocationPicker),
+      readElementRenderWidth(songSaveLocationPickerList),
+      readElementRenderWidth(songSaveLocationPicker.querySelector('.song-save-location-picker-head')),
+      readElementRenderWidth(songSaveLocationPicker.querySelector('.song-save-location-picker-tools'))
+    );
+    const pickerWidth = Math.min(
+      Math.max(measuredWidth, 170),
+      maxWidth
+    );
+    const viewportMaxHeight = Math.max(
+      120,
+      Math.min(
+        Math.floor(window.innerHeight * 0.76),
+        window.innerHeight - (viewportPadding * 2)
+      )
+    );
+    songSaveLocationPicker.style.width = `${Math.round(pickerWidth)}px`;
+    songSaveLocationPicker.style.height = 'auto';
+    songSaveLocationPicker.style.maxHeight = `${Math.round(viewportMaxHeight)}px`;
+    const measuredHeight = songSaveLocationPicker.offsetHeight
+      || songSaveLocationPicker.scrollHeight
+      || 340;
+    const currentHeight = Math.min(measuredHeight, viewportMaxHeight);
+    const pointer = normalizeSongSaveLocationPickerPointer(songSaveLocationPickerPointer);
+
+    let left = Math.max(
+      viewportPadding,
+      Math.round((window.innerWidth - pickerWidth) / 2)
+    );
+    let top = Math.max(
+      viewportPadding,
+      Math.round((window.innerHeight - currentHeight) / 2)
+    );
+
+    if (pointer) {
+      const pointerGap = 10;
+      const rightLeft = pointer.x + pointerGap;
+      const leftLeft = pointer.x - pickerWidth - pointerGap;
+      if (rightLeft + pickerWidth <= window.innerWidth - viewportPadding) {
+        left = rightLeft;
+      } else if (leftLeft >= viewportPadding) {
+        left = leftLeft;
+      } else {
+        left = pointer.x - (pickerWidth / 2);
+      }
+      left = Math.max(viewportPadding, Math.min(left, window.innerWidth - pickerWidth - viewportPadding));
+
+      const belowTop = pointer.y + pointerGap;
+      const aboveTop = pointer.y - currentHeight - pointerGap;
+      if (belowTop + currentHeight <= window.innerHeight - viewportPadding) {
+        top = belowTop;
+      } else if (aboveTop >= viewportPadding) {
+        top = aboveTop;
+      } else {
+        top = pointer.y - (currentHeight / 2);
+      }
+      top = Math.max(viewportPadding, Math.min(top, window.innerHeight - currentHeight - viewportPadding));
+    } else if (anchorRect) {
+      const anchorGap = 10;
+      const rightLeft = anchorRect.right + anchorGap;
+      const leftLeft = anchorRect.left - pickerWidth - anchorGap;
+      if (rightLeft + pickerWidth <= window.innerWidth - viewportPadding) {
+        left = rightLeft;
+      } else if (leftLeft >= viewportPadding) {
+        left = leftLeft;
+      } else {
+        left = anchorRect.left;
+      }
+      left = Math.max(viewportPadding, Math.min(left, window.innerWidth - pickerWidth - viewportPadding));
+
+      const belowTop = anchorRect.bottom + anchorGap;
+      const aboveTop = anchorRect.top - currentHeight - anchorGap;
+      if (belowTop + currentHeight <= window.innerHeight - viewportPadding) {
+        top = belowTop;
+      } else if (aboveTop >= viewportPadding) {
+        top = aboveTop;
+      } else {
+        const maxTop = Math.max(viewportPadding, window.innerHeight - currentHeight - viewportPadding);
+        top = Math.max(viewportPadding, Math.min(anchorRect.top, maxTop));
+      }
+    }
+
+    songSaveLocationPicker.style.left = `${Math.round(left)}px`;
+    songSaveLocationPicker.style.top = `${Math.round(top)}px`;
+  };
+
+  const isSongLocationCreateModalOpen = () => Boolean(
+    songLocationCreateModal
+    && songLocationCreateModal.classList.contains('open')
+  );
+
+  const setSongLocationCreateModalSubmittingState = (submitting) => {
+    songLocationCreateModalSubmitting = Boolean(submitting);
+    if (songLocationCreateParentSelect) {
+      songLocationCreateParentSelect.disabled = songLocationCreateModalSubmitting;
+    }
+    if (songLocationCreateInput) {
+      songLocationCreateInput.disabled = songLocationCreateModalSubmitting;
+    }
+    if (songLocationCreateAcceptBtn) {
+      songLocationCreateAcceptBtn.disabled = songLocationCreateModalSubmitting;
+    }
+    if (songLocationCreateCancelBtn) {
+      songLocationCreateCancelBtn.disabled = songLocationCreateModalSubmitting;
+    }
+  };
+
+  const syncSongLocationCreateModalTargetState = () => {
+    if (songLocationCreateParentSelect) {
+      const selectedOption = songLocationCreateParentSelect.selectedOptions?.[0]
+        || songLocationCreateParentSelect.options[songLocationCreateParentSelect.selectedIndex]
+        || null;
+      songLocationCreateModalParentId = String(songLocationCreateParentSelect.value || '').trim();
+      songLocationCreateModalParentLabel = String(
+        selectedOption?.dataset?.parentLabel
+        || selectedOption?.textContent
+        || ''
+      ).trim();
+    }
+
+    const titleText = songLocationCreateModalParentLabel
+      ? readMysteryMessage(
+        'assignCategoryAddPromptChild',
+        'Novo item dentro de "{parent}"',
+        { parent: songLocationCreateModalParentLabel }
+      )
+      : readMysteryMessage('assignCategoryAddPromptRoot', 'Novo item na raiz');
+    if (songLocationCreateTitle) {
+      songLocationCreateTitle.textContent = titleText;
+    }
+  };
+
+  const populateSongLocationCreateParentSelect = (preferredParentId = '') => {
+    if (!songLocationCreateParentSelect) return;
+    const roots = buildSongSaveLocationPickerTree();
+    const entries = buildSongSaveLocationPickerSearchEntries(roots)
+      .filter((entry) => {
+        const node = asObject(entry.node);
+        return String(node.nodeType || '').trim() === 'location-node';
+      });
+
+    const safePreferredParentId = String(preferredParentId || '').trim();
+    const previousParentId = String(songLocationCreateModalParentId || '').trim();
+    const selectedCandidate = safePreferredParentId || previousParentId;
+    songLocationCreateParentSelect.innerHTML = '';
+
+    const appendOption = (value, label) => {
+      const option = document.createElement('option');
+      option.value = String(value || '').trim();
+      option.textContent = String(label || '').trim();
+      option.dataset.parentLabel = option.textContent;
+      songLocationCreateParentSelect.appendChild(option);
+      return option;
+    };
+
+    const rootLabel = readMysteryMessage('assignCategoryRootOption', 'Raiz');
+    appendOption('', rootLabel);
+
+    const seenIds = new Set();
+    entries.forEach((entry) => {
+      const safeEntry = asObject(entry);
+      const node = asObject(safeEntry.node);
+      const locationId = String(node.locationId || '').trim()
+        || String(node.id || '').trim().replace(/^location:/i, '').trim();
+      if (!locationId || seenIds.has(locationId)) return;
+      seenIds.add(locationId);
+      const resolvedLabel = Array.isArray(node.locationPath) && node.locationPath.length
+        ? node.locationPath.map((item) => String(item || '').trim()).filter(Boolean).join(' / ')
+        : (
+          String(safeEntry.pathLabel || '').trim().replace(/\s*->\s*/g, ' / ')
+          || String(node.label || '').trim()
+        );
+      appendOption(locationId, resolvedLabel);
+    });
+
+    if (
+      selectedCandidate
+      && Array.from(songLocationCreateParentSelect.options).some((option) => option.value === selectedCandidate)
+    ) {
+      songLocationCreateParentSelect.value = selectedCandidate;
+    } else {
+      songLocationCreateParentSelect.value = '';
+    }
+
+    syncSongLocationCreateModalTargetState();
+  };
+
+  const closeSongLocationCreateModal = (options = {}) => {
+    if (!songLocationCreateModal) return;
+    const safeOptions = asObject(options);
+    const restoreFocus = safeOptions.restoreFocus !== false;
+    const focusTarget = restoreFocus
+      ? (
+        songLocationCreateModalFocusTarget instanceof HTMLElement
+          ? songLocationCreateModalFocusTarget
+          : (songSaveLocationPickerAddBtn instanceof HTMLElement ? songSaveLocationPickerAddBtn : null)
+      )
+      : null;
+    songLocationCreateModal.classList.remove('open');
+    songLocationCreateModal.setAttribute('aria-hidden', 'true');
+    songLocationCreateModalParentId = '';
+    songLocationCreateModalParentLabel = '';
+    songLocationCreateModalFocusTarget = null;
+    setSongLocationCreateModalSubmittingState(false);
+    if (songLocationCreateParentSelect) {
+      songLocationCreateParentSelect.innerHTML = '';
+    }
+    if (songLocationCreateInput) {
+      songLocationCreateInput.value = '';
+    }
+    syncBodyModalLock();
+    if (focusTarget instanceof HTMLElement && isSongSaveLocationPickerOpen()) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+  };
+
+  const openSongLocationCreateModal = (parentId = '', parentLabel = '', triggerElement = null) => {
+    if (!songLocationCreateModal) return;
+    songLocationCreateModalParentId = String(parentId || '').trim();
+    songLocationCreateModalParentLabel = String(parentLabel || '').trim();
+    songLocationCreateModalFocusTarget = triggerElement instanceof HTMLElement
+      ? triggerElement
+      : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    populateSongLocationCreateParentSelect(songLocationCreateModalParentId);
+    if (songLocationCreateTargetHint) {
+      songLocationCreateTargetHint.textContent = readMysteryMessage(
+        'assignCategoryAddTargetField',
+        'Adicionar dentro de:'
+      );
+    }
+    const hintText = readMysteryMessage('assignCategoryAddPromptField', 'Nome do item:');
+    if (songLocationCreateHint) {
+      songLocationCreateHint.textContent = hintText;
+    }
+    if (songLocationCreateInput) {
+      songLocationCreateInput.value = '';
+      songLocationCreateInput.placeholder = readMysteryMessage(
+        'assignCategoryAddModalPlaceholder',
+        'Digite o nome do item'
+      );
+      songLocationCreateInput.setAttribute('aria-label', hintText);
+    }
+    setSongLocationCreateModalSubmittingState(false);
+    songLocationCreateModal.classList.add('open');
+    songLocationCreateModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    window.requestAnimationFrame(() => {
+      if (songLocationCreateInput instanceof HTMLElement) {
+        focusWithoutScrollingPage(songLocationCreateInput);
+      }
+    });
+  };
+
+  const submitSongLocationCreateModal = async () => {
+    if (!songLocationCreateModal || !isSongLocationCreateModalOpen() || songLocationCreateModalSubmitting) {
+      return;
+    }
+    syncSongLocationCreateModalTargetState();
+    const label = String(songLocationCreateInput?.value || '').trim();
+    if (!label) {
+      showSongToast(
+        readMysteryMessage('assignCategoryAddInvalid', 'Informe um nome para o item.'),
+        'is-warning'
+      );
+      if (songLocationCreateInput instanceof HTMLElement) {
+        window.requestAnimationFrame(() => {
+          focusWithoutScrollingPage(songLocationCreateInput);
+        });
+      }
+      return;
+    }
+
+    setSongLocationCreateModalSubmittingState(true);
+    try {
+      const selectedParentId = songLocationCreateParentSelect
+        ? String(songLocationCreateParentSelect.value || '').trim()
+        : String(songLocationCreateModalParentId || '').trim();
+      await createSongLocationNodeOnServer(label, selectedParentId);
+      if (songSaveLocationPickerSearchQuery.trim()) {
+        songSaveLocationPickerSearchQuery = '';
+        if (songSaveLocationPickerSearchInput) {
+          songSaveLocationPickerSearchInput.value = '';
+        }
+      }
+      await fetchSongLocationTree();
+      renderSongSaveLocationPicker();
+      positionSongSaveLocationPicker();
+      closeSongLocationCreateModal({ restoreFocus: false });
+      showSongToast(
+        readMysteryMessage('assignCategoryAddSuccess', 'Item adicionado com sucesso.'),
+        'is-success'
+      );
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readMysteryMessage('assignCategoryAddError', 'Não foi possível adicionar o item.');
+      showSongToast(message, 'is-error');
+    } finally {
+      if (isSongLocationCreateModalOpen()) {
+        setSongLocationCreateModalSubmittingState(false);
+        if (songLocationCreateInput instanceof HTMLElement) {
+          window.requestAnimationFrame(() => {
+            focusWithoutScrollingPage(songLocationCreateInput);
+          });
+        }
+      }
+    }
+  };
+
+  const closeSongSaveLocationPicker = () => {
+    if (!songSaveLocationPicker) return;
+    if (isSongLocationCreateModalOpen()) {
+      closeSongLocationCreateModal({ restoreFocus: false });
+    }
+    const focusTarget = songSaveLocationPickerFocusTarget instanceof HTMLElement
+      ? songSaveLocationPickerFocusTarget
+      : (
+        songSaveLocationPickerAnchor instanceof HTMLElement
+          ? songSaveLocationPickerAnchor
+          : null
+      );
+    songSaveLocationPicker.classList.remove('open');
+    songSaveLocationPicker.setAttribute('aria-hidden', 'true');
+    songSaveLocationPicker.removeAttribute('style');
+    syncBodyModalLock();
+    songSaveLocationPickerPendingSong = null;
+    songSaveLocationPickerAnchor = null;
+    songSaveLocationPickerAnchorRect = null;
+    songSaveLocationPickerFocusTarget = null;
+    songSaveLocationPickerPointer = null;
+    songSaveLocationPickerPath = [];
+    songSaveLocationPickerBaseDepth = 0;
+    songSaveLocationPickerSearchQuery = '';
+    if (songSaveLocationPickerSearchInput) {
+      songSaveLocationPickerSearchInput.value = '';
+    }
+    if (focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+  };
+
+  const resolveMysteryGroupItems = (groupTitle) => {
+    const normalizedGroupKey = canonicalMysteryGroupKey(groupTitle);
+    if (!normalizedGroupKey) return [];
+
+    const catalogGroup = mysterySongGroupsCatalog.find(
+      (entry) => canonicalMysteryGroupKey(entry.title) === normalizedGroupKey
+    );
+    if (catalogGroup && Array.isArray(catalogGroup.items) && catalogGroup.items.length) {
+      return catalogGroup.items.map((item) => normalizeMysteryName(item)).filter(Boolean);
+    }
+
+    const fallbackEntry = Object.entries(asObject(mysteryItemsByGroup)).find(
+      ([rawGroupTitle]) => canonicalMysteryGroupKey(rawGroupTitle) === normalizedGroupKey
+    );
+    const fallbackItems = fallbackEntry ? fallbackEntry[1] : [];
+    return Array.isArray(fallbackItems)
+      ? fallbackItems.map((item) => normalizeMysteryName(item)).filter(Boolean)
+      : [];
+  };
+
+  const buildMysteryPickerLeafNodes = (group) => {
+    const safeGroup = asObject(group);
+    const groupTitle = String(safeGroup.title || '').trim();
+    const groupDay = String(safeGroup.day || '').trim();
+    const groupKey = canonicalMysteryGroupKey(groupTitle);
+    if (!groupKey) return [];
+
+    const groupItems = resolveMysteryGroupItems(groupTitle);
+    return groupItems.map((itemTitle, index) => ({
+      id: `item:mystery:${groupKey}:${index + 1}:${normalizeKeyToken(itemTitle)}`,
+      label: formatMysteryItemLabel(itemTitle, index),
+      meta: '',
+      leafType: 'mystery',
+      groupTitle,
+      groupDay,
+      mysteryTitle: itemTitle,
+    }));
+  };
+
+  const buildSongSaveLocationPickerTree = () => {
+    const buildFromDynamicRoots = () => {
+      if (!Array.isArray(songLocationTreeRoots) || !songLocationTreeRoots.length) return [];
+
+      const visitNode = (rawNode, parentNodes = []) => {
+        const node = asObject(rawNode);
+        const nodeId = String(node.id || node.nodeId || '').trim();
+        const nodeLabel = String(node.label || '').trim();
+        if (!nodeId || !nodeLabel) return null;
+
+        const currentPathNodes = [...parentNodes, { label: nodeLabel, id: nodeId }];
+        const childNodes = (Array.isArray(node.children) ? node.children : [])
+          .map((child) => visitNode(child, currentPathNodes))
+          .filter(Boolean);
+        const hasChildren = childNodes.length > 0;
+        const assignmentMode = String(node.assignmentMode || node.assignment_mode || 'location').trim().toLowerCase() === 'mystery'
+          ? 'mystery'
+          : 'location';
+
+        const safePathLabels = currentPathNodes
+          .map((pathNode) => String(pathNode.label || '').trim())
+          .filter(Boolean);
+        const parentLabel = parentNodes.length
+          ? String(parentNodes[parentNodes.length - 1].label || '').trim()
+          : '';
+        const mysteryGroupTitle = String(node.mysteryGroupTitle || node.mystery_group_title || '').trim() || parentLabel;
+        const mysteryTitle = normalizeMysteryName(node.mysteryTitle || node.mystery_title || nodeLabel);
+
+        return {
+          id: `location:${nodeId}`,
+          label: nodeLabel,
+          meta: '',
+          nodeType: 'location-node',
+          locationId: nodeId,
+          locationLabel: nodeLabel,
+          locationPath: safePathLabels,
+          assignmentMode,
+          leafType: hasChildren
+            ? ''
+            : (assignmentMode === 'mystery' ? 'mystery' : 'location'),
+          groupTitle: mysteryGroupTitle,
+          mysteryTitle,
+          children: childNodes,
+        };
+      };
+
+      return songLocationTreeRoots
+        .map((node) => visitNode(node))
+        .filter(Boolean);
+    };
+
+    const dynamicRoots = buildFromDynamicRoots();
+    if (dynamicRoots.length) {
+      return dynamicRoots;
+    }
+
+    const mysteryChildren = mysterySongGroupsCatalog.map((group) => {
+      const groupKey = canonicalMysteryGroupKey(group.title);
+      return {
+        id: `group:mystery:${groupKey}`,
+        label: group.title,
+        meta: group.day || '',
+        nodeType: 'mystery-group',
+        groupTitle: group.title,
+        groupDay: group.day || '',
+        children: buildMysteryPickerLeafNodes(group),
+      };
+    });
+    if (!mysteryChildren.length) return [];
+
+    const mysteryNode = {
+      id: 'category:mystery',
+      label: readMysteryMessage('assignCategoryMystery', 'Mistério'),
+      meta: '',
+      children: mysteryChildren,
+    };
+
+    return [mysteryNode];
+  };
+
+  const normalizeSongSaveLocationPickerSearchQuery = (value) => (
+    String(value || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+  );
+
+  const buildSongSaveLocationPickerSearchEntries = (roots) => {
+    const entries = [];
+
+    const walkNodes = (nodes, parentPathNodes = []) => {
+      if (!Array.isArray(nodes)) return;
+      nodes.forEach((rawNode) => {
+        const node = asObject(rawNode);
+        const nodeId = String(node.id || '').trim();
+        const nodeLabel = String(node.label || '').trim();
+        if (!nodeId || !nodeLabel) return;
+
+        const pathNodes = [...parentPathNodes, node];
+        const pathLabel = pathNodes
+          .map((pathNode) => String(pathNode.label || '').trim())
+          .filter(Boolean)
+          .join(' -> ');
+        const searchText = normalizeKeyToken([
+          nodeLabel,
+          String(node.meta || '').trim(),
+          String(node.mysteryTitle || '').trim(),
+          pathLabel,
+        ].filter(Boolean).join(' '));
+
+        entries.push({
+          node,
+          pathNodes,
+          pathIds: pathNodes.map((pathNode) => String(pathNode.id || '').trim()).filter(Boolean),
+          pathLabel,
+          searchText,
+        });
+
+        if (Array.isArray(node.children) && node.children.length) {
+          walkNodes(node.children, pathNodes);
+        }
+      });
+    };
+
+    walkNodes(roots);
+    return entries;
+  };
+
+  const resolveSongSaveLocationPickerSearchResults = (roots, rawQuery) => {
+    const normalizedQuery = normalizeKeyToken(normalizeSongSaveLocationPickerSearchQuery(rawQuery));
+    if (!normalizedQuery) return [];
+    return buildSongSaveLocationPickerSearchEntries(roots).filter((entry) => (
+      String(entry.searchText || '').includes(normalizedQuery)
+    ));
+  };
+
+  const resolveSongSaveLocationPickerBranch = () => {
+    const roots = buildSongSaveLocationPickerTree();
+    let currentNodes = roots;
+    const nextPath = [];
+    const pathNodes = [];
+
+    songSaveLocationPickerPath.forEach((pathKey) => {
+      const found = currentNodes.find((node) => node && node.id === pathKey && Array.isArray(node.children));
+      if (!found || !Array.isArray(found.children)) return;
+      pathNodes.push(found);
+      nextPath.push(pathKey);
+      currentNodes = found.children;
+    });
+
+    if (nextPath.length !== songSaveLocationPickerPath.length) {
+      songSaveLocationPickerPath = nextPath;
+    }
+
+    return {
+      roots,
+      pathNodes,
+      currentNodes,
+    };
+  };
+
+  const assignPendingSongToMysteryTarget = async (target, triggerElement = null) => {
+    const safeTarget = asObject(target);
+    const groupTitle = String(safeTarget.groupTitle || '').trim();
+    const mysteryTitle = normalizeMysteryName(safeTarget.mysteryTitle || '');
+    if (!groupTitle || !mysteryTitle) {
+      showSongToast(
+        readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'),
+        'is-error'
+      );
+      return false;
+    }
+
+    const song = asObject(songSaveLocationPickerPendingSong || mysterySongAssignPendingSong);
+    if (!song.title && !song.url) {
+      showSongToast(
+        readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+        'is-error'
+      );
+      return false;
+    }
+
+    const currentAssignment = getMysterySongAssignment(groupTitle, mysteryTitle);
+    const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
+    if (hasCurrentAssignment) {
+      const currentSongTitle = String(currentAssignment.songTitle || '').trim()
+        || readSongMessage('defaultSongTitle', 'Música atual');
+      const nextSongTitle = String(song.title || '').trim()
+        || readSongMessage('defaultSongTitle', 'Nova música');
+      const removeMessage = readMysteryMessage(
+        'assignRemoveConfirmMessageWithTitle',
+        'Deseja remover "{title}" deste mistério?',
+        { title: currentSongTitle }
+      );
+      const existingAction = await openFavoriteDecisionModal({
+        triggerElement,
+        title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
+        message: readMysteryMessage(
+          'assignExistingChoiceMessage',
+          'Este mistério já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+          { current: currentSongTitle, next: nextSongTitle }
+        ),
+        cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
+        acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+        fallbackCancelConfirmMessage: removeMessage,
+      });
+      if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return false;
+
+      if (existingAction === FAVORITE_CONFIRM_ACTION_CANCEL) {
+        try {
+          await deleteMysterySongAssignmentOnServer(groupTitle, mysteryTitle);
+        } catch (err) {
+          const message = err instanceof Error
+            ? err.message
+            : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+          showSongToast(message, 'is-error');
+          return false;
+        }
+
+        if (
+          canonicalMysteryGroupKey(groupTitle) === canonicalMysteryGroupKey(currentMysteryModalSelection.group)
+          && normalizeMysteryName(mysteryTitle) === normalizeMysteryName(currentMysteryModalSelection.title)
+        ) {
+          closeMysterySongPanel();
+          updateMysteryModalSongToggleState();
+        }
+
+        renderMysterySongAssignList();
+        renderSongSaveLocationPicker();
+        renderSongFavorites();
+        showSongToast(
+          readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+          'is-success'
+        );
+        return true;
+      }
+    }
+
+    try {
+      await saveMysterySongAssignmentOnServer(groupTitle, mysteryTitle, {
+        songTitle: String(song.title || '').trim(),
+        songArtist: String(song.artist || '').trim(),
+        songUrl: String(song.url || '').trim(),
+        source: String(song.source || '').trim(),
+        sourceLabel: resolveSongSourceLabel(
+          String(song.source || '').trim(),
+          String(song.source_label || '').trim()
+        ),
+        imageUrl: String(song.image_url || '').trim(),
+        lyricsText: '',
+        lyricsSource: '',
+        lyricsSourceUrl: '',
+        groupDay: String(safeTarget.groupDay || '').trim(),
+      });
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+      showSongToast(message, 'is-error');
+      return false;
+    }
+
+    if (
+      canonicalMysteryGroupKey(groupTitle) === canonicalMysteryGroupKey(currentMysteryModalSelection.group)
+      && normalizeMysteryName(mysteryTitle) === normalizeMysteryName(currentMysteryModalSelection.title)
+    ) {
+      closeMysterySongPanel();
+      updateMysteryModalSongToggleState();
+    }
+
+    renderMysterySongAssignList();
+    renderSongSaveLocationPicker();
+    renderSongFavorites();
+    showSongToast(
+      readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+      'is-success'
+    );
+    closeSongSaveLocationPicker();
+    return true;
+  };
+
+  const assignPendingSongToLocationTarget = async (target, triggerElement = null) => {
+    const safeTarget = asObject(target);
+    const locationId = String(safeTarget.locationId || safeTarget.id || '').trim();
+    if (!locationId) {
+      showSongToast(
+        readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'),
+        'is-error'
+      );
+      return false;
+    }
+
+    const song = asObject(songSaveLocationPickerPendingSong || mysterySongAssignPendingSong);
+    if (!song.title && !song.url) {
+      showSongToast(
+        readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+        'is-error'
+      );
+      return false;
+    }
+
+    const currentAssignment = getSongLocationAssignment(locationId);
+    const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
+    if (hasCurrentAssignment) {
+      const currentSongTitle = String(currentAssignment.songTitle || '').trim()
+        || readSongMessage('defaultSongTitle', 'Música atual');
+      const nextSongTitle = String(song.title || '').trim()
+        || readSongMessage('defaultSongTitle', 'Nova música');
+      const removeMessage = readMysteryMessage(
+        'assignRemoveConfirmMessageWithTitle',
+        'Deseja remover "{title}" deste local?',
+        { title: currentSongTitle }
+      );
+      const existingAction = await openFavoriteDecisionModal({
+        triggerElement,
+        title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
+        message: readMysteryMessage(
+          'assignExistingChoiceMessage',
+          'Este local já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+          { current: currentSongTitle, next: nextSongTitle }
+        ),
+        cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
+        acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+        fallbackCancelConfirmMessage: removeMessage,
+      });
+      if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return false;
+
+      if (existingAction === FAVORITE_CONFIRM_ACTION_CANCEL) {
+        try {
+          await deleteSongLocationAssignmentOnServer(locationId);
+        } catch (err) {
+          const message = err instanceof Error
+            ? err.message
+            : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+          showSongToast(message, 'is-error');
+          return false;
+        }
+
+        renderSongSaveLocationPicker();
+        renderSongFavorites();
+        showSongToast(
+          readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+          'is-success'
+        );
+        return true;
+      }
+    }
+
+    try {
+      await saveSongLocationAssignmentOnServer(safeTarget, {
+        songTitle: String(song.title || '').trim(),
+        songArtist: String(song.artist || '').trim(),
+        songUrl: String(song.url || '').trim(),
+        source: String(song.source || '').trim(),
+        sourceLabel: resolveSongSourceLabel(
+          String(song.source || '').trim(),
+          String(song.source_label || '').trim()
+        ),
+        imageUrl: String(song.image_url || '').trim(),
+        lyricsText: '',
+        lyricsSource: '',
+        lyricsSourceUrl: '',
+      });
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+      showSongToast(message, 'is-error');
+      return false;
+    }
+
+    renderSongSaveLocationPicker();
+    renderSongFavorites();
+    showSongToast(
+      readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+      'is-success'
+    );
+    closeSongSaveLocationPicker();
+    return true;
+  };
+
+  const deactivateSongLocationNodeFromPicker = async (nodePayload, triggerElement = null) => {
+    const node = asObject(nodePayload);
+    const nodeId = String(node.locationId || node.id || '').trim();
+    const nodeLabel = String(node.label || node.locationLabel || '').trim()
+      || readMysteryMessage('assignCategoryRootLabel', 'raiz');
+    if (!nodeId) {
+      showSongToast(
+        readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.'),
+        'is-error'
+      );
+      return false;
+    }
+
+    const shouldDeactivate = await openFavoriteConfirmModal({
+      triggerElement,
+      title: readMysteryMessage('assignCategoryDeactivateConfirmTitle', 'Inativar item'),
+      message: readMysteryMessage(
+        'assignCategoryDeactivateConfirmMessage',
+        'Deseja inativar "{title}"? O item ficará oculto e poderá ser recuperado depois.',
+        { title: nodeLabel }
+      ),
+      cancelLabel: readMysteryMessage('favoriteRemoveConfirmCancel', 'Cancelar'),
+      acceptLabel: readMysteryMessage('assignCategoryDeactivateConfirmAccept', 'Inativar'),
+      requirePassword: true,
+      passwordLabel: readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação'),
+      passwordPlaceholder: readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha'),
+    });
+    if (!shouldDeactivate) return false;
+    const deactivatePassword = consumeFavoriteConfirmPassword();
+
+    try {
+      await deactivateSongLocationNodeOnServer(nodeId, deactivatePassword);
+      if (songSaveLocationPickerSearchQuery.trim()) {
+        songSaveLocationPickerSearchQuery = '';
+        if (songSaveLocationPickerSearchInput) {
+          songSaveLocationPickerSearchInput.value = '';
+        }
+      }
+      await fetchSongLocationTree();
+      renderSongSaveLocationPicker();
+      positionSongSaveLocationPicker();
+      showSongToast(
+        readMysteryMessage('assignCategoryDeactivateSuccess', 'Item inativado com sucesso.'),
+        'is-success'
+      );
+      return true;
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.');
+      showSongToast(message, 'is-error');
+      return false;
+    }
+  };
+
+  const renderSongSaveLocationPicker = () => {
+    if (!songSaveLocationPickerList) return;
+    const branch = resolveSongSaveLocationPickerBranch();
+    const pathNodes = branch.pathNodes;
+    const nodes = Array.isArray(branch.currentNodes) ? branch.currentNodes : [];
+    const normalizedSearchQuery = normalizeSongSaveLocationPickerSearchQuery(songSaveLocationPickerSearchQuery);
+    const isSearching = Boolean(normalizedSearchQuery);
+    const searchResults = isSearching
+      ? resolveSongSaveLocationPickerSearchResults(branch.roots, normalizedSearchQuery)
+      : [];
+    const canGoBack = !isSearching && pathNodes.length > songSaveLocationPickerBaseDepth;
+    const currentParentNode = pathNodes.length ? asObject(pathNodes[pathNodes.length - 1]) : null;
+    const currentParentId = currentParentNode
+      ? (
+        String(currentParentNode.locationId || '').trim()
+        || String(currentParentNode.id || '').trim().replace(/^location:/i, '').trim()
+      )
+      : '';
+
+    if (songSaveLocationPickerSearchInput && songSaveLocationPickerSearchInput.value !== songSaveLocationPickerSearchQuery) {
+      songSaveLocationPickerSearchInput.value = songSaveLocationPickerSearchQuery;
+    }
+
+    if (songSaveLocationPickerBackBtn) {
+      songSaveLocationPickerBackBtn.hidden = !canGoBack;
+    }
+    if (songSaveLocationPickerAddBtn) {
+      // Adicao via portal removida: gestao de criacao/exclusao agora e apenas na URI admin.
+      songSaveLocationPickerAddBtn.hidden = true;
+      songSaveLocationPickerAddBtn.disabled = true;
+    }
+    if (songSaveLocationPickerBreadcrumb) {
+      songSaveLocationPickerBreadcrumb.textContent = isSearching
+        ? readMysteryMessage('assignSearchResultsQuery', 'Busca: "{query}"', { query: normalizedSearchQuery })
+        : (
+          pathNodes.map((node) => node.label || '').filter(Boolean).join(' / ')
+          || readMysteryMessage('assignCategorySelect', 'Selecione o caminho')
+        );
+    }
+
+    const renderPickerNodeButton = (node, options = {}) => {
+      const safeNode = asObject(node);
+      const row = document.createElement('div');
+      row.className = 'song-save-location-picker-item-row';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'song-save-location-picker-item';
+      button.dataset.nodeId = String(safeNode.id || '');
+
+      const main = document.createElement('span');
+      main.className = 'song-save-location-picker-item-main';
+
+      const titleNode = document.createElement('span');
+      titleNode.className = 'song-save-location-picker-item-title';
+      titleNode.textContent = String(options.pathLabel || safeNode.label || '').trim();
+      main.appendChild(titleNode);
+
+      const hasChildren = Array.isArray(safeNode.children) && safeNode.children.length > 0;
+      let metaText = String(options.metaText || safeNode.meta || '').trim();
+      if (!hasChildren && safeNode.leafType === 'mystery') {
+        const assigned = getMysterySongAssignment(safeNode.groupTitle, safeNode.mysteryTitle);
+        const assignedSongTitle = String(assigned.songTitle || '').trim();
+        if (assignedSongTitle) {
+          button.classList.add('is-assigned');
+          metaText = readMysteryMessage(
+            'assignCurrentSongTitle',
+            'Já possui música atribuída: {title}',
+            { title: assignedSongTitle }
+          );
+        }
+      } else if (!hasChildren && safeNode.leafType === 'location') {
+        const assigned = getSongLocationAssignment(safeNode.locationId);
+        const assignedSongTitle = String(assigned.songTitle || '').trim();
+        if (assignedSongTitle) {
+          button.classList.add('is-assigned');
+          metaText = readMysteryMessage(
+            'assignCurrentSongTitle',
+            'Já possui música atribuída: {title}',
+            { title: assignedSongTitle }
+          );
+        }
+      }
+      if (metaText) {
+        const metaNode = document.createElement('span');
+        metaNode.className = 'song-save-location-picker-item-meta';
+        metaNode.textContent = metaText;
+        main.appendChild(metaNode);
+      }
+      button.appendChild(main);
+
+      if (hasChildren) {
+        const arrow = document.createElement('span');
+        arrow.className = 'song-save-location-picker-item-arrow';
+        arrow.textContent = '>';
+        arrow.setAttribute('aria-hidden', 'true');
+        button.appendChild(arrow);
+      }
+
+      button.addEventListener('click', async () => {
+        if (hasChildren) {
+          if (Array.isArray(options.pathIds) && options.pathIds.length) {
+            songSaveLocationPickerPath = options.pathIds.slice();
+          } else {
+            songSaveLocationPickerPath.push(String(safeNode.id || ''));
+          }
+          if (isSearching) {
+            songSaveLocationPickerSearchQuery = '';
+            if (songSaveLocationPickerSearchInput) {
+              songSaveLocationPickerSearchInput.value = '';
+            }
+          }
+          renderSongSaveLocationPicker();
+          positionSongSaveLocationPicker();
+          return;
+        }
+        if (safeNode.nodeType === 'mystery-group') {
+          const fallbackChildren = buildMysteryPickerLeafNodes({
+            title: safeNode.groupTitle || safeNode.label || '',
+            day: safeNode.groupDay || safeNode.meta || '',
+          });
+          if (fallbackChildren.length) {
+            safeNode.children = fallbackChildren;
+            if (Array.isArray(options.pathIds) && options.pathIds.length) {
+              songSaveLocationPickerPath = options.pathIds.slice();
+            } else {
+              songSaveLocationPickerPath.push(String(safeNode.id || ''));
+            }
+            if (isSearching) {
+              songSaveLocationPickerSearchQuery = '';
+              if (songSaveLocationPickerSearchInput) {
+                songSaveLocationPickerSearchInput.value = '';
+              }
+            }
+            renderSongSaveLocationPicker();
+            positionSongSaveLocationPicker();
+            return;
+          }
+        }
+        if (safeNode.leafType === 'mystery') {
+          await assignPendingSongToMysteryTarget(safeNode, button);
+          return;
+        }
+        if (safeNode.leafType === 'location') {
+          await assignPendingSongToLocationTarget(safeNode, button);
+        }
+      });
+      row.appendChild(button);
+
+      songSaveLocationPickerList.appendChild(row);
+    };
+
+    songSaveLocationPickerList.innerHTML = '';
+    if (isSearching) {
+      if (!searchResults.length) {
+        const emptyNode = document.createElement('p');
+        emptyNode.className = 'song-save-location-picker-empty';
+        emptyNode.textContent = readMysteryMessage(
+          'assignSearchEmpty',
+          'Nenhum destino encontrado para "{query}".',
+          { query: normalizedSearchQuery }
+        );
+        songSaveLocationPickerList.appendChild(emptyNode);
+        return;
+      }
+      searchResults.forEach((entry) => {
+        renderPickerNodeButton(entry.node, {
+          pathLabel: entry.pathLabel,
+          pathIds: entry.pathIds,
+        });
+      });
+      return;
+    }
+
+    if (!nodes.length) {
+      const emptyNode = document.createElement('p');
+      emptyNode.className = 'song-save-location-picker-empty';
+      emptyNode.textContent = readMysteryMessage('assignEmpty', 'Não foi possível carregar a lista de mistérios.');
+      songSaveLocationPickerList.appendChild(emptyNode);
+      return;
+    }
+
+    nodes.forEach((node) => {
+      renderPickerNodeButton(node);
+    });
+  };
+
+  const openSongSaveLocationPicker = async (songPayload, triggerButton = null, options = null) => {
+    if (!songSaveLocationPicker || !songSaveLocationPickerList) {
+      openMysterySongAssignModal(songPayload, triggerButton);
+      return;
+    }
+
+    const song = asObject(songPayload);
+    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+    const artist = String(song.artist || '').trim();
+    songSaveLocationPickerPendingSong = song;
+    mysterySongAssignPendingSong = song;
+    const triggerAnchor = (
+      triggerButton instanceof HTMLElement
+      && triggerButton.isConnected
+    )
+      ? triggerButton
+      : null;
+    const activeAnchor = (
+      document.activeElement instanceof HTMLElement
+      && document.activeElement.isConnected
+    )
+      ? document.activeElement
+      : null;
+    const resolvedAnchor = resolveSongSaveLocationPickerAnchor(triggerAnchor, activeAnchor);
+    const fallbackAnchor = resolvedAnchor || triggerAnchor || activeAnchor;
+    songSaveLocationPickerAnchor = fallbackAnchor;
+    songSaveLocationPickerAnchorRect = readSongSaveLocationPickerAnchorRect(fallbackAnchor);
+    songSaveLocationPickerFocusTarget = triggerAnchor || activeAnchor || fallbackAnchor;
+    songSaveLocationPickerPointer = normalizeSongSaveLocationPickerPointer(options);
+    songSaveLocationPickerPath = [];
+    songSaveLocationPickerBaseDepth = 0;
+    songSaveLocationPickerSearchQuery = '';
+    if (songSaveLocationPickerSearchInput) {
+      songSaveLocationPickerSearchInput.value = '';
+    }
+
+    if (songSaveLocationPickerSong) {
+      songSaveLocationPickerSong.textContent = artist ? `${title} - ${artist}` : title;
+    }
+
+    await Promise.allSettled([
+      fetchSongLocationTree(),
+      fetchSongLocationAssignments(),
+    ]);
+
+    renderSongSaveLocationPicker();
+    songSaveLocationPicker.classList.add('open');
+    songSaveLocationPicker.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    positionSongSaveLocationPicker();
+    window.requestAnimationFrame(() => {
+      positionSongSaveLocationPicker();
+      if (songSaveLocationPickerSearchInput instanceof HTMLElement) {
+        focusWithoutScrollingPage(songSaveLocationPickerSearchInput);
+        return;
+      }
+      const firstAction = songSaveLocationPickerList.querySelector('.song-save-location-picker-item');
+      if (firstAction instanceof HTMLElement) {
+        focusWithoutScrollingPage(firstAction);
+      }
+    });
   };
 
   const closeMysterySongPanel = () => {
@@ -2083,7 +3795,7 @@
 
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -2313,7 +4025,67 @@
       button.addEventListener('click', closeMysterySongAssignModal);
     });
   }
-  void fetchMysterySongAssignments();
+  if (songSaveLocationPickerCloseBtn) {
+    songSaveLocationPickerCloseBtn.addEventListener('click', () => {
+      closeSongSaveLocationPicker();
+    });
+  }
+  if (songSaveLocationPickerSearchInput) {
+    const handleSongSaveLocationSearchChange = () => {
+      songSaveLocationPickerSearchQuery = String(songSaveLocationPickerSearchInput.value || '');
+      renderSongSaveLocationPicker();
+      positionSongSaveLocationPicker();
+    };
+    songSaveLocationPickerSearchInput.addEventListener('input', handleSongSaveLocationSearchChange);
+    songSaveLocationPickerSearchInput.addEventListener('search', handleSongSaveLocationSearchChange);
+  }
+  if (songSaveLocationPickerBackBtn) {
+    songSaveLocationPickerBackBtn.addEventListener('click', () => {
+      if (songSaveLocationPickerPath.length <= songSaveLocationPickerBaseDepth) return;
+      songSaveLocationPickerPath.pop();
+      renderSongSaveLocationPicker();
+      positionSongSaveLocationPicker();
+    });
+  }
+  if (songSaveLocationPickerAddBtn) {
+    songSaveLocationPickerAddBtn.addEventListener('click', () => {
+      const parentId = String(songSaveLocationPickerAddBtn.dataset.parentId || '').trim();
+      const parentLabel = String(songSaveLocationPickerAddBtn.dataset.parentLabel || '').trim();
+      openSongLocationCreateModal(parentId, parentLabel, songSaveLocationPickerAddBtn);
+    });
+  }
+  if (songLocationCreateCloseButtons.length) {
+    songLocationCreateCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        closeSongLocationCreateModal();
+      });
+    });
+  }
+  if (songLocationCreateAcceptBtn) {
+    songLocationCreateAcceptBtn.addEventListener('click', () => {
+      void submitSongLocationCreateModal();
+    });
+  }
+  if (songLocationCreateParentSelect) {
+    songLocationCreateParentSelect.addEventListener('change', () => {
+      syncSongLocationCreateModalTargetState();
+    });
+  }
+  if (songLocationCreateInput) {
+    songLocationCreateInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        void submitSongLocationCreateModal();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSongLocationCreateModal();
+      }
+    });
+  }
 
   const daySlot = mysteryByDay[new Date().getDay()];
   const titleEl = document.getElementById('today-mystery-title');
@@ -2449,7 +4221,7 @@
 
     card.classList.toggle('open', open);
     body.style.maxHeight = open ? `${body.scrollHeight}px` : '0px';
-    button.dataset.eyeState = open ? 'closed' : 'open';
+    button.dataset.eyeState = open ? 'open' : 'closed';
     button.setAttribute('aria-label', stateLabel);
     button.setAttribute('title', stateLabel);
     button.setAttribute('aria-expanded', String(open));
@@ -2514,6 +4286,10 @@
   const favoriteConfirmModal = document.getElementById('favorite-confirm-modal');
   const favoriteConfirmTitle = document.getElementById('favorite-confirm-title');
   const favoriteConfirmMessage = document.getElementById('favorite-confirm-message');
+  const favoriteConfirmPasswordWrap = document.getElementById('favorite-confirm-password-wrap');
+  const favoriteConfirmPasswordLabel = document.getElementById('favorite-confirm-password-label');
+  const favoriteConfirmPasswordInput = document.getElementById('favorite-confirm-password-input');
+  const favoriteConfirmPasswordError = document.getElementById('favorite-confirm-password-error');
   const favoriteConfirmCancelBtn = document.getElementById('favorite-confirm-cancel');
   const favoriteConfirmAcceptBtn = document.getElementById('favorite-confirm-accept');
   const favoriteConfirmCloseButtons = document.querySelectorAll('[data-favorite-confirm-close]');
@@ -2546,6 +4322,8 @@
   let lastFocusedCustomSongTrigger = null;
   let pendingFavoriteConfirmResolver = null;
   let pendingFavoriteConfirmMode = 'boolean';
+  let favoriteConfirmRequirePassword = false;
+  let favoriteConfirmCapturedPassword = '';
   const FAVORITE_CONFIRM_ACTION_ACCEPT = 'accept';
   const FAVORITE_CONFIRM_ACTION_CANCEL = 'cancel';
   const FAVORITE_CONFIRM_ACTION_DISMISS = 'dismiss';
@@ -2574,6 +4352,15 @@
     && widget.resultsContainer
     && widget.resultsList
   ));
+  songSearchWidgets.forEach((widget) => {
+    widget.searchState = {
+      query: '',
+      normalizedQuery: '',
+      page: 0,
+      hasMore: false,
+      loadingMore: false
+    };
+  });
   const songSearchFallbackImage = portalContent?.cantos?.search?.resultFallbackImage || './assets/img/logo.png';
   let songFavorites = [];
   let songFavoritesLoading = false;
@@ -2581,13 +4368,42 @@
   let songFavoritesDragId = '';
   let songFavoritesDragStartOrder = [];
   const songFavoritesByUrl = new Map();
+  const SONG_SELECTED_KEYS_STORAGE_KEY = 'portal_song_selected_keys_v1';
+  const SONG_SELECTED_KEYS_STORAGE_LIMIT = 600;
+  const songSelectedKeysByUrl = new Map();
+  let songToneFavoritePersistTimerId = null;
+  let songToneFavoritePersistContext = null;
+  let songKeyAutoDetectRequestId = 0;
 
   const normalizeSongUrlKey = (url) => (url || '').trim().toLowerCase();
+  const normalizeSongMatchToken = (value) => (
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+  const normalizeSongTitleArtistKey = (title, artist = '') => {
+    const normalizedTitle = normalizeSongMatchToken(title);
+    if (!normalizedTitle) return '';
+    const normalizedArtist = normalizeSongMatchToken(artist);
+    return normalizedArtist ? `${normalizedTitle}|${normalizedArtist}` : normalizedTitle;
+  };
   const normalizeSongFavorite = (rawFavorite) => {
     const favorite = asObject(rawFavorite);
     const url = (favorite.url || favorite.song_url || '').trim();
     const lyricsText = String(favorite.lyrics_text || favorite.lyricsText || '');
     const chordsText = String(favorite.chords_text || favorite.chordsText || '');
+    const rawUsageLocations = Array.isArray(favorite.usage_locations)
+      ? favorite.usage_locations
+      : (Array.isArray(favorite.usageLocations) ? favorite.usageLocations : []);
+    const usageLocations = Array.from(new Set(
+      rawUsageLocations
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    ));
+    usageLocations.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
     const parsedOrderIndex = Number.parseInt(String(favorite.orderIndex ?? favorite.order_index ?? ''), 10);
     const hasLyrics = Boolean(favorite.has_lyrics) || Boolean(favorite.hasLyrics) || Boolean(lyricsText.trim());
     const hasChords = Boolean(favorite.has_chords) || Boolean(favorite.hasChords) || Boolean(chordsText.trim());
@@ -2612,7 +4428,9 @@
       chordsSource: (favorite.chords_source || favorite.chordsSource || '').trim(),
       chordsSourceUrl: (favorite.chords_source_url || favorite.chordsSourceUrl || '').trim(),
       chordsOriginalKey: (favorite.chords_original_key || favorite.chordsOriginalKey || '').trim(),
+      chordsSelectedKey: (favorite.chords_selected_key || favorite.chordsSelectedKey || '').trim(),
       chordsText,
+      usageLocations,
       hasLyrics,
       hasChords,
       updatedAtUtc: (favorite.updated_at_utc || favorite.updatedAtUtc || '').trim(),
@@ -2737,6 +4555,221 @@
     };
   };
 
+  const readSongSelectedKeysStore = () => {
+    try {
+      const raw = window.localStorage.getItem(SONG_SELECTED_KEYS_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  };
+
+  const writeSongSelectedKeysStore = () => {
+    try {
+      const entries = Array.from(songSelectedKeysByUrl.entries()).slice(-SONG_SELECTED_KEYS_STORAGE_LIMIT);
+      const payload = {};
+      entries.forEach(([urlKey, selectedKey]) => {
+        if (!urlKey || !selectedKey) return;
+        payload[urlKey] = selectedKey;
+      });
+      window.localStorage.setItem(SONG_SELECTED_KEYS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+      // Ignore storage failures.
+    }
+  };
+
+  const normalizeSongSelectedKey = (rawKey) => {
+    const parts = splitKey(rawKey || '');
+    if (!parts) return '';
+    return `${parts.root}${parts.suffix || ''}`.trim();
+  };
+
+  const rememberSongSelectedKey = (url, rawKey) => {
+    const urlKey = normalizeSongUrlKey(url);
+    const selectedKey = normalizeSongSelectedKey(rawKey);
+    if (!urlKey || !selectedKey) return '';
+    songSelectedKeysByUrl.set(urlKey, selectedKey);
+    writeSongSelectedKeysStore();
+    return selectedKey;
+  };
+
+  const readSongSelectedKey = (url) => {
+    const urlKey = normalizeSongUrlKey(url);
+    if (!urlKey) return '';
+    return normalizeSongSelectedKey(songSelectedKeysByUrl.get(urlKey) || '');
+  };
+
+  const buildSongTonePersistPayload = (favorite, selectedKey) => {
+    const safeFavorite = asObject(favorite);
+    const fallbackUrl = (songState.sourceUrl || '').trim();
+    const fallbackSelectedKey = normalizeSongSelectedKey(selectedKey || resolveCurrentSongSelectedKeyForSave());
+    const fallbackOriginalKey = normalizeSongSelectedKey(songState.originalKey || '');
+
+    return {
+      url: (safeFavorite.url || fallbackUrl || '').trim(),
+      title: (safeFavorite.title || songState.title || '').trim(),
+      artist: (safeFavorite.artist || songState.artist || '').trim(),
+      source: (safeFavorite.source || songState.source || '').trim(),
+      source_label: (safeFavorite.sourceLabel || songState.sourceLabel || '').trim(),
+      chords_source: (safeFavorite.chordsSource || songState.source || '').trim(),
+      chords_source_url: (safeFavorite.chordsSourceUrl || fallbackUrl || '').trim(),
+      chords_original_key: normalizeSongSelectedKey(safeFavorite.chordsOriginalKey || fallbackOriginalKey),
+      chords_selected_key: fallbackSelectedKey,
+      chords_text: String(safeFavorite.chordsText || (songState.contentType === 'chords' ? songState.originalContent : '') || ''),
+    };
+  };
+
+  const persistFavoriteTonePreference = async (persistPayload) => {
+    const payload = asObject(persistPayload);
+    const url = (payload.url || '').trim();
+    const selectedKey = normalizeSongSelectedKey(payload.chords_selected_key || '');
+    if (!url || !selectedKey) return;
+
+    try {
+      const response = await fetch('/api/songs/favorites', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const responsePayload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !responsePayload.ok) {
+        throw new Error(responsePayload?.detail?.message || responsePayload?.message || 'favorite_tone_save_failed');
+      }
+      if (responsePayload.favorite) {
+        upsertSongFavorite(responsePayload.favorite);
+      }
+    } catch (err) {
+      console.warn('[song-tone] Falha ao salvar tom selecionado no favorito.', {
+        url,
+        selectedKey,
+        error: err instanceof Error ? err.message : String(err || '')
+      });
+    }
+  };
+
+  const scheduleFavoriteTonePreferencePersist = (favorite, selectedKey) => {
+    const payload = buildSongTonePersistPayload(favorite, selectedKey);
+    if (!payload.url || !payload.chords_selected_key) return;
+
+    songToneFavoritePersistContext = payload;
+    if (songToneFavoritePersistTimerId !== null) {
+      window.clearTimeout(songToneFavoritePersistTimerId);
+      songToneFavoritePersistTimerId = null;
+    }
+
+    songToneFavoritePersistTimerId = window.setTimeout(() => {
+      const pendingPayload = songToneFavoritePersistContext;
+      songToneFavoritePersistContext = null;
+      songToneFavoritePersistTimerId = null;
+      if (!pendingPayload) return;
+      void persistFavoriteTonePreference(pendingPayload);
+    }, 680);
+  };
+
+  const flushFavoriteTonePreferencePersist = () => {
+    if (songToneFavoritePersistTimerId !== null) {
+      window.clearTimeout(songToneFavoritePersistTimerId);
+      songToneFavoritePersistTimerId = null;
+    }
+    const pendingPayload = songToneFavoritePersistContext;
+    songToneFavoritePersistContext = null;
+    if (!pendingPayload) return;
+    void persistFavoriteTonePreference(pendingPayload);
+  };
+
+  const updateFavoriteSelectedKeyInMemory = (urlKey, selectedKey) => {
+    if (!urlKey) return null;
+    const favorite = songFavoritesByUrl.get(urlKey);
+    if (!favorite) return null;
+
+    const normalizedSelectedKey = normalizeSongSelectedKey(selectedKey);
+    if (!normalizedSelectedKey) return favorite;
+    const updatedAtUtc = new Date().toISOString();
+    const updatedFavorite = {
+      ...favorite,
+      chordsSelectedKey: normalizedSelectedKey,
+      updatedAtUtc
+    };
+    const favoriteIndex = songFavorites.findIndex((item) => normalizeSongUrlKey(item.url) === urlKey);
+    if (favoriteIndex >= 0) {
+      songFavorites[favoriteIndex] = updatedFavorite;
+    }
+    songFavoritesByUrl.set(urlKey, updatedFavorite);
+    return updatedFavorite;
+  };
+
+  const calculateSongToneSemitonesToRoot = (targetRoot) => {
+    const originalIndex = NOTE_INDEX_MAP[songState.originalRoot || ''];
+    const targetIndex = NOTE_INDEX_MAP[targetRoot || ''];
+    if (!Number.isInteger(originalIndex) || !Number.isInteger(targetIndex)) {
+      return 0;
+    }
+
+    let semitones = (targetIndex - originalIndex + 12) % 12;
+    if (semitones > 6) semitones -= 12;
+    return semitones;
+  };
+
+  const resolveSavedSelectedKeyForSong = (songUrl, preferredSelectedKey = '') => {
+    const explicit = normalizeSongSelectedKey(preferredSelectedKey);
+    if (explicit) return explicit;
+
+    const urlKey = normalizeSongUrlKey(songUrl);
+    if (!urlKey) return '';
+
+    const favorite = songFavoritesByUrl.get(urlKey);
+    const favoriteSelectedKey = normalizeSongSelectedKey(favorite?.chordsSelectedKey || '');
+    if (favoriteSelectedKey) return favoriteSelectedKey;
+
+    return readSongSelectedKey(songUrl);
+  };
+
+  const applySavedSelectedKeyToCurrentSong = (songUrl, preferredSelectedKey = '') => {
+    if (!songState.loaded || songState.contentType !== 'chords' || !songState.originalRoot) return;
+
+    const selectedKey = resolveSavedSelectedKeyForSong(songUrl, preferredSelectedKey);
+    if (!selectedKey) return;
+    const selectedParts = splitKey(selectedKey);
+    if (!selectedParts || !selectedParts.root) return;
+
+    songState.semitones = calculateSongToneSemitonesToRoot(selectedParts.root);
+    rememberSongSelectedKey(songUrl, selectedKey);
+  };
+
+  const persistCurrentSongTonePreference = () => {
+    if (!songState.loaded || songState.contentType !== 'chords' || !songState.originalRoot) return;
+    if (songState.source === 'manual') return;
+
+    const songUrl = (songState.sourceUrl || '').trim();
+    if (!songUrl) return;
+
+    const selectedKey = resolveCurrentSongSelectedKeyForSave();
+    const normalizedSelectedKey = rememberSongSelectedKey(songUrl, selectedKey);
+    if (!normalizedSelectedKey) return;
+
+    const urlKey = normalizeSongUrlKey(songUrl);
+    if (!urlKey || !songFavoritesByUrl.has(urlKey)) return;
+    const updatedFavorite = updateFavoriteSelectedKeyInMemory(urlKey, normalizedSelectedKey);
+    if (!updatedFavorite) return;
+
+    scheduleFavoriteTonePreferencePersist(updatedFavorite, normalizedSelectedKey);
+  };
+
+  const bootstrapSongSelectedKeysStore = () => {
+    const payload = readSongSelectedKeysStore();
+    Object.entries(payload).forEach(([rawUrlKey, rawSelectedKey]) => {
+      const urlKey = normalizeSongUrlKey(rawUrlKey);
+      const selectedKey = normalizeSongSelectedKey(rawSelectedKey);
+      if (!urlKey || !selectedKey) return;
+      songSelectedKeysByUrl.set(urlKey, selectedKey);
+    });
+  };
+  bootstrapSongSelectedKeysStore();
+
   const transposeRoot = (root, semitones, preferFlat) => {
     const index = NOTE_INDEX_MAP[root];
     if (!Number.isInteger(index)) return root;
@@ -2806,12 +4839,159 @@
     songFetchSubmit.textContent = label;
   };
 
+  const SONG_SEARCH_DEFAULT_PAGE_SIZE = 18;
+  const songSearchCacheByQuery = new Map();
+
+  const normalizeSongSearchPage = (rawPage) => {
+    const parsed = Number.parseInt(String(rawPage ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) return 1;
+    return Math.min(parsed, 100);
+  };
+
+  const normalizeSongSearchPageSize = (rawPageSize) => {
+    const parsed = Number.parseInt(String(rawPageSize ?? ''), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) return SONG_SEARCH_DEFAULT_PAGE_SIZE;
+    return Math.max(1, Math.min(40, parsed));
+  };
+
+  const createSongSearchCacheEntry = (query = '') => ({
+    query,
+    pages: new Map(),
+    pageSize: SONG_SEARCH_DEFAULT_PAGE_SIZE,
+    total: 0,
+    hasMore: false
+  });
+
+  const readSongSearchCacheEntry = (normalizedQuery) => {
+    if (!normalizedQuery) return null;
+    const cacheEntry = songSearchCacheByQuery.get(normalizedQuery);
+    if (!cacheEntry || !(cacheEntry.pages instanceof Map)) return null;
+    return cacheEntry;
+  };
+
+  const getOrCreateSongSearchCacheEntry = (normalizedQuery, query = '') => {
+    if (!normalizedQuery) return null;
+    const existing = readSongSearchCacheEntry(normalizedQuery);
+    if (existing) {
+      if (query) existing.query = query;
+      return existing;
+    }
+
+    const created = createSongSearchCacheEntry(query);
+    songSearchCacheByQuery.set(normalizedQuery, created);
+    return created;
+  };
+
+  const countSongSearchCachedResults = (cacheEntry, maxPage = null) => {
+    if (!cacheEntry || !(cacheEntry.pages instanceof Map)) return 0;
+
+    const pageKeys = Array.from(cacheEntry.pages.keys())
+      .filter((pageNumber) => Number.isInteger(pageNumber) && pageNumber > 0)
+      .sort((a, b) => a - b);
+    let total = 0;
+    pageKeys.forEach((pageNumber) => {
+      if (Number.isInteger(maxPage) && pageNumber > maxPage) return;
+      const pageResults = cacheEntry.pages.get(pageNumber);
+      if (!Array.isArray(pageResults)) return;
+      total += pageResults.length;
+    });
+    return total;
+  };
+
+  const createSongSearchWidgetState = () => ({
+    query: '',
+    normalizedQuery: '',
+    page: 0,
+    hasMore: false,
+    loadingMore: false
+  });
+
+  const readSongSearchWidgetState = (widget) => {
+    if (!widget) return null;
+    if (!widget.searchState || typeof widget.searchState !== 'object') {
+      widget.searchState = createSongSearchWidgetState();
+    }
+    return widget.searchState;
+  };
+
+  const SONG_SEARCH_AUTO_LOAD_THRESHOLD_PX = 260;
+
+  const maybeAutoLoadMoreSongSearch = (targetWidget = null) => {
+    const activeWidget = resolveSongSearchWidget(targetWidget);
+    if (!activeWidget || !activeWidget.resultsContainer) return;
+    const state = readSongSearchWidgetState(activeWidget);
+    if (!state || state.loadingMore || !state.hasMore) return;
+    if (activeWidget.resultsContainer.hidden) return;
+
+    const query = (state.query || '').trim();
+    if (!query) return;
+
+    const remaining = (
+      activeWidget.resultsContainer.scrollHeight
+      - activeWidget.resultsContainer.scrollTop
+      - activeWidget.resultsContainer.clientHeight
+    );
+    if (remaining > SONG_SEARCH_AUTO_LOAD_THRESHOLD_PX) return;
+
+    const nextPage = normalizeSongSearchPage(state.page + 1);
+    updateSongSearchLoadMoreButton(activeWidget, {
+      hasMore: true,
+      loading: true
+    });
+    void executeSongSearch(query, {
+      fromTyping: false,
+      fromLoadMore: true,
+      widget: activeWidget,
+      page: nextPage,
+      append: true
+    });
+  };
+
+  const updateSongSearchLoadMoreButton = (targetWidget = null, options = {}) => {
+    const activeWidget = resolveSongSearchWidget(targetWidget);
+    if (!activeWidget) return;
+    const state = readSongSearchWidgetState(activeWidget);
+    if (!state) return;
+
+    const hasMore = Boolean(options.hasMore);
+    const loading = Boolean(options.loading);
+
+    state.hasMore = hasMore;
+    state.loadingMore = loading;
+    if (!loading && hasMore) {
+      window.requestAnimationFrame(() => {
+        maybeAutoLoadMoreSongSearch(activeWidget);
+      });
+    }
+  };
+
+  const resetSongSearchWidgetState = (targetWidget = null) => {
+    if (!songSearchWidgets.length) return;
+    const targetWidgets = targetWidget ? [targetWidget] : songSearchWidgets;
+    targetWidgets.forEach((widget) => {
+      widget.searchState = createSongSearchWidgetState();
+      updateSongSearchLoadMoreButton(widget, {
+        visible: false,
+        hasMore: false,
+        loading: false
+      });
+    });
+  };
+
   const clearSongSearchResults = (targetWidget = null) => {
     if (!songSearchWidgets.length) return;
+    if (isSongSaveLocationPickerOpen()) {
+      closeSongSaveLocationPicker();
+    }
     const targetWidgets = targetWidget ? [targetWidget] : songSearchWidgets;
     targetWidgets.forEach((widget) => {
       widget.resultsList.innerHTML = '';
       widget.resultsContainer.hidden = true;
+      updateSongSearchLoadMoreButton(widget, {
+        visible: false,
+        hasMore: false,
+        loading: false
+      });
     });
   };
 
@@ -2847,6 +5027,11 @@
     songSearchWidgets.forEach((widget) => {
       if (targetWidget && widget === targetWidget) return;
       widget.resultsContainer.hidden = true;
+      updateSongSearchLoadMoreButton(widget, {
+        visible: false,
+        hasMore: false,
+        loading: false
+      });
     });
   };
 
@@ -2961,6 +5146,7 @@
         const canClose = await maybeConfirmManualSongKeyUpdateBeforeClose(triggerElement);
         if (!canClose) return;
       }
+      flushFavoriteTonePreferencePersist();
 
       const focusTarget = lastFocusedSongTrigger instanceof HTMLElement ? lastFocusedSongTrigger : null;
       songModal.classList.remove('open');
@@ -2975,6 +5161,94 @@
     } finally {
       songModalCloseInProgress = false;
     }
+  };
+
+  const consumeFavoriteConfirmPassword = () => {
+    const password = String(favoriteConfirmCapturedPassword || '');
+    favoriteConfirmCapturedPassword = '';
+    return password;
+  };
+
+  const resetFavoriteConfirmPasswordUi = (options = {}) => {
+    const safeOptions = asObject(options);
+    const preserveCapturedPassword = Boolean(safeOptions.preserveCapturedPassword);
+    favoriteConfirmRequirePassword = false;
+    if (!preserveCapturedPassword) {
+      favoriteConfirmCapturedPassword = '';
+    }
+    if (favoriteConfirmPasswordWrap) {
+      favoriteConfirmPasswordWrap.hidden = true;
+    }
+    if (favoriteConfirmPasswordInput) {
+      favoriteConfirmPasswordInput.value = '';
+      favoriteConfirmPasswordInput.removeAttribute('aria-invalid');
+    }
+    if (favoriteConfirmPasswordError) {
+      favoriteConfirmPasswordError.hidden = true;
+      favoriteConfirmPasswordError.textContent = readMysteryMessage(
+        'assignCategoryDeactivatePasswordRequired',
+        'Informe a senha para inativar.'
+      );
+    }
+  };
+
+  const showFavoriteConfirmPasswordError = (message = '') => {
+    if (!favoriteConfirmPasswordError || !favoriteConfirmPasswordInput) return;
+    const resolvedMessage = String(message || '').trim()
+      || readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.');
+    favoriteConfirmPasswordError.textContent = resolvedMessage;
+    favoriteConfirmPasswordError.hidden = false;
+    favoriteConfirmPasswordInput.setAttribute('aria-invalid', 'true');
+    window.requestAnimationFrame(() => {
+      focusWithoutScrollingPage(favoriteConfirmPasswordInput);
+    });
+  };
+
+  const prepareFavoriteConfirmPasswordUi = (options = {}) => {
+    const safeOptions = asObject(options);
+    const requirePassword = Boolean(safeOptions.requirePassword);
+    favoriteConfirmRequirePassword = requirePassword;
+    favoriteConfirmCapturedPassword = '';
+    if (!favoriteConfirmPasswordWrap || !favoriteConfirmPasswordInput) return;
+
+    favoriteConfirmPasswordWrap.hidden = !requirePassword;
+    favoriteConfirmPasswordInput.value = '';
+    favoriteConfirmPasswordInput.removeAttribute('aria-invalid');
+    favoriteConfirmPasswordInput.placeholder = String(
+      safeOptions.passwordPlaceholder
+      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+    ).trim();
+    const passwordLabel = String(
+      safeOptions.passwordLabel
+      || readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+    ).trim();
+    favoriteConfirmPasswordInput.setAttribute('aria-label', passwordLabel);
+    if (favoriteConfirmPasswordLabel) {
+      favoriteConfirmPasswordLabel.textContent = passwordLabel;
+    }
+    if (favoriteConfirmPasswordError) {
+      favoriteConfirmPasswordError.hidden = true;
+      favoriteConfirmPasswordError.textContent = readMysteryMessage(
+        'assignCategoryDeactivatePasswordRequired',
+        'Informe a senha para inativar.'
+      );
+    }
+  };
+
+  const handleFavoriteConfirmAcceptAction = () => {
+    if (!favoriteConfirmRequirePassword) {
+      closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_ACCEPT);
+      return;
+    }
+    const typedPassword = String(favoriteConfirmPasswordInput?.value || '');
+    if (!typedPassword.trim()) {
+      showFavoriteConfirmPasswordError(
+        readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+      );
+      return;
+    }
+    favoriteConfirmCapturedPassword = typedPassword;
+    closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_ACCEPT);
   };
 
   const resolvePendingFavoriteConfirm = (action = FAVORITE_CONFIRM_ACTION_DISMISS) => {
@@ -2992,6 +5266,9 @@
 
   const closeFavoriteConfirmModal = (action = FAVORITE_CONFIRM_ACTION_DISMISS) => {
     if (!favoriteConfirmModal) {
+      resetFavoriteConfirmPasswordUi({
+        preserveCapturedPassword: action === FAVORITE_CONFIRM_ACTION_ACCEPT && favoriteConfirmRequirePassword,
+      });
       resolvePendingFavoriteConfirm(action);
       return;
     }
@@ -3002,6 +5279,9 @@
     );
     favoriteConfirmModal.classList.remove('open');
     favoriteConfirmModal.setAttribute('aria-hidden', 'true');
+    resetFavoriteConfirmPasswordUi({
+      preserveCapturedPassword: action === FAVORITE_CONFIRM_ACTION_ACCEPT && favoriteConfirmRequirePassword,
+    });
     syncBodyModalLock();
     resolvePendingFavoriteConfirm(action);
     if (!hasAnyOpenModal() && focusTarget) {
@@ -3041,11 +5321,40 @@
         'Deseja remover "{title}" dos favoritos?',
         { title: resolvedSongTitle }
       );
+    const requirePassword = Boolean(options.requirePassword);
+    const passwordLabel = String(
+      options.passwordLabel
+      || readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+    ).trim();
+    const passwordPlaceholder = String(
+      options.passwordPlaceholder
+      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+    ).trim();
 
     if (!favoriteConfirmModal || !favoriteConfirmMessage || !favoriteConfirmAcceptBtn) {
-      return Promise.resolve(window.confirm(message));
+      if (!window.confirm(message)) {
+        favoriteConfirmCapturedPassword = '';
+        return Promise.resolve(false);
+      }
+      if (requirePassword) {
+        const typedPassword = window.prompt(passwordLabel, '');
+        const safePassword = String(typedPassword || '');
+        if (typedPassword === null || !safePassword.trim()) {
+          favoriteConfirmCapturedPassword = '';
+          return Promise.resolve(false);
+        }
+        favoriteConfirmCapturedPassword = safePassword;
+      } else {
+        favoriteConfirmCapturedPassword = '';
+      }
+      return Promise.resolve(true);
     }
 
+    prepareFavoriteConfirmPasswordUi({
+      requirePassword,
+      passwordLabel,
+      passwordPlaceholder,
+    });
     if (favoriteConfirmTitle) {
       favoriteConfirmTitle.textContent = title;
     }
@@ -3065,6 +5374,10 @@
     favoriteConfirmModal.setAttribute('aria-hidden', 'false');
     syncBodyModalLock();
     window.requestAnimationFrame(() => {
+      if (favoriteConfirmRequirePassword && favoriteConfirmPasswordInput) {
+        focusWithoutScrollingPage(favoriteConfirmPasswordInput);
+        return;
+      }
       focusWithoutScrollingPage(favoriteConfirmAcceptBtn);
     });
 
@@ -3097,6 +5410,7 @@
       return Promise.resolve(shouldCancelAction ? FAVORITE_CONFIRM_ACTION_CANCEL : FAVORITE_CONFIRM_ACTION_DISMISS);
     }
 
+    prepareFavoriteConfirmPasswordUi({ requirePassword: false });
     if (favoriteConfirmTitle) {
       favoriteConfirmTitle.textContent = title;
     }
@@ -3144,7 +5458,26 @@
     });
   }
   if (favoriteConfirmAcceptBtn) {
-    favoriteConfirmAcceptBtn.addEventListener('click', () => closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_ACCEPT));
+    favoriteConfirmAcceptBtn.addEventListener('click', handleFavoriteConfirmAcceptAction);
+  }
+  if (favoriteConfirmPasswordInput) {
+    favoriteConfirmPasswordInput.addEventListener('input', () => {
+      if (favoriteConfirmPasswordError) {
+        favoriteConfirmPasswordError.hidden = true;
+      }
+      favoriteConfirmPasswordInput.removeAttribute('aria-invalid');
+    });
+    favoriteConfirmPasswordInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleFavoriteConfirmAcceptAction();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_CANCEL);
+      }
+    });
   }
 
   const syncSongSearchClearButtons = () => {
@@ -3296,6 +5629,92 @@
     delete button.dataset.originalAriaLabel;
   };
 
+  const detectAndApplySongKeyIfMissing = async (preferredSelectedKey = '') => {
+    if (!songState.loaded || songState.contentType !== 'chords' || songState.originalRoot) return false;
+
+    const requestTitle = String(songState.title || '').trim();
+    const requestArtist = String(songState.artist || '').trim();
+    const requestSourceUrl = String(songState.sourceUrl || '').trim();
+    if (!requestTitle && !requestArtist) return false;
+
+    const requestId = songKeyAutoDetectRequestId + 1;
+    songKeyAutoDetectRequestId = requestId;
+    setSongFeedback(
+      readSongMessage('detectingKey', 'Tom não informado. Identificando automaticamente...'),
+      'is-loading'
+    );
+
+    try {
+      const response = await fetch('/api/songs/detect-key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: requestTitle,
+          artist: requestArtist
+        })
+      });
+      const payload = asObject(await response.json().catch(() => ({})));
+      if (!response.ok || !payload.ok) {
+        const message = payload?.detail?.message
+          || payload?.message
+          || readSongMessage('detectedKeyError', 'Não foi possível identificar o tom automaticamente.');
+        throw new Error(message);
+      }
+
+      const detectedKey = String(payload.original_key || '').trim();
+      const keyParts = splitKey(detectedKey);
+      if (!keyParts || !keyParts.root) {
+        throw new Error(readSongMessage('detectedKeyError', 'Não foi possível identificar o tom automaticamente.'));
+      }
+
+      const isStale = (
+        requestId !== songKeyAutoDetectRequestId
+        || !songState.loaded
+        || songState.contentType !== 'chords'
+        || Boolean(songState.originalRoot)
+        || String(songState.title || '').trim() !== requestTitle
+        || String(songState.artist || '').trim() !== requestArtist
+        || String(songState.sourceUrl || '').trim() !== requestSourceUrl
+      );
+      if (isStale) return false;
+
+      songState.originalKey = detectedKey;
+      songState.originalRoot = keyParts.root;
+      songState.originalSuffix = keyParts.suffix || '';
+      songState.semitones = 0;
+      applySavedSelectedKeyToCurrentSong(songState.sourceUrl, preferredSelectedKey);
+      renderFetchedSong();
+      setSongFeedback(
+        readSongMessage('detectedKeySuccess', 'Tom identificado automaticamente: {key}.', { key: detectedKey }),
+        'is-success'
+      );
+      return true;
+    } catch (err) {
+      const isStale = (
+        requestId !== songKeyAutoDetectRequestId
+        || !songState.loaded
+        || songState.contentType !== 'chords'
+        || Boolean(songState.originalRoot)
+        || String(songState.title || '').trim() !== requestTitle
+        || String(songState.artist || '').trim() !== requestArtist
+        || String(songState.sourceUrl || '').trim() !== requestSourceUrl
+      );
+      if (isStale) return false;
+
+      const fallbackMessage = readSongMessage(
+        'detectedKeyError',
+        'Não foi possível identificar o tom automaticamente.'
+      );
+      const message = err instanceof Error && err.message
+        ? err.message
+        : fallbackMessage;
+      setSongFeedback(message, 'is-warning');
+      return false;
+    }
+  };
+
   async function loadSongFromUrl(url, triggerButton = null, selectedResult = null) {
     const safeUrl = (url || '').trim();
     if (!safeUrl) {
@@ -3323,6 +5742,11 @@
 
       const selectedTitle = (selectedResult?.title || '').trim();
       const selectedArtist = (selectedResult?.artist || '').trim();
+      const preferredSelectedKey = (
+        selectedResult?.chords_selected_key
+        || selectedResult?.chordsSelectedKey
+        || ''
+      );
       const keyParts = splitKey(payload.original_key || '');
       songState.loaded = true;
       songState.title = selectedTitle || payload.title || readSongMessage('defaultSongTitle', 'Música');
@@ -3338,6 +5762,7 @@
       songState.contentType = 'chords';
       songState.customSongId = '';
       songState.customSongIsDraft = false;
+      applySavedSelectedKeyToCurrentSong(songState.sourceUrl, preferredSelectedKey);
 
       if (fetchedSongCard) {
         fetchedSongCard.hidden = false;
@@ -3345,7 +5770,11 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback(readSongMessage('chordLoaded', 'Cifra carregada. Ajuste o tom abaixo do título.'), 'is-success');
+      if (!songState.originalRoot) {
+        void detectAndApplySongKeyIfMissing(preferredSelectedKey);
+      } else {
+        setSongFeedback(readSongMessage('chordLoaded', 'Cifra carregada. Ajuste o tom abaixo do título.'), 'is-success');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : readSongMessage('chordLoadError', 'Falha ao carregar a cifra.');
       setSongFeedback(message, 'is-error');
@@ -3365,7 +5794,7 @@
     }
 
     setSongActionLoading(triggerButton, true, readSongMessage('lyricsButton', 'Letra'));
-    setSongFeedback(readSongMessage('loadingLyrics', 'Buscando letra no Letras.mus.br...'), 'is-loading');
+    setSongFeedback(readSongMessage('loadingLyrics', 'Gerando letra a partir da cifra...'), 'is-loading');
 
     try {
       const response = await fetch('/api/songs/fetch-lyrics', {
@@ -3394,7 +5823,7 @@
       songState.loaded = true;
       songState.title = title || payload.title || readSongMessage('defaultSongTitle', 'Música');
       songState.artist = artist || payload.artist || '';
-      songState.source = payload.source || 'letras';
+      songState.source = payload.source || result?.source || 'cifraclub';
       songState.sourceLabel = resolveSongSourceLabel(songState.source, payload.source_label || '');
       songState.sourceUrl = payload.url || sourceUrl;
       songState.originalKey = '';
@@ -3420,10 +5849,10 @@
         && typeof err === 'object'
         && 'code' in err
         && err.code === 'lyrics_not_found'
-      ) || message === readSongMessage('lyricsNotFoundApiMessage', 'Não foi possível carregar a letra no Letras.mus.br para esta música.');
+      ) || message === readSongMessage('lyricsNotFoundApiMessage', 'Não foi possível gerar letra a partir da cifra.');
 
       if (isLyricsNotFound) {
-        showSongToast(readSongMessage('lyricsNotFoundToast', 'Não encontramos a letra no Letras.mus.br para esta música.'), 'is-warning');
+        showSongToast(readSongMessage('lyricsNotFoundToast', 'Não foi possível gerar a letra a partir da cifra desta música.'), 'is-warning');
       }
       setSongFeedback(message, 'is-error');
     } finally {
@@ -3528,6 +5957,7 @@
         loadSongFromUrl(safeFavorite.url || '', triggerButton, {
           title: safeFavorite.title || '',
           artist: safeFavorite.artist || '',
+          chords_selected_key: safeFavorite.chordsSelectedKey || '',
         });
       }
       return;
@@ -3539,7 +5969,7 @@
     setSongActionLoading(triggerButton, true, fallbackLabel);
     setSongFeedback(
       isLyricsMode
-        ? readSongMessage('loadingLyrics', 'Buscando letra no Letras.mus.br...')
+        ? readSongMessage('loadingLyrics', 'Gerando letra a partir da cifra...')
         : readSongMessage('loadingChord', 'Carregando cifra selecionada...'),
       'is-loading'
     );
@@ -3552,7 +5982,7 @@
       songState.originalContent = content;
 
       if (isLyricsMode) {
-        songState.source = (safeFavorite.lyricsSource || '').trim() || 'letras';
+        songState.source = (safeFavorite.lyricsSource || safeFavorite.chordsSource || safeFavorite.source || '').trim() || 'cifraclub';
         songState.sourceLabel = resolveSongSourceLabel(songState.source, '');
         songState.sourceUrl = (safeFavorite.lyricsSourceUrl || safeFavorite.url || '').trim();
         songState.originalKey = '';
@@ -3568,6 +5998,7 @@
         songState.originalRoot = keyParts ? keyParts.root : null;
         songState.originalSuffix = keyParts ? keyParts.suffix : '';
         songState.contentType = 'chords';
+        applySavedSelectedKeyToCurrentSong(songState.sourceUrl, safeFavorite.chordsSelectedKey || '');
       }
       songState.customSongId = '';
       songState.customSongIsDraft = false;
@@ -3578,12 +6009,16 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback(
-        isLyricsMode
-          ? readSongMessage('favoriteCachedLyricsLoaded', 'Letra carregada dos favoritos.')
-          : readSongMessage('favoriteCachedChordsLoaded', 'Cifra carregada dos favoritos.'),
-        'is-success'
-      );
+      if (!isLyricsMode && !songState.originalRoot) {
+        void detectAndApplySongKeyIfMissing(safeFavorite.chordsSelectedKey || '');
+      } else {
+        setSongFeedback(
+          isLyricsMode
+            ? readSongMessage('favoriteCachedLyricsLoaded', 'Letra carregada dos favoritos.')
+            : readSongMessage('favoriteCachedChordsLoaded', 'Cifra carregada dos favoritos.'),
+          'is-success'
+        );
+      }
     } finally {
       setSongActionLoading(triggerButton, false, fallbackLabel);
     }
@@ -3645,12 +6080,16 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback(
-        isLyricsMode
-          ? readSongMessage('customSongLyricsLoaded', 'Letra manual carregada.')
-          : readSongMessage('customSongChordsLoaded', 'Cifra manual carregada.'),
-        'is-success'
-      );
+      if (!isLyricsMode && !songState.originalRoot) {
+        void detectAndApplySongKeyIfMissing('');
+      } else {
+        setSongFeedback(
+          isLyricsMode
+            ? readSongMessage('customSongLyricsLoaded', 'Letra manual carregada.')
+            : readSongMessage('customSongChordsLoaded', 'Cifra manual carregada.'),
+          'is-success'
+        );
+      }
     } finally {
       setSongActionLoading(triggerButton, false, fallbackLabel);
     }
@@ -3718,6 +6157,30 @@
       const title = document.createElement('strong');
       title.className = 'booklet-cantos-title';
       title.textContent = favorite.title || readSongMessage('defaultSongTitle', 'Música');
+      const assignFromFavoriteBtn = document.createElement('button');
+      assignFromFavoriteBtn.type = 'button';
+      assignFromFavoriteBtn.className = 'song-favorite-title-btn song-open-save-location-trigger';
+      assignFromFavoriteBtn.title = readMysteryMessage('assignButtonTitle', 'Adicionar aos mistérios');
+      assignFromFavoriteBtn.setAttribute(
+        'aria-label',
+        readMysteryMessage('assignButtonAria', 'Adicionar música a um mistério')
+      );
+      assignFromFavoriteBtn.disabled = !((favorite.title || '').trim() || (favorite.url || '').trim());
+      assignFromFavoriteBtn.appendChild(title);
+      assignFromFavoriteBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const hasPointerPosition = (
+          event instanceof MouseEvent
+          && event.detail > 0
+          && Number.isFinite(event.clientX)
+          && Number.isFinite(event.clientY)
+        );
+        const openOptions = hasPointerPosition
+          ? { clientX: event.clientX, clientY: event.clientY }
+          : null;
+        void openSongSaveLocationPicker(buildSongPayloadFromFavorite(favorite), assignFromFavoriteBtn, openOptions);
+      });
       const headActions = document.createElement('div');
       headActions.className = 'song-favorite-head-actions';
 
@@ -3788,10 +6251,21 @@
       headActions.appendChild(chordAction);
 
       head.appendChild(coverButton);
-      head.appendChild(title);
+      head.appendChild(assignFromFavoriteBtn);
       head.appendChild(headActions);
       item.appendChild(head);
       item.appendChild(meta);
+      const usageLabels = Array.from(new Set([
+        ...(Array.isArray(favorite.usageLocations) ? favorite.usageLocations : []),
+        ...resolveSongMysteryUsageLabels(favorite),
+        ...resolveSongLocationUsageLabels(favorite),
+      ]));
+      if (usageLabels.length) {
+        const usageNode = document.createElement('p');
+        usageNode.className = 'song-favorite-usage';
+        usageNode.textContent = `${readSongMessage('favoriteUsagePrefix', 'Usada em:')} ${usageLabels.join(' | ')}`;
+        item.appendChild(usageNode);
+      }
       songFavoritesList.appendChild(item);
     });
     scheduleSongFavoritesLayoutSync();
@@ -3801,6 +6275,10 @@
     const normalizedFavorites = Array.isArray(favorites)
       ? favorites.map(normalizeSongFavorite).filter((favorite) => Boolean(normalizeSongUrlKey(favorite.url)))
       : [];
+    normalizedFavorites.forEach((favorite) => {
+      if (!favorite?.url || !favorite?.chordsSelectedKey) return;
+      rememberSongSelectedKey(favorite.url, favorite.chordsSelectedKey);
+    });
     songFavorites = sortSongFavoritesByOrder(normalizedFavorites);
     rebuildSongFavoritesIndex();
     renderSongFavorites();
@@ -3831,6 +6309,16 @@
 
   const removeSongFavoriteByUrl = (urlKey) => {
     if (!urlKey) return false;
+    if (
+      songToneFavoritePersistContext
+      && normalizeSongUrlKey(songToneFavoritePersistContext.url || '') === urlKey
+    ) {
+      songToneFavoritePersistContext = null;
+      if (songToneFavoritePersistTimerId !== null) {
+        window.clearTimeout(songToneFavoritePersistTimerId);
+        songToneFavoritePersistTimerId = null;
+      }
+    }
     const previousCount = songFavorites.length;
     songFavorites = songFavorites.filter((item) => normalizeSongUrlKey(item.url) !== urlKey);
     if (songFavorites.length === previousCount) return false;
@@ -3860,7 +6348,9 @@
         setFavoriteButtonState(triggerButton, true, false);
         return;
       }
-      setFavoriteButtonState(triggerButton, true, true);
+      const favoritesSnapshot = songFavorites.map((item) => ({ ...item }));
+      removeSongFavoriteByUrl(urlKey);
+      setFavoriteButtonState(triggerButton, false, true);
       setSongFeedback(
         readSongMessage('favoriteButtonRemoving', 'Removendo favorito...'),
         'is-loading',
@@ -3878,13 +6368,15 @@
           throw new Error(message);
         }
 
-        removeSongFavoriteByUrl(urlKey);
+        setFavoriteButtonState(triggerButton, false, false);
         setSongFeedback(
           readSongMessage('favoriteRemoveSuccess', 'Favorito removido.'),
           'is-success',
           widget
         );
       } catch (err) {
+        applySongFavorites(favoritesSnapshot);
+        applyFavoriteStateToRenderedButtons(urlKey, true);
         const message = err instanceof Error
           ? err.message
           : readSongMessage('favoriteRemoveError', 'Não foi possível remover o favorito.');
@@ -3903,6 +6395,29 @@
 
     try {
       const externalQuery = buildExternalSongSearchQuery(safeResult);
+      const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
+      const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
+      const selectedToneForFavorite = (
+        songState.loaded
+        && songState.contentType === 'chords'
+        && normalizeSongUrlKey(songState.sourceUrl || '') === urlKey
+      )
+        ? resolveCurrentSongSelectedKeyForSave()
+        : '';
+      const optimisticTimestamp = new Date().toISOString();
+      upsertSongFavorite({
+        url: sourceUrl,
+        title: safeResult.title || '',
+        artist: safeResult.artist || '',
+        source: safeResult.source || '',
+        source_label: safeResult.source_label || '',
+        image_url: safeResult.image_url || '',
+        spotify_url: spotifyUrl,
+        youtube_url: youtubeUrl,
+        chords_selected_key: selectedToneForFavorite,
+        updated_at_utc: optimisticTimestamp,
+        created_at_utc: optimisticTimestamp,
+      });
       const response = await fetch('/api/songs/favorites', {
         method: 'POST',
         headers: {
@@ -3915,8 +6430,9 @@
           source: safeResult.source || '',
           source_label: safeResult.source_label || '',
           image_url: safeResult.image_url || '',
-          spotify_url: buildExternalSongSearchUrl('spotify', externalQuery),
-          youtube_url: buildExternalSongSearchUrl('youtube', externalQuery),
+          spotify_url: spotifyUrl,
+          youtube_url: youtubeUrl,
+          chords_selected_key: selectedToneForFavorite,
         }),
       });
 
@@ -3939,6 +6455,7 @@
         widget
       );
     } catch (err) {
+      removeSongFavoriteByUrl(urlKey);
       const message = err instanceof Error
         ? err.message
         : readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.');
@@ -4891,7 +7408,7 @@
   customSongs = [];
   syncStoredCustomDraftToSongList();
   renderCustomSongs();
-  await fetchCustomSongs();
+  runDeferredTask(fetchCustomSongs, 650);
 
   if (customSongsAddBtn) {
     customSongsAddBtn.addEventListener('click', () => {
@@ -5124,22 +7641,33 @@
     });
   };
 
-  const renderSongSearchResults = (results, targetWidget = null) => {
+  const renderSongSearchResults = (results, options = {}) => {
+    const { targetWidget = null, append = false, hasMore = false } = options;
     if (!songSearchWidgets.length) return;
 
     const activeWidget = resolveSongSearchWidget(targetWidget);
 
     if (!activeWidget) return;
 
-    activeWidget.resultsList.innerHTML = '';
+    if (!append) {
+      activeWidget.resultsList.innerHTML = '';
+      activeWidget.resultsContainer.scrollTop = 0;
+    }
 
-    if (!Array.isArray(results) || !results.length) {
-      activeWidget.resultsContainer.hidden = true;
-      hideSongSearchResultsExcept(activeWidget);
+    const safeResults = Array.isArray(results) ? results : [];
+    if (!safeResults.length) {
+      if (!append) {
+        activeWidget.resultsContainer.hidden = true;
+        hideSongSearchResultsExcept(activeWidget);
+      }
+      updateSongSearchLoadMoreButton(activeWidget, {
+        hasMore,
+        loading: false
+      });
       return;
     }
 
-    results.forEach((result) => {
+    safeResults.forEach((result) => {
       const item = document.createElement('li');
       item.className = 'song-search-item';
 
@@ -5193,7 +7721,7 @@
 
       const assignMysteryAction = document.createElement('button');
       assignMysteryAction.type = 'button';
-      assignMysteryAction.className = 'song-search-action song-search-action-assign-mystery';
+      assignMysteryAction.className = 'song-search-action song-search-action-assign-mystery song-open-save-location-trigger';
       assignMysteryAction.innerHTML = SONG_ASSIGN_PLUS_ICON;
       assignMysteryAction.title = readMysteryMessage('assignButtonTitle', 'Adicionar aos mistérios');
       assignMysteryAction.setAttribute(
@@ -5204,7 +7732,16 @@
       assignMysteryAction.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openMysterySongAssignModal(result, assignMysteryAction);
+        const hasPointerPosition = (
+          event instanceof MouseEvent
+          && event.detail > 0
+          && Number.isFinite(event.clientX)
+          && Number.isFinite(event.clientY)
+        );
+        const openOptions = hasPointerPosition
+          ? { clientX: event.clientX, clientY: event.clientY }
+          : null;
+        void openSongSaveLocationPicker(result, assignMysteryAction, openOptions);
       });
 
       const spotifyAction = document.createElement('a');
@@ -5248,6 +7785,11 @@
       lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
       lyricAction.disabled = !result.title && !result.url;
       lyricAction.addEventListener('click', () => {
+        const cachedFavorite = urlKey ? songFavoritesByUrl.get(urlKey) : null;
+        if (cachedFavorite) {
+          openSongFavoriteCached(cachedFavorite, 'lyrics', lyricAction);
+          return;
+        }
         loadLyricsFromService(result, lyricAction);
       });
 
@@ -5260,6 +7802,11 @@
       chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
       chordAction.disabled = !result.url;
       chordAction.addEventListener('click', () => {
+        const cachedFavorite = urlKey ? songFavoritesByUrl.get(urlKey) : null;
+        if (cachedFavorite) {
+          openSongFavoriteCached(cachedFavorite, 'chords', chordAction);
+          return;
+        }
         loadSongFromUrl(result.url || '', chordAction, result);
       });
 
@@ -5277,7 +7824,14 @@
 
     activeWidget.resultsContainer.hidden = false;
     hideSongSearchResultsExcept(activeWidget);
+    updateSongSearchLoadMoreButton(activeWidget, {
+      hasMore,
+      loading: false
+    });
     scheduleSongSearchResultsLayoutSync(activeWidget);
+    window.requestAnimationFrame(() => {
+      maybeAutoLoadMoreSongSearch(activeWidget);
+    });
   };
 
   if (songToneGrid) {
@@ -5291,15 +7845,12 @@
 
       button.addEventListener('click', () => {
         if (!songState.originalRoot) return;
-        const originalIndex = NOTE_INDEX_MAP[songState.originalRoot];
         const targetRoot = canonicalNote(tone);
-        if (!targetRoot || !Number.isInteger(originalIndex)) return;
+        if (!targetRoot) return;
 
-        const targetIndex = NOTE_INDEX_MAP[targetRoot];
-        let semitones = (targetIndex - originalIndex + 12) % 12;
-        if (semitones > 6) semitones -= 12;
-        songState.semitones = semitones;
+        songState.semitones = calculateSongToneSemitonesToRoot(targetRoot);
         renderFetchedSong();
+        persistCurrentSongTonePreference();
       });
 
       songToneGrid.appendChild(button);
@@ -5312,6 +7863,7 @@
       if (!songState.loaded || songState.semitones === 0) return;
       songState.semitones = 0;
       renderFetchedSong();
+      persistCurrentSongTonePreference();
     });
   }
 
@@ -5320,29 +7872,84 @@
   let songSearchDebounceId = null;
   let songSearchAbortController = null;
   let songSearchRequestId = 0;
-  let lastSongSearchCache = {
-    query: '',
-    results: null
-  };
 
   const normalizeSongSearchQuery = (value) => (value || '').trim().toLowerCase();
+  const readSongSearchResponsePage = (payload, fallbackPage = 1) => {
+    const parsed = Number.parseInt(String(payload?.page ?? fallbackPage), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallbackPage;
+  };
+  const readSongSearchResponsePageSize = (payload, fallbackPageSize = SONG_SEARCH_DEFAULT_PAGE_SIZE) => (
+    normalizeSongSearchPageSize(payload?.page_size ?? payload?.limit ?? fallbackPageSize)
+  );
+  const readSongSearchResponseHasMore = (payload, fallback = false) => {
+    if (typeof payload?.has_more === 'boolean') return payload.has_more;
+    return Boolean(fallback);
+  };
+  const prioritizeKnownSongResults = (results) => {
+    const safeResults = Array.isArray(results) ? results : [];
+    if (safeResults.length < 2) return safeResults.slice();
+
+    const scored = safeResults.map((result, index) => {
+      const safeResult = asObject(result);
+      const urlKey = normalizeSongUrlKey(safeResult.url || safeResult.song_url || '');
+      const isFavorite = Boolean(urlKey && songFavoritesByUrl.has(urlKey));
+      const hasUsage = hasSongMysteryUsage(safeResult);
+      const score = (isFavorite ? 2 : 0) + (hasUsage ? 1 : 0);
+      return {
+        result,
+        index,
+        score,
+      };
+    });
+
+    scored.sort((a, b) => {
+      if (a.score !== b.score) {
+        return b.score - a.score;
+      }
+      return a.index - b.index;
+    });
+
+    return scored.map((entry) => entry.result);
+  };
 
   const executeSongSearch = async (rawQuery, options = {}) => {
-    const { fromTyping = false, widget = null } = options;
+    const {
+      fromTyping = false,
+      fromLoadMore = false,
+      widget = null,
+      page = 1,
+      append = false
+    } = options;
     const activeWidget = resolveSongSearchWidget(widget);
+    if (!activeWidget) return;
+    const searchState = readSongSearchWidgetState(activeWidget);
+    if (!searchState) return;
+
     const query = (rawQuery || '').trim();
     const normalizedQuery = normalizeSongSearchQuery(query);
+    const requestedPage = normalizeSongSearchPage(page);
 
     if (!query) {
+      if (songSearchAbortController) {
+        songSearchAbortController.abort();
+      }
+      songSearchRequestId += 1;
+      songSearchAbortController = null;
       clearSongSearchResults();
+      resetSongSearchWidgetState();
       setSongFeedback('');
-      if (!fromTyping) {
+      if (!fromTyping && !fromLoadMore) {
         setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
     }
 
     if (query.length < SONG_SEARCH_MIN_CHARS) {
+      if (songSearchAbortController) {
+        songSearchAbortController.abort();
+      }
+      songSearchRequestId += 1;
+      songSearchAbortController = null;
       clearSongSearchResults(activeWidget);
       hideSongSearchResultsExcept(activeWidget);
       setSongFeedback(
@@ -5350,28 +7957,85 @@
         '',
         activeWidget
       );
-      if (!fromTyping) {
+      resetSongSearchWidgetState(activeWidget);
+      if (!fromTyping && !fromLoadMore) {
         setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
     }
 
-    const hasCachedResults = (
-      lastSongSearchCache.results !== null
-      && lastSongSearchCache.query === normalizedQuery
-    );
-    if (hasCachedResults) {
-      const cachedResults = Array.isArray(lastSongSearchCache.results) ? lastSongSearchCache.results : [];
-      if (!cachedResults.length) {
+    const sameQueryAsCurrent = searchState.normalizedQuery === normalizedQuery;
+    const isLoadMoreRequest = Boolean(append && requestedPage > 1 && sameQueryAsCurrent);
+    if (!isLoadMoreRequest) {
+      searchState.page = 0;
+      searchState.hasMore = false;
+      searchState.loadingMore = false;
+    }
+    searchState.query = query;
+    searchState.normalizedQuery = normalizedQuery;
+
+    const cachedEntry = readSongSearchCacheEntry(normalizedQuery);
+    const cachedPageResults = cachedEntry?.pages.get(requestedPage);
+    if (Array.isArray(cachedPageResults)) {
+      const cacheHasMore = Boolean(cachedEntry?.hasMore);
+      const shouldHydrateCachedPages = Boolean(!isLoadMoreRequest && requestedPage === 1);
+      let renderResults = prioritizeKnownSongResults(cachedPageResults);
+      let renderAppend = requestedPage > 1;
+      let resolvedPage = requestedPage;
+
+      if (shouldHydrateCachedPages && cachedEntry?.pages instanceof Map) {
+        const hydratedPages = [];
+        const knownPages = Array.from(cachedEntry.pages.keys())
+          .filter((pageNumber) => Number.isInteger(pageNumber) && pageNumber > 0)
+          .sort((a, b) => a - b);
+
+        let expectedPage = 1;
+        knownPages.forEach((pageNumber) => {
+          if (pageNumber !== expectedPage) return;
+          const pageResults = cachedEntry.pages.get(pageNumber);
+          if (!Array.isArray(pageResults)) return;
+          hydratedPages.push(pageNumber);
+          expectedPage += 1;
+        });
+
+        if (hydratedPages.length) {
+          renderResults = [];
+          hydratedPages.forEach((pageNumber) => {
+            const pageResults = cachedEntry.pages.get(pageNumber);
+            if (Array.isArray(pageResults) && pageResults.length) {
+              renderResults.push(...pageResults);
+            }
+          });
+          renderResults = prioritizeKnownSongResults(renderResults);
+          resolvedPage = hydratedPages[hydratedPages.length - 1];
+          renderAppend = false;
+        }
+      }
+
+      const loadedCount = countSongSearchCachedResults(cachedEntry, resolvedPage);
+      if (!renderResults.length && requestedPage === 1) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
         setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
+        searchState.page = 0;
+        searchState.hasMore = false;
       } else {
-        renderSongSearchResults(cachedResults, activeWidget);
-        const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: cachedResults.length });
+        renderSongSearchResults(renderResults, {
+          targetWidget: activeWidget,
+          append: renderAppend,
+          hasMore: cacheHasMore
+        });
+        searchState.page = resolvedPage;
+        searchState.hasMore = cacheHasMore;
+        const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: loadedCount });
         setSongFeedback(foundMessage, 'is-success', activeWidget);
+        if (cacheHasMore) {
+          window.requestAnimationFrame(() => {
+            maybeAutoLoadMoreSongSearch(activeWidget);
+          });
+        }
       }
-      if (!fromTyping) {
+      if (!fromTyping && !fromLoadMore) {
         setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
       return;
@@ -5386,11 +8050,20 @@
       ? new AbortController()
       : null;
 
-    if (!fromTyping) {
+    if (!fromTyping && !fromLoadMore) {
       setFetchSubmitState(true, readSongMessage('searchButtonLoading', 'Buscando...'));
     }
-    setSongFeedback(readSongMessage('searchingSources', 'Buscando músicas nos portais...'), 'is-loading', activeWidget);
-    hideSongSearchResultsExcept(activeWidget);
+    if (isLoadMoreRequest) {
+      updateSongSearchLoadMoreButton(activeWidget, {
+        visible: true,
+        hasMore: true,
+        loading: true
+      });
+      setSongFeedback(readSongMessage('searchLoadingMore', 'Carregando mais músicas...'), 'is-loading', activeWidget);
+    } else {
+      setSongFeedback(readSongMessage('searchingSources', 'Buscando músicas nos portais...'), 'is-loading', activeWidget);
+      hideSongSearchResultsExcept(activeWidget);
+    }
 
     try {
       const response = await fetch('/api/songs/search', {
@@ -5398,7 +8071,12 @@
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query, limit: 18 }),
+        body: JSON.stringify({
+          query,
+          page: requestedPage,
+          page_size: SONG_SEARCH_DEFAULT_PAGE_SIZE,
+          limit: SONG_SEARCH_DEFAULT_PAGE_SIZE
+        }),
         signal: songSearchAbortController ? songSearchAbortController.signal : undefined
       });
 
@@ -5413,32 +8091,75 @@
         return;
       }
 
-      const results = Array.isArray(payload.results) ? payload.results : [];
-      lastSongSearchCache = {
-        query: normalizedQuery,
-        results
-      };
-      if (!results.length) {
+      const responsePage = readSongSearchResponsePage(payload, requestedPage);
+      const responsePageSize = readSongSearchResponsePageSize(payload, SONG_SEARCH_DEFAULT_PAGE_SIZE);
+      const responseHasMore = readSongSearchResponseHasMore(payload, false);
+      const rawResults = Array.isArray(payload.results) ? payload.results : [];
+      const results = prioritizeKnownSongResults(rawResults);
+
+      const cacheEntry = getOrCreateSongSearchCacheEntry(normalizedQuery, query);
+      if (cacheEntry) {
+        cacheEntry.pageSize = responsePageSize;
+        cacheEntry.hasMore = responseHasMore;
+        cacheEntry.pages.set(responsePage, results);
+        const payloadTotal = Number.parseInt(String(payload?.total ?? ''), 10);
+        cacheEntry.total = Number.isInteger(payloadTotal) && payloadTotal >= 0
+          ? payloadTotal
+          : countSongSearchCachedResults(cacheEntry);
+      }
+
+      if (!results.length && responsePage === 1) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
         setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
+        searchState.page = 0;
+        searchState.hasMore = false;
+        searchState.loadingMore = false;
         return;
       }
 
-      renderSongSearchResults(results, activeWidget);
-      const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: results.length });
+      if (!results.length && responsePage > 1) {
+        searchState.hasMore = false;
+        searchState.loadingMore = false;
+        updateSongSearchLoadMoreButton(activeWidget, {
+          hasMore: false,
+          loading: false
+        });
+        setSongFeedback(readSongMessage('searchNoMoreResults', 'Não há mais músicas para carregar.'), '', activeWidget);
+        return;
+      }
+
+      renderSongSearchResults(results, {
+        targetWidget: activeWidget,
+        append: responsePage > 1,
+        hasMore: responseHasMore
+      });
+
+      searchState.page = responsePage;
+      searchState.hasMore = responseHasMore;
+      searchState.loadingMore = false;
+      const updatedCacheEntry = readSongSearchCacheEntry(normalizedQuery);
+      const loadedCount = updatedCacheEntry
+        ? countSongSearchCachedResults(updatedCacheEntry, responsePage)
+        : results.length;
+      const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: loadedCount });
       setSongFeedback(foundMessage, 'is-success', activeWidget);
     } catch (err) {
       if (err && typeof err === 'object' && err.name === 'AbortError') {
         return;
       }
       const message = err instanceof Error ? err.message : readSongMessage('searchError', 'Falha ao buscar músicas.');
+      searchState.loadingMore = false;
+      updateSongSearchLoadMoreButton(activeWidget, {
+        hasMore: searchState.hasMore,
+        loading: false
+      });
       setSongFeedback(message, 'is-error', activeWidget);
     } finally {
       if (requestId === songSearchRequestId) {
         songSearchAbortController = null;
       }
-      if (!fromTyping) {
+      if (!fromTyping && !fromLoadMore) {
         setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
       }
     }
@@ -5450,6 +8171,7 @@
       widget.input.value = '';
     });
     clearSongSearchResults();
+    resetSongSearchWidgetState();
     setSongFeedback('');
     syncSongSearchClearButtons();
     if (focusInput) {
@@ -5537,12 +8259,15 @@
     });
   }
 
-  void fetchSongFavorites();
+  runDeferredTask(fetchSongFavorites, 350);
+  runDeferredTask(fetchSongLocationTree, 420);
+  runDeferredTask(fetchSongLocationAssignments, 520);
 
   if (songSearchWidgets.length) {
     window.addEventListener('resize', () => {
       scheduleSongSearchResultsLayoutSync();
       scheduleSongFavoritesLayoutSync();
+      positionSongSaveLocationPicker();
     }, { passive: true });
     if (document.fonts && typeof document.fonts.ready?.then === 'function') {
       document.fonts.ready.then(() => {
@@ -5550,6 +8275,9 @@
         scheduleSongFavoritesLayoutSync();
       }).catch(() => {});
     }
+    window.addEventListener('scroll', () => {
+      positionSongSaveLocationPicker();
+    }, { passive: true });
 
     syncSongSearchClearButtons();
 
@@ -5557,6 +8285,10 @@
       widget.resultsContainer.addEventListener('wheel', (event) => {
         // Keep wheel scrolling inside the results panel and avoid portal section navigation.
         event.stopPropagation();
+      }, { passive: true });
+      widget.resultsContainer.addEventListener('scroll', () => {
+        maybeAutoLoadMoreSongSearch(widget);
+        positionSongSaveLocationPicker();
       }, { passive: true });
 
       widget.input.addEventListener('input', () => {
@@ -5570,10 +8302,13 @@
 
         if (!query) {
           clearSongSearchResults();
+          resetSongSearchWidgetState();
           setSongFeedback('');
           if (songSearchAbortController) {
             songSearchAbortController.abort();
           }
+          songSearchRequestId += 1;
+          songSearchAbortController = null;
           return;
         }
 
@@ -5622,6 +8357,10 @@
       const target = event.target;
       if (!(target instanceof Node)) return;
       const targetElement = target instanceof Element ? target : null;
+      const eventPath = typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : [];
+      const eventPathIncludes = (node) => Array.isArray(eventPath) && eventPath.includes(node);
       const bookletSearchButton = targetElement
         ? targetElement.closest('.booklet-cantos-search-btn')
         : null;
@@ -5637,6 +8376,64 @@
         syncSongSearchClearButtons();
         void executeSongSearch(query, { fromTyping: false, widget: cantosWidget });
         return;
+      }
+      const clickedInsideSongLocationCreateModal = Boolean(
+        songLocationCreateModal
+        && (
+          (targetElement && targetElement.closest('#song-location-create-modal'))
+          || eventPathIncludes(songLocationCreateModal)
+        )
+      );
+      if (clickedInsideSongLocationCreateModal) return;
+      const clickedInsideFavoriteConfirmModalPre = Boolean(
+        favoriteConfirmModal
+        && (
+          (targetElement && targetElement.closest('#favorite-confirm-modal'))
+          || eventPathIncludes(favoriteConfirmModal)
+        )
+      );
+      if (clickedInsideFavoriteConfirmModalPre) return;
+      const clickedInsideCustomSongModalPre = Boolean(
+        customSongModal
+        && (
+          (targetElement && targetElement.closest('#custom-song-modal'))
+          || eventPathIncludes(customSongModal)
+        )
+      );
+      if (clickedInsideCustomSongModalPre) return;
+      const clickedInsideMysterySongAssignModalPre = Boolean(
+        mysterySongAssignModal
+        && (
+          (targetElement && targetElement.closest('#mystery-song-assign-modal'))
+          || eventPathIncludes(mysterySongAssignModal)
+        )
+      );
+      if (clickedInsideMysterySongAssignModalPre) return;
+      const clickedInsideSongModalPre = Boolean(
+        songModal
+        && (
+          (targetElement && targetElement.closest('#song-modal'))
+          || eventPathIncludes(songModal)
+        )
+      );
+      if (clickedInsideSongModalPre) return;
+      if (isSongLocationCreateModalOpen()) return;
+      const clickedInsideSongSaveLocationPicker = Boolean(
+        songSaveLocationPicker
+        && (
+          (targetElement && targetElement.closest('#song-save-location-picker'))
+          || eventPathIncludes(songSaveLocationPicker)
+        )
+      );
+      if (clickedInsideSongSaveLocationPicker) return;
+      if (isSongSaveLocationPickerOpen()) {
+        const clickedAssignTrigger = Boolean(
+          targetElement
+          && targetElement.closest('.song-open-save-location-trigger')
+        );
+        if (!clickedAssignTrigger) {
+          closeSongSaveLocationPicker();
+        }
       }
 
       const clickedInsideSongModal = Boolean(
@@ -5709,6 +8506,11 @@
             mysterySongAssignModal
             && mysterySongAssignModal.classList.contains('open')
             && targetElement.closest('.mystery-song-assign-dialog')
+          )
+          || (
+            songLocationCreateModal
+            && songLocationCreateModal.classList.contains('open')
+            && targetElement.closest('.song-location-create-dialog')
           )
         )
       );
@@ -5793,13 +8595,23 @@
     if (event.key === 'Escape') {
       closeMainMenu();
 
-      if (mysterySongAssignModal && mysterySongAssignModal.classList.contains('open')) {
-        closeMysterySongAssignModal();
+      if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
+        closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS);
         return;
       }
 
-      if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
-        closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS);
+      if (isSongLocationCreateModalOpen()) {
+        closeSongLocationCreateModal();
+        return;
+      }
+
+      if (isSongSaveLocationPickerOpen()) {
+        closeSongSaveLocationPicker();
+        return;
+      }
+
+      if (mysterySongAssignModal && mysterySongAssignModal.classList.contains('open')) {
+        closeMysterySongAssignModal();
         return;
       }
 
@@ -5819,4 +8631,5 @@
     }
   });
 })();
+
 

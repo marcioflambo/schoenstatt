@@ -38,17 +38,8 @@
         ]
       },
       {
-        "label": "Conteúdo",
-        "subLinks": [
-          {
-            "label": "Cantos com cifra",
-            "href": "#cantos"
-          },
-          {
-            "label": "Recursos",
-            "href": "#recursos"
-          }
-        ]
+        "label": "Musicas",
+        "href": "#cantos"
       },
       {
         "label": "Divulgação",
@@ -683,20 +674,27 @@
       "loadingChord": "Carregando cifra selecionada...",
       "chordFetchErrorApi": "Não foi possível carregar a cifra.",
       "chordLoaded": "Cifra carregada. Ajuste o tom abaixo do título.",
+      "detectingKey": "Tom não informado. Identificando automaticamente...",
+      "detectedKeySuccess": "Tom identificado automaticamente: {key}.",
+      "detectedKeyError": "Não foi possível identificar o tom automaticamente.",
       "chordLoadError": "Falha ao carregar a cifra.",
       "invalidLyricsTarget": "Não foi possível identificar a música para buscar a letra.",
-      "loadingLyrics": "Buscando letra no Letras.mus.br...",
+      "loadingLyrics": "Gerando letra a partir da cifra...",
       "lyricsFetchErrorApi": "Não foi possível carregar a letra.",
       "lyricsLoaded": "Letra carregada com sucesso.",
       "lyricsLoadError": "Falha ao carregar a letra.",
-      "lyricsNotFoundApiMessage": "Não foi possível carregar a letra no Letras.mus.br para esta música.",
-      "lyricsNotFoundToast": "Não encontramos a letra no Letras.mus.br para esta música.",
+      "lyricsNotFoundApiMessage": "Não foi possível gerar letra a partir da cifra.",
+      "lyricsNotFoundToast": "Não foi possível gerar a letra a partir da cifra desta música.",
       "searchButton": "Buscar música",
       "searchButtonLoading": "Buscando...",
       "searchMinChars": "Digite pelo menos {count} caracteres para buscar.",
       "searchNoResults": "Nenhuma música encontrada para este nome.",
       "searchResultsFound": "{count} opções encontradas.",
       "searchingSources": "Buscando músicas nos portais...",
+      "searchLoadingMore": "Carregando mais músicas...",
+      "searchLoadMore": "Carregar mais",
+      "searchLoadMoreLoading": "Carregando mais...",
+      "searchNoMoreResults": "Não há mais músicas para carregar.",
       "searchError": "Falha ao buscar músicas.",
       "searchErrorApi": "Não foi possível buscar músicas agora.",
       "lyricsButton": "Letra",
@@ -750,6 +748,12 @@
       "modalLinkAria": "{index}º Mistério: {title}",
       "assignButtonTitle": "Adicionar aos mistérios",
       "assignButtonAria": "Adicionar música a um mistério",
+      "assignCategorySelect": "Selecione o caminho",
+      "assignCategoryMystery": "Mistério",
+      "assignCategoryBack": "Voltar",
+      "assignCategoryAddTargetField": "Adicionar dentro de:",
+      "assignCategoryRootOption": "Raiz",
+      "assignCategoryCloseAria": "Fechar seleção",
       "assignCurrentSongTitle": "Já possui música atribuída: {title}",
       "assignInvalidTarget": "Informe o grupo e o mistério da música.",
       "assignSongInvalid": "Não foi possível identificar a música para atribuir.",
@@ -768,7 +772,18 @@
       "assignExistingChoiceTitle": "Música já vinculada",
       "assignExistingChoiceMessage": "Este mistério já possui \"{current}\". Deseja substituir por \"{next}\" ou remover a atual?",
       "assignExistingChoiceReplace": "Substituir",
-      "assignExistingChoiceRemove": "Remover atual"
+      "assignExistingChoiceRemove": "Remover atual",
+      "assignCategoryDeactivateAria": "Inativar \"{title}\"",
+      "assignCategoryDeactivateConfirmTitle": "Inativar item",
+      "assignCategoryDeactivateConfirmMessage": "Deseja inativar \"{title}\"? O item ficará oculto e poderá ser recuperado depois.",
+      "assignCategoryDeactivateConfirmAccept": "Inativar",
+      "assignCategoryDeactivatePasswordLabel": "Senha de confirmação",
+      "assignCategoryDeactivatePasswordPlaceholder": "Digite a senha",
+      "assignCategoryDeactivatePasswordRequired": "Informe a senha para inativar.",
+      "assignCategoryDeactivatePasswordInvalid": "Senha inválida para inativar o item.",
+      "assignCategoryDeactivateSuccess": "Item inativado com sucesso.",
+      "assignCategoryDeactivateError": "Não foi possível inativar o item."
     }
   }
 }
+

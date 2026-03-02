@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
+import time
 import unicodedata
 from html import unescape
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
@@ -11,7 +15,35 @@ from pydantic import BaseModel
 
 CIFRACLUB_HOST_SUFFIXES = ('cifraclub.com.br', 'cifraclub.com')
 CIFRAS_HOST_SUFFIXES = ('cifras.com.br',)
-LETRAS_HOST_SUFFIXES = ('letras.mus.br', 'letras.com')
+_CHORD_TOKEN_PATTERN = re.compile(r'\[[^\]\n]+\]')
+_SPOTIFY_KEY_NOTES_SHARP = ('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
+_SPOTIFY_TOKEN_CACHE: dict[str, object] = {
+    'access_token': '',
+    'expires_at': 0.0,
+}
+_DETECTED_KEY_CACHE: dict[str, str] = {}
+_SONG_TITLE_VARIATION_TOKENS = {
+    'acustica',
+    'acustico',
+    'acoustic',
+    'cover',
+    'instrumental',
+    'karaoke',
+    'live',
+    'oficial',
+    'playback',
+    'remaster',
+    'remastered',
+    'simplificada',
+    'simplificado',
+    'tablatura',
+    'tutorial',
+    'versao',
+    'version',
+    'videoaula',
+    'vivo',
+}
+_SONG_ARTIST_SPLIT_TOKENS = ('feat', 'featuring', 'ft', 'part', 'participacao', 'with')
 
 
 class SongFetchRequest(BaseModel):
@@ -27,6 +59,13 @@ class SongLyricsFetchRequest(BaseModel):
 class SongSearchRequest(BaseModel):
     query: str
     limit: int = 18
+    page: int = 1
+    page_size: int | None = None
+
+
+class SongKeyDetectRequest(BaseModel):
+    title: str
+    artist: str = ''
 
 
 def _log_external_url(url: str) -> None:
@@ -73,8 +112,6 @@ def _parse_song_source(hostname: str) -> str | None:
         return 'cifraclub'
     if any(hostname.endswith(suffix) for suffix in CIFRAS_HOST_SUFFIXES):
         return 'cifras'
-    if any(hostname.endswith(suffix) for suffix in LETRAS_HOST_SUFFIXES):
-        return 'letras'
     return None
 
 
@@ -171,6 +208,466 @@ def _download_json(url: str) -> dict:
     return payload
 
 
+def _log_song_key_event(message: str) -> None:
+    safe_message = _normalize_spaces(message or '')
+    if not safe_message:
+        return
+    print(f'[song-key] {safe_message}', flush=True)
+
+
+def _download_json_request(
+    url: str,
+    *,
+    method: str = 'GET',
+    headers: dict[str, str] | None = None,
+    data: bytes | None = None,
+) -> dict:
+    request = Request(
+        url,
+        data=data,
+        method=method,
+        headers=headers or {},
+    )
+    _log_external_url(url)
+
+    try:
+        with urlopen(request, timeout=16) as response:
+            content = response.read()
+            charset = response.headers.get_content_charset() or 'utf-8'
+    except HTTPError as exc:
+        detail = ''
+        try:
+            detail = exc.read().decode('utf-8', errors='replace')
+        except Exception:
+            detail = ''
+        detail = _normalize_spaces(detail)[:220]
+        raise RuntimeError(f'Requisicao HTTP {exc.code} falhou para servico de tom: {detail}') from exc
+    except URLError as exc:
+        raise RuntimeError(f'Falha de rede ao consultar servico de tom: {exc.reason}') from exc
+    except Exception as exc:
+        raise RuntimeError(f'Falha ao consultar servico de tom: {exc}') from exc
+
+    try:
+        text = content.decode(charset, errors='replace')
+        payload = json.loads(text)
+    except Exception as exc:
+        raise RuntimeError(f'Resposta invalida do servico de tom: {exc}') from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError('Resposta inesperada do servico de tom.')
+    return payload
+
+
+def _read_spotify_credentials() -> tuple[str, str]:
+    client_id = _normalize_spaces(os.getenv('SPOTIFY_CLIENT_ID', ''))
+    client_secret = _normalize_spaces(os.getenv('SPOTIFY_CLIENT_SECRET', ''))
+    return client_id, client_secret
+
+
+def _read_cached_spotify_token() -> str:
+    token = str(_SPOTIFY_TOKEN_CACHE.get('access_token') or '')
+    expires_at = float(_SPOTIFY_TOKEN_CACHE.get('expires_at') or 0.0)
+    if not token:
+        return ''
+    # Keep a small safety margin before expiry.
+    if time.time() >= max(0.0, expires_at - 20):
+        return ''
+    return token
+
+
+def _cache_spotify_token(access_token: str, expires_in_seconds: int) -> None:
+    safe_token = _normalize_spaces(access_token)
+    if not safe_token:
+        return
+    try:
+        ttl = int(expires_in_seconds)
+    except (TypeError, ValueError):
+        ttl = 0
+    if ttl <= 0:
+        ttl = 3600
+    _SPOTIFY_TOKEN_CACHE['access_token'] = safe_token
+    _SPOTIFY_TOKEN_CACHE['expires_at'] = time.time() + ttl
+
+
+def _get_spotify_access_token() -> str:
+    cached_token = _read_cached_spotify_token()
+    if cached_token:
+        return cached_token
+
+    client_id, client_secret = _read_spotify_credentials()
+    if not client_id or not client_secret:
+        return ''
+
+    basic_auth = base64.b64encode(f'{client_id}:{client_secret}'.encode('utf-8')).decode('ascii')
+    payload = _download_json_request(
+        'https://accounts.spotify.com/api/token',
+        method='POST',
+        headers={
+            'Authorization': f'Basic {basic_auth}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+        },
+        data=b'grant_type=client_credentials',
+    )
+
+    access_token = _normalize_spaces(str(payload.get('access_token') or ''))
+    expires_in = int(payload.get('expires_in') or 0)
+    if not access_token:
+        return ''
+
+    _cache_spotify_token(access_token, expires_in)
+    return access_token
+
+
+def _normalize_match_text(value: str) -> str:
+    normalized = _normalize_spaces(value).lower()
+    normalized = unicodedata.normalize('NFKD', normalized)
+    normalized = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = re.sub(r'[^a-z0-9]+', ' ', normalized)
+    return _normalize_spaces(normalized)
+
+
+def _tokenize_match_text(value: str) -> list[str]:
+    normalized = _normalize_match_text(value)
+    if not normalized:
+        return []
+    return [token for token in normalized.split(' ') if token]
+
+
+def _normalize_song_title_key(value: str) -> str:
+    normalized = _normalize_match_text(value)
+    if not normalized:
+        return ''
+
+    normalized = normalized.replace('ao vivo', ' ')
+    tokens = [
+        token for token in normalized.split(' ')
+        if token and token not in _SONG_TITLE_VARIATION_TOKENS
+    ]
+    if not tokens:
+        return ''
+    return _normalize_spaces(' '.join(tokens))
+
+
+def _normalize_song_artist_key(value: str) -> str:
+    normalized = _normalize_match_text(value)
+    if not normalized:
+        return ''
+
+    pattern = r'\b(?:' + '|'.join(_SONG_ARTIST_SPLIT_TOKENS) + r')\b'
+    primary = re.split(pattern, normalized, maxsplit=1)[0]
+    return _normalize_spaces(primary)
+
+
+def _build_song_result_signature(item: dict[str, str]) -> str:
+    title_key = _normalize_song_title_key(str(item.get('title') or ''))
+    artist_key = _normalize_song_artist_key(str(item.get('artist') or ''))
+    if title_key and artist_key:
+        return f'{title_key}|{artist_key}'
+    if title_key:
+        return title_key
+    return ''
+
+
+def _score_song_search_result(
+    *,
+    query_norm: str,
+    query_tokens: set[str],
+    query_title_key: str,
+    item: dict[str, str],
+) -> tuple[int, int]:
+    title = str(item.get('title') or '')
+    artist = str(item.get('artist') or '')
+    title_norm = _normalize_match_text(title)
+    artist_norm = _normalize_match_text(artist)
+    combined_norm = _normalize_spaces(f'{title_norm} {artist_norm}')
+    title_tokens = set(_tokenize_match_text(title))
+    artist_tokens = set(_tokenize_match_text(artist))
+    combined_tokens = title_tokens | artist_tokens
+
+    overlap_total = len(query_tokens & combined_tokens) if query_tokens else 0
+    overlap_title = len(query_tokens & title_tokens) if query_tokens else 0
+    overlap_artist = len(query_tokens & artist_tokens) if query_tokens else 0
+
+    score = 0
+    query_norm_len = len(query_norm)
+    if query_norm and title_norm:
+        if query_norm == title_norm:
+            score += 170
+        elif query_norm_len >= 3 and title_norm.startswith(query_norm):
+            score += 140
+        elif query_norm_len >= 3 and query_norm in title_norm:
+            score += 115
+        elif query_norm_len >= 4 and title_norm in query_norm:
+            score += 70
+
+    if query_norm and combined_norm:
+        if query_norm == combined_norm:
+            score += 130
+        elif query_norm_len >= 3 and combined_norm.startswith(query_norm):
+            score += 95
+        elif query_norm_len >= 3 and query_norm in combined_norm:
+            score += 80
+
+    score += overlap_title * 24
+    score += overlap_artist * 14
+    score += overlap_total * 9
+
+    query_token_count = len(query_tokens)
+    if query_token_count > 0:
+        coverage = overlap_total / query_token_count
+        score += int(coverage * 85)
+        if query_token_count >= 4 and overlap_total <= 1:
+            score -= 95
+        elif query_token_count >= 3 and overlap_total == 0:
+            score -= 90
+        elif query_token_count == 2 and overlap_total == 0:
+            score -= 70
+
+    title_key = _normalize_song_title_key(title)
+    if query_title_key and title_key and query_title_key == title_key:
+        score += 85
+
+    return score, overlap_total
+
+
+def _is_song_search_result_relevant(
+    *,
+    score: int,
+    overlap_total: int,
+    query_norm: str,
+    query_tokens: set[str],
+    item: dict[str, str],
+) -> bool:
+    title_norm = _normalize_match_text(str(item.get('title') or ''))
+    artist_norm = _normalize_match_text(str(item.get('artist') or ''))
+    combined_norm = _normalize_spaces(f'{title_norm} {artist_norm}')
+    title_tokens = set(_tokenize_match_text(str(item.get('title') or '')))
+    artist_tokens = set(_tokenize_match_text(str(item.get('artist') or '')))
+    candidate_tokens = title_tokens | artist_tokens
+    query_norm_len = len(query_norm)
+
+    if query_norm and (query_norm in title_norm or query_norm in combined_norm):
+        if query_norm_len >= 4:
+            return True
+        if query_norm in candidate_tokens:
+            return True
+
+    token_count = len(query_tokens)
+    if token_count >= 4:
+        return overlap_total >= 2 and score >= 35
+    if token_count >= 2:
+        return overlap_total >= 1 and score >= 25
+    if token_count == 1:
+        only_token = next(iter(query_tokens), '')
+        if len(only_token) <= 2:
+            return overlap_total >= 1 and score >= 24
+        return overlap_total >= 1 and score >= 14
+    return score >= 12
+
+
+def _rank_song_search_results(
+    *,
+    query: str,
+    source_batches: list[list[dict[str, str]]],
+) -> list[dict[str, str]]:
+    query_norm = _normalize_match_text(query)
+    query_tokens = set(_tokenize_match_text(query))
+    query_title_key = _normalize_song_title_key(query)
+    candidates: list[tuple[tuple[int, int, int, int], dict[str, str]]] = []
+
+    for source_index, batch in enumerate(source_batches):
+        for batch_index, item in enumerate(batch):
+            if not isinstance(item, dict):
+                continue
+
+            score, overlap_total = _score_song_search_result(
+                query_norm=query_norm,
+                query_tokens=query_tokens,
+                query_title_key=query_title_key,
+                item=item,
+            )
+            if not _is_song_search_result_relevant(
+                score=score,
+                overlap_total=overlap_total,
+                query_norm=query_norm,
+                query_tokens=query_tokens,
+                item=item,
+            ):
+                continue
+
+            # score desc, token overlap desc, source asc, batch position asc
+            ranking_key = (-score, -overlap_total, source_index, batch_index)
+            candidates.append((ranking_key, item))
+
+    candidates.sort(key=lambda candidate: candidate[0])
+
+    deduped: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    seen_signatures: set[str] = set()
+    for _ranking, item in candidates:
+        url_key = _normalize_spaces(str(item.get('url') or '')).lower()
+        if not url_key or url_key in seen_urls:
+            continue
+
+        signature = _build_song_result_signature(item)
+        if signature and signature in seen_signatures:
+            continue
+
+        seen_urls.add(url_key)
+        if signature:
+            seen_signatures.add(signature)
+        deduped.append(item)
+
+    return deduped
+
+
+def _score_spotify_track_match(expected_title: str, expected_artist: str, track: dict[str, object]) -> int:
+    title = _normalize_match_text(str(track.get('name') or ''))
+    artists_raw = track.get('artists')
+    artist_names: list[str] = []
+    if isinstance(artists_raw, list):
+        for item in artists_raw:
+            if isinstance(item, dict):
+                artist_names.append(_normalize_match_text(str(item.get('name') or '')))
+    artist_joined = ' '.join(item for item in artist_names if item)
+
+    expected_title_norm = _normalize_match_text(expected_title)
+    expected_artist_norm = _normalize_match_text(expected_artist)
+
+    score = 0
+    if expected_title_norm and title:
+        if expected_title_norm == title:
+            score += 6
+        elif expected_title_norm in title or title in expected_title_norm:
+            score += 3
+
+    if expected_artist_norm and artist_joined:
+        if expected_artist_norm == artist_joined:
+            score += 6
+        elif expected_artist_norm in artist_joined or artist_joined in expected_artist_norm:
+            score += 3
+
+    if score == 0 and title:
+        # Fallback ranking when metadata is sparse.
+        score = 1
+
+    return score
+
+
+def _search_best_spotify_track_id(title: str, artist: str, access_token: str) -> str:
+    if title and artist:
+        query = _normalize_spaces(f'track:{title} artist:{artist}')
+    else:
+        query = _normalize_spaces(f'{title} {artist}')
+    if not query:
+        return ''
+
+    payload = _download_json_request(
+        f'https://api.spotify.com/v1/search?type=track&limit=7&q={quote_plus(query)}',
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Accept': 'application/json',
+        },
+    )
+
+    tracks = payload.get('tracks', {})
+    items = tracks.get('items') if isinstance(tracks, dict) else None
+    if not isinstance(items, list):
+        return ''
+
+    ranked_items: list[tuple[int, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        track_id = _normalize_spaces(str(item.get('id') or ''))
+        if not track_id:
+            continue
+        score = _score_spotify_track_match(title, artist, item)
+        ranked_items.append((score, track_id))
+
+    if not ranked_items:
+        return ''
+
+    ranked_items.sort(key=lambda pair: pair[0], reverse=True)
+    return ranked_items[0][1]
+
+
+def _map_spotify_key(key: int, mode: int) -> str:
+    if key < 0 or key >= len(_SPOTIFY_KEY_NOTES_SHARP):
+        return ''
+    root = _SPOTIFY_KEY_NOTES_SHARP[key]
+    if not root:
+        return ''
+    if mode == 0:
+        return f'{root}m'
+    return root
+
+
+def _build_song_key_cache_key(title: str, artist: str) -> str:
+    return _normalize_spaces(f'{title}|{artist}').lower()
+
+
+def detect_song_key_with_api(raw_title: str, raw_artist: str = '') -> str:
+    title = _normalize_spaces(raw_title)
+    artist = _normalize_spaces(raw_artist)
+    if not title and not artist:
+        return ''
+
+    cache_key = _build_song_key_cache_key(title, artist)
+    cached_key = _normalize_spaces(_DETECTED_KEY_CACHE.get(cache_key, ''))
+    if cached_key:
+        return cached_key
+
+    access_token = _get_spotify_access_token()
+    if not access_token:
+        return ''
+
+    try:
+        track_id = _search_best_spotify_track_id(title, artist, access_token)
+        if not track_id:
+            return ''
+
+        feature_payload = _download_json_request(
+            f'https://api.spotify.com/v1/audio-features/{track_id}',
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Accept': 'application/json',
+            },
+        )
+        key_value = int(feature_payload.get('key'))
+        mode_value = int(feature_payload.get('mode'))
+        detected_key = _map_spotify_key(key_value, mode_value)
+        if detected_key:
+            _DETECTED_KEY_CACHE[cache_key] = detected_key
+            label = _normalize_spaces(f'{title} - {artist}').strip('- ').strip()
+            if label:
+                _log_song_key_event(f'Tom identificado por API ({detected_key}) para {label}.')
+        return detected_key
+    except Exception as exc:
+        _log_song_key_event(f'Falha ao identificar tom por API: {exc}')
+        return ''
+
+
+def detect_song_key(raw_title: str, raw_artist: str = '') -> dict[str, str]:
+    title = _normalize_spaces(raw_title)
+    artist = _normalize_spaces(raw_artist)
+    if not title and not artist:
+        raise ValueError('Informe titulo ou artista para identificar o tom.')
+
+    key = detect_song_key_with_api(title, artist)
+    if not key:
+        raise RuntimeError('Nao foi possivel identificar o tom por API para esta musica.')
+
+    return {
+        'title': title or 'Musica',
+        'artist': artist,
+        'original_key': key,
+        'source': 'spotify',
+        'source_label': 'Spotify Audio Features',
+    }
+
+
 def _normalize_search_query(raw_query: str) -> str:
     query = _normalize_spaces(raw_query or '')
     if len(query) < 2:
@@ -186,86 +683,12 @@ def _normalize_limit(raw_limit: int) -> int:
     return max(1, min(40, limit))
 
 
-def _slugify_text(value: str) -> str:
-    normalized = unicodedata.normalize('NFKD', value or '')
-    ascii_only = normalized.encode('ascii', errors='ignore').decode('ascii')
-    cleaned = ascii_only.lower()
-    cleaned = cleaned.replace('&', ' e ')
-    cleaned = re.sub(r'[^a-z0-9]+', '-', cleaned)
-    cleaned = re.sub(r'-{2,}', '-', cleaned).strip('-')
-    return cleaned
-
-
-def _normalize_slug(value: str) -> str:
-    slug = (value or '').strip().strip('/')
-    slug = re.sub(r'-{2,}', '-', slug)
-    return slug.lower()
-
-
-def _extract_slug_hints_from_source_url(raw_url: str) -> tuple[str, str] | None:
-    safe_url = (raw_url or '').strip()
-    if not safe_url:
-        return None
-
-    if '://' not in safe_url:
-        safe_url = f'https://{safe_url}'
-
-    parsed = urlparse(safe_url)
-    hostname = (parsed.hostname or '').lower()
-    source = _parse_song_source(hostname)
-    if not source:
-        return None
-
-    path_parts = [part for part in (parsed.path or '').split('/') if part]
-    if source == 'cifraclub' and len(path_parts) >= 2:
-        return _normalize_slug(path_parts[0]), _normalize_slug(path_parts[1])
-    if source == 'cifras' and len(path_parts) >= 3 and path_parts[0].lower() == 'cifra':
-        return _normalize_slug(path_parts[1]), _normalize_slug(path_parts[2])
-    if source == 'letras' and len(path_parts) >= 2:
-        return _normalize_slug(path_parts[0]), _normalize_slug(path_parts[1])
-    return None
-
-
-def _build_letras_candidate_urls(raw_title: str, raw_artist: str, raw_source_url: str) -> list[str]:
-    candidates: list[str] = []
-    seen: set[str] = set()
-
-    def append_candidate(artist_slug: str, song_slug: str) -> None:
-        artist_clean = _normalize_slug(artist_slug)
-        song_clean = _normalize_slug(song_slug)
-        if not artist_clean or not song_clean:
-            return
-
-        candidate_url = f'https://www.letras.mus.br/{artist_clean}/{song_clean}/'
-        if candidate_url in seen:
-            return
-
-        seen.add(candidate_url)
-        candidates.append(candidate_url)
-
-    source_slug_pair = _extract_slug_hints_from_source_url(raw_source_url)
-    if source_slug_pair:
-        append_candidate(source_slug_pair[0], source_slug_pair[1])
-
-    title_slug = _slugify_text(raw_title)
-    artist_slug = _slugify_text(raw_artist)
-    if artist_slug and title_slug:
-        append_candidate(artist_slug, title_slug)
-
-    search_query = _normalize_spaces(f'{raw_title} {raw_artist}')
-    if len(search_query) >= 2:
-        try:
-            search_results = _search_cifraclub(search_query, 12)
-        except Exception:
-            search_results = []
-
-        for result in search_results:
-            pair = _extract_slug_hints_from_source_url(result.get('url', ''))
-            if not pair:
-                continue
-            append_candidate(pair[0], pair[1])
-
-    return candidates
+def _normalize_page(raw_page: int) -> int:
+    try:
+        page = int(raw_page)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(100, page))
 
 
 def _search_cifraclub(query: str, limit: int) -> list[dict[str, str]]:
@@ -341,16 +764,26 @@ def _search_cifras(query: str, limit: int) -> list[dict[str, str]]:
     return results
 
 
-def search_song_portals(raw_query: str, limit: int = 18) -> list[dict[str, str]]:
+def search_song_portals(
+    raw_query: str,
+    *,
+    page: int = 1,
+    page_size: int = 18,
+) -> dict[str, object]:
     query = _normalize_search_query(raw_query)
-    max_items = _normalize_limit(limit)
+    safe_page = _normalize_page(page)
+    safe_page_size = _normalize_limit(page_size)
+    page_start = (safe_page - 1) * safe_page_size
+    page_end = page_start + safe_page_size
+    # Build a larger candidate pool so relevance scoring can re-order noisy responses.
+    fetch_limit = min(240, max(page_end + 1, safe_page_size * 4))
 
     source_batches: list[list[dict[str, str]]] = []
     errors: list[str] = []
 
     for search_fn in (_search_cifraclub, _search_cifras):
         try:
-            found = search_fn(query, max_items)
+            found = search_fn(query, fetch_limit)
         except Exception as exc:
             errors.append(str(exc))
             continue
@@ -361,32 +794,22 @@ def search_song_portals(raw_query: str, limit: int = 18) -> list[dict[str, str]]
     if not source_batches and errors:
         raise RuntimeError('Nao foi possivel pesquisar musicas nos portais agora. Tente novamente.')
 
-    merged_results: list[dict[str, str]] = []
-    seen_urls: set[str] = set()
-    row_index = 0
+    merged_results = _rank_song_search_results(
+        query=query,
+        source_batches=source_batches,
+    )
 
-    while len(merged_results) < max_items:
-        appended_any = False
-        for batch in source_batches:
-            if row_index >= len(batch):
-                continue
+    has_more = len(merged_results) > page_end
+    page_results = merged_results[page_start:page_end]
+    total_known = len(merged_results)
 
-            item = batch[row_index]
-            url = item.get('url', '').strip().lower()
-            if not url or url in seen_urls:
-                continue
-
-            seen_urls.add(url)
-            merged_results.append(item)
-            appended_any = True
-            if len(merged_results) >= max_items:
-                break
-
-        if not appended_any:
-            break
-        row_index += 1
-
-    return merged_results
+    return {
+        'page': safe_page,
+        'page_size': safe_page_size,
+        'total': total_known,
+        'has_more': has_more,
+        'results': page_results,
+    }
 
 
 def _extract_title_and_artist_cifraclub(html: str) -> tuple[str, str]:
@@ -429,27 +852,6 @@ def _extract_title_and_artist_cifras(html: str) -> tuple[str, str]:
         left = parts[0] or default_title
         right = parts[1].split('|', maxsplit=1)[0].strip() or default_artist
         return left, right
-
-    return raw_title or default_title, default_artist
-
-
-def _extract_title_and_artist_letras(html: str) -> tuple[str, str]:
-    default_title = 'Musica'
-    default_artist = 'Artista'
-
-    title_match = re.search(r'(?is)<title>(.*?)</title>', html)
-    if not title_match:
-        return default_title, default_artist
-
-    raw_title = _normalize_spaces(unescape(title_match.group(1)))
-    parts = [part.strip() for part in raw_title.split(' - ') if part.strip()]
-    if len(parts) >= 3 and 'letras' in parts[-1].lower():
-        title = parts[0] or default_title
-        artist = parts[1] or default_artist
-        return title, artist
-
-    if len(parts) >= 2:
-        return parts[0] or default_title, parts[1] or default_artist
 
     return raw_title or default_title, default_artist
 
@@ -527,24 +929,40 @@ def _extract_chord_lyrics_cifras(html: str) -> str:
     raise RuntimeError('Nao foi possivel identificar a cifra nesta pagina.')
 
 
-def _extract_lyrics_letras(html: str) -> str:
-    block_match = re.search(
-        r'(?is)<div[^>]*class=["\'][^"\']*\blyric-original\b[^"\']*["\'][^>]*>(.*?)</div>',
-        html,
-    )
-    if not block_match:
-        raise RuntimeError('Nao foi possivel identificar a letra nesta pagina do Letras.mus.br.')
+def extract_plain_lyrics_from_chords_text(chords_text: str) -> str:
+    if not (chords_text or '').strip():
+        raise RuntimeError('Nao foi possivel gerar letra a partir da cifra.')
 
-    text = block_match.group(1)
-    text = re.sub(r'(?i)<br\s*/?>', '\n', text)
-    text = re.sub(r'(?is)</p\s*>', '\n\n', text)
-    text = re.sub(r'(?is)<p[^>]*>', '', text)
-    text = re.sub(r'(?is)<[^>]+>', '', text)
-    text = unescape(text)
+    normalized_breaks = chords_text.replace('\r\n', '\n').replace('\r', '\n')
+    output_lines: list[str] = []
 
-    normalized = _normalize_lyrics_text(text)
+    for raw_line in normalized_breaks.split('\n'):
+        if not raw_line.strip():
+            output_lines.append('')
+            continue
+
+        line_without_chords = _CHORD_TOKEN_PATTERN.sub('', raw_line)
+        line_without_empty_parenthesis = re.sub(r'\(\s*\)', '', line_without_chords)
+        compacted_line = re.sub(r'[ \t]{2,}', ' ', line_without_empty_parenthesis).strip()
+
+        # Drop lines that were only chord marks/separators.
+        if not compacted_line:
+            only_markers = re.sub(r'[\s|/\\\-()]+', '', line_without_chords)
+            if not only_markers:
+                continue
+            output_lines.append('')
+            continue
+
+        # Drop separator-only lines after removing chord tokens.
+        if not re.search(r'[0-9A-Za-zÀ-ÖØ-öø-ÿ]', compacted_line):
+            continue
+
+        output_lines.append(compacted_line)
+
+    normalized = _normalize_lyrics_text('\n'.join(output_lines))
+    normalized = re.sub(r'\n{3,}', '\n\n', normalized)
     if not normalized:
-        raise RuntimeError('A letra foi encontrada, mas o conteudo veio vazio.')
+        raise RuntimeError('Nao foi possivel gerar letra a partir da cifra.')
 
     return normalized
 
@@ -553,6 +971,8 @@ def _fetch_song_from_cifraclub_url(url: str) -> dict[str, str]:
     html = _download_text(url)
     title, artist = _extract_title_and_artist_cifraclub(html)
     original_key = _extract_original_key_cifraclub(html)
+    if not original_key:
+        original_key = detect_song_key_with_api(title, artist)
     lyrics = _extract_chord_lyrics_cifraclub(html)
 
     return {
@@ -570,6 +990,8 @@ def _fetch_song_from_cifras_url(url: str) -> dict[str, str]:
     html = _download_text(url)
     title, artist = _extract_title_and_artist_cifras(html)
     original_key = _extract_original_key_cifras(html)
+    if not original_key:
+        original_key = detect_song_key_with_api(title, artist)
     lyrics = _extract_chord_lyrics_cifras(html)
 
     return {
@@ -583,81 +1005,41 @@ def _fetch_song_from_cifras_url(url: str) -> dict[str, str]:
     }
 
 
-def _normalize_text_for_match(text: str) -> str:
-    return _slugify_text(text).replace('-', ' ').strip()
+def _resolve_song_url_for_lyrics(raw_title: str, raw_artist: str, raw_source_url: str) -> str:
+    source_url = _normalize_spaces(raw_source_url or '')
+    if source_url:
+        return source_url
+
+    query = _normalize_spaces(f'{raw_title} {raw_artist}')
+    if len(query) >= 2:
+        search_payload = search_song_portals(query, page=1, page_size=1)
+        results = search_payload.get('results', [])
+        if isinstance(results, list) and results and isinstance(results[0], dict):
+            candidate_url = _normalize_spaces(results[0].get('url', ''))
+            if candidate_url:
+                return candidate_url
+
+    raise ValueError('Informe um link de cifra valido para gerar a letra.')
 
 
-def _score_lyrics_candidate(
-    expected_title: str,
-    expected_artist: str,
-    candidate_title: str,
-    candidate_artist: str,
-) -> int:
-    score = 0
-
-    exp_title = _normalize_text_for_match(expected_title)
-    exp_artist = _normalize_text_for_match(expected_artist)
-    cand_title = _normalize_text_for_match(candidate_title)
-    cand_artist = _normalize_text_for_match(candidate_artist)
-
-    if exp_title and cand_title:
-        if exp_title == cand_title:
-            score += 3
-        elif exp_title in cand_title or cand_title in exp_title:
-            score += 1
-
-    if exp_artist and cand_artist:
-        if exp_artist == cand_artist:
-            score += 3
-        elif exp_artist in cand_artist or cand_artist in exp_artist:
-            score += 1
-
-    return score
-
-
-def fetch_lyrics_from_letras(raw_title: str, raw_artist: str = '', raw_source_url: str = '') -> dict[str, str]:
+def fetch_lyrics_from_chords(raw_title: str, raw_artist: str = '', raw_source_url: str = '') -> dict[str, str]:
     title = _normalize_spaces(raw_title or '')
     artist = _normalize_spaces(raw_artist or '')
-    source_url = _normalize_spaces(raw_source_url or '')
+    source_url = _resolve_song_url_for_lyrics(title, artist, raw_source_url)
+    chord_song = fetch_song_from_url(source_url)
 
-    if not title and not source_url:
-        raise ValueError('Informe pelo menos o nome da musica para buscar a letra.')
+    chords_text = str(chord_song.get('lyrics') or '')
+    plain_lyrics = extract_plain_lyrics_from_chords_text(chords_text)
 
-    candidate_urls = _build_letras_candidate_urls(title, artist, source_url)
-    if not candidate_urls:
-        raise RuntimeError('Nao foi possivel montar um link valido para buscar a letra no Letras.mus.br.')
-
-    best_match: dict[str, str] | None = None
-    best_score = -1
-
-    for candidate_url in candidate_urls:
-        try:
-            html = _download_text(candidate_url)
-            candidate_title, candidate_artist = _extract_title_and_artist_letras(html)
-            lyrics = _extract_lyrics_letras(html)
-        except Exception:
-            continue
-
-        score = _score_lyrics_candidate(title, artist, candidate_title, candidate_artist)
-        if score > best_score:
-            best_score = score
-            best_match = {
-                'source': 'letras',
-                'source_label': 'Letras.mus.br',
-                'url': candidate_url,
-                'title': candidate_title or title or 'Musica',
-                'artist': candidate_artist or artist,
-                'original_key': '',
-                'lyrics': lyrics,
-            }
-
-        if score >= 6:
-            break
-
-    if best_match:
-        return best_match
-
-    raise RuntimeError('Nao foi possivel carregar a letra no Letras.mus.br para esta musica.')
+    return {
+        'source': str(chord_song.get('source') or ''),
+        'source_label': str(chord_song.get('source_label') or ''),
+        'url': str(chord_song.get('url') or source_url),
+        'title': str(chord_song.get('title') or title or 'Musica'),
+        'artist': str(chord_song.get('artist') or artist),
+        'original_key': '',
+        'lyrics': plain_lyrics,
+    }
 
 
 def fetch_song_from_url(raw_url: str) -> dict[str, str]:
@@ -667,17 +1049,3 @@ def fetch_song_from_url(raw_url: str) -> dict[str, str]:
     if source == 'cifras':
         return _fetch_song_from_cifras_url(url)
     raise ValueError('Portal de cifra nao suportado.')
-
-
-def fetch_song_from_cifraclub(raw_url: str) -> dict[str, str]:
-    url, source = _normalize_song_url(raw_url)
-    if source != 'cifraclub':
-        raise ValueError('Informe um link do Cifra Club.')
-    return _fetch_song_from_cifraclub_url(url)
-
-
-def fetch_song_from_cifras(raw_url: str) -> dict[str, str]:
-    url, source = _normalize_song_url(raw_url)
-    if source != 'cifras':
-        raise ValueError('Informe um link do Cifras.com.br.')
-    return _fetch_song_from_cifras_url(url)

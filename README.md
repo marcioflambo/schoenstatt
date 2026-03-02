@@ -96,7 +96,8 @@ Fluxo alinhado com o Docker Manager (Deploy your first container):
 
 ```powershell
 Copy-Item .env.hostinger.example .env.hostinger
-# Ajuste DATABASE_URL, CORS_ALLOW_ORIGINS e APP_PORT
+# Ajuste DATABASE_URL, CORS_ALLOW_ORIGINS, APP_PORT
+# Opcional: SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET (fallback de tom)
 ```
 
 1. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
@@ -109,5 +110,6 @@ Validacao apos deploy:
 - `http://IP_DA_VPS:8000/api/health`
 - `http://IP_DA_VPS:8000/api/db/ping`
 - confirme em `/api/health` que `songs_storage_backend` esta como `postgresql`
+- opcional: confirme `song_key_api_configured: true` em `/api/health` quando configurar Spotify
 
 Para dominio `maerainhavencedora.com.br` com HTTPS, configure o proxy reverso da Hostinger apontando para a porta `8000` do container.

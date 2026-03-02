@@ -21,6 +21,7 @@
 - Nesta fase, a API ja possui busca inicial de cifras por nome e leitura de cifra por URL.
 - Com `DATABASE_URL` definido, favoritos, musicas manuais e atribuicoes de misterios sao salvos no PostgreSQL.
 - Sem `DATABASE_URL`, o fallback local usa `data/song_favorites.json`, `data/custom_songs.json` e `data/mystery_song_assignments.json`.
+- Se `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` estiverem definidos, o backend tenta identificar tom por API quando a cifra nao informar `original_key`.
 
 ## Executar com Docker (hot reload)
 
@@ -35,6 +36,7 @@ Validar:
 - `GET http://127.0.0.1:8000/api/db/ping`
 - `POST http://127.0.0.1:8000/api/songs/search`
 - `POST http://127.0.0.1:8000/api/songs/fetch`
+- `POST http://127.0.0.1:8000/api/songs/detect-key`
 - `GET http://127.0.0.1:8000/api/songs/favorites`
 - `POST http://127.0.0.1:8000/api/songs/favorites`
 - `DELETE http://127.0.0.1:8000/api/songs/favorites?url=...`

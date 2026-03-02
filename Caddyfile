@@ -1,4 +1,4 @@
-{$SITE_DOMAIN:maerainhavencedora.com.br} {
+{$SITE_DOMAIN:maerainhavencedora.com.br}, {$SITE_DOMAIN_WWW:www.maerainhavencedora.com.br}, {$SITE_DOMAIN_APP:app.maerainhavencedora.com.br} {
 	encode zstd gzip
 	reverse_proxy portal:8000
 }

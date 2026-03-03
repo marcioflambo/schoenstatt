@@ -212,6 +212,12 @@ body {
   padding-left: 16px;
   list-style: none;
   border-left: 1px dashed #d7e1ef;
+  display: block;
+  width: 100%;
+}
+
+.admin-tree ul[hidden] {
+  display: none !important;
 }
 
 .admin-tree > ul {
@@ -220,25 +226,75 @@ body {
 }
 
 .admin-tree-item {
+  display: block;
+  width: 100%;
   margin-top: 6px;
 }
 
+.admin-tree-item > ul {
+  width: 100%;
+}
+
 .admin-tree-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  width: 100%;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .admin-tree-label {
-  flex: 1 1 auto;
-  min-width: 180px;
+  min-width: 0;
+  width: 100%;
   border: 1px solid #d5e1f0;
   border-radius: 10px;
   padding: 7px 9px;
   background: #f9fbff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.88rem;
   line-height: 1.25;
+}
+
+.admin-tree-label-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.admin-tree-toggle {
+  appearance: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-tree-toggle:hover,
+.admin-tree-toggle:focus-visible {
+  background: #eef5ff;
+  border-color: #b8cce5;
+  outline: none;
+}
+
+.admin-tree-caret {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-left: 1px;
+  border-right: 2px solid #5f7594;
+  border-bottom: 2px solid #5f7594;
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease;
+}
+
+.admin-tree-toggle[aria-expanded="true"] .admin-tree-caret {
+  transform: rotate(45deg);
+}
+
+.admin-tree-toggle .admin-tree-meta {
+  margin-left: auto;
 }
 
 .admin-tree-meta {
@@ -284,6 +340,15 @@ body {
 @media (max-width: 860px) {
   .admin-inline-form {
     grid-template-columns: 1fr;
+  }
+
+  .admin-tree-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .admin-tree-action {
+    width: 100%;
   }
 
   .admin-actions {

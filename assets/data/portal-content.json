@@ -197,14 +197,14 @@
       {
         "number": "1",
         "title": "Acolhida",
-        "text": "Sinal da cruz, intenções e consagração breve à Mãe Rainha.",
-        "content": "Iniciar com o sinal da cruz, acolher as intenções da comunidade e fazer uma consagração breve à Mãe Rainha, unindo todos os presentes no mesmo propósito de oração."
+        "text": "Sinal da Cruz, intenções e consagração breve à Mãe Rainha.",
+        "content": "Iniciar com o Sinal da Cruz, acolher as intenções da comunidade e fazer uma consagração breve à Mãe Rainha, unindo todos os presentes no mesmo propósito de oração."
       },
       {
         "number": "2",
         "title": "Contemplação ao Espírito Santo",
         "text": "Antes do Credo, rezar a oração do Espírito Santo e fazer breve momento de contemplação em silêncio.",
-        "content": "Ao iniciar em momento de contemplação ao Espírito Santo, rezamos: \"Vinde Espírito Santo e enchei os corações dos vossos fiéis e acendei neles o fogo do vosso amor, enviai o vosso Espírito e tudo será criado e renovareis a face da terra.\" Oremos: \"Deus que instruiste os corações do vossos fiéis com a Luz do Espírito Santo, fazei que apreciemos retamente todas as coisas segundo o mesmo espírito e gozemos sempre de sua consolação, por Cristo Senhor Nosso. Amém!\""
+        "content": "Ao iniciar o momento de contemplação, fazer silêncio breve e rezar a oração \"Oração ao Espírito Santo\" da seção de orações."
       },
       {
         "number": "3",
@@ -215,8 +215,9 @@
       {
         "number": "4",
         "title": "Contas iniciais",
-        "text": "1 Pai-Nosso; 1ª: Deus salve virgem filha de Deus Pai - Ave Maria; 2ª: Deus salve virgem mãe de Deus Filho - Ave Maria; 3ª: Deus salve virgem esposa do Espírito Santo - Ave Maria; depois: Deus salve virgem templo e sacrário da Santíssima Trindade - Glória ao Pai.",
-        "content": "Nas contas iniciais, rezar 1 Pai-Nosso. Em seguida: 1ª Deus salve virgem filha de Deus Pai - Ave Maria; 2ª Deus salve virgem mãe de Deus Filho - Ave Maria; 3ª Deus salve virgem esposa do Espírito Santo - Ave Maria. Depois, Deus salve virgem templo e sacrário da Santíssima Trindade - Glória ao Pai."
+        "titleKey": "rosary.stepInitialBeadsGroup",
+        "text": "Rezar 1 Pai-Nosso e as 3 Ave-Marias iniciais.",
+        "contentKey": "rosary.stepInitialBlockText"
       },
       {
         "number": "5",
@@ -234,7 +235,7 @@
         "number": "7",
         "title": "Oração final",
         "text": "Agradecimento final, Salve Rainha, oração da Mãe Rainha e intenções finais.",
-        "content": "Após a quinta dezena, rezar o agradecimento final: \"Infinitas graças vos damos, ó Soberana Rainha, pelos benefícios que todos os dias recebemos de vossas mãos maternais. Dignai-vos, agora e para sempre tomar-nos debaixo do vosso poderoso amparo e para mais vos agradecer, vos saudamos com uma Salve Rainha...\" Em seguida, rezar a Salve Rainha, a oração da Mãe Rainha e apresentar as intenções finais."
+        "content": "Após a quinta dezena, rezar \"Agradecimento Final\", depois \"Salve Rainha\", a oração da Mãe Rainha e apresentar as intenções finais."
       },
       {
         "number": "8",
@@ -406,14 +407,15 @@
       "toggleHide": "Ocultar jaculatória",
       "jaculatoryTitle": "Jaculatórias",
       "jaculatoryItems": [
+        "Glória ao Pai, ao Filho e ao Espírito Santo. Como era no princípio, agora e sempre. Amém.",
+        "Ó meu Jesus, perdoai-nos e livrai-nos do fogo do inferno.",
+        "Levai as almas todas para o Céu, principalmente as que mais precisarem da vossa misericórdia.",
         "Jesus manso e humilde de coração, fazei o nosso coração semelhante ao vosso.",
         "Sagrado Coração de Jesus, eu confio em Vós.",
         "Sagrado Coração de Jesus que tanto nos amais, fazei que vos ame sempre e cada vez mais.",
         "Ó Maria, concebida sem pecado, rogai por nós que recorremos a Vós.",
-        "Ó meu Jesus, perdoai-nos e livrai-nos do fogo do inferno.",
-        "Levai as almas todas para o céu, principalmente as que mais precisarem.",
         "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt, rogai por nós.",
-        "Rainha da paz, dai-nos a paz."
+        "Rainha da Paz, dai-nos a paz."
       ]
     }
   },
@@ -497,7 +499,7 @@
     "items": [
       {
         "title": "Oração ao Espírito Santo",
-        "text": "Vinde Espírito Santo e enchei os corações dos vossos fiéis e acendei neles o fogo do vosso amor, enviai o vosso Espírito e tudo será criado e renovareis a face da terra. Oremos: Deus, que instruístes os corações dos vossos fiéis com a Luz do Espírito Santo, fazei que apreciemos retamente todas as coisas segundo o mesmo Espírito e gozemos sempre de sua consolação, por Cristo Senhor Nosso. Amém!"
+        "text": "Vinde Espírito Santo e enchei os corações dos vossos fiéis e acendei neles o fogo do vosso amor, enviai o vosso Espírito e tudo será criado e renovareis a face da terra.\n\nOremos: Deus, que instruístes os corações dos vossos fiéis com a luz do Espírito Santo, fazei que apreciemos retamente todas as coisas segundo o mesmo Espírito e gozemos sempre de sua consolação, por Cristo Senhor Nosso. Amém!"
       },
       {
         "title": "Credo (Símbolo dos Apóstolos)",
@@ -517,7 +519,7 @@
       },
       {
         "title": "Oração de Fátima",
-        "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o céu, principalmente as que mais precisarem."
+        "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o Céu, principalmente as que mais precisarem da vossa misericórdia."
       },
       {
         "title": "Agradecimento Final",
@@ -653,6 +655,17 @@
       "fontDecreaseLabel": "A-",
       "fontIncreaseLabel": "A+"
     },
+    "common": {
+      "openActionLabel": "Abrir"
+    },
+    "oracoes": {
+      "accordionOpenLabel": "Ocultar oração",
+      "accordionClosedLabel": "Ver oração"
+    },
+    "stepCard": {
+      "openLabel": "Ocultar conteúdo",
+      "closedLabel": "Ver conteúdo"
+    },
     "song": {
       "closeModalAria": "Fechar cifra",
       "originalKeyUnknownTemplate": "Tom original: -",
@@ -702,6 +715,11 @@
       "favoritesLoading": "Carregando favoritos...",
       "favoritesLoadError": "Não foi possível carregar os favoritos.",
       "favoritesEmpty": "Nenhuma música favoritada ainda.",
+      "favoritesSearchPlaceholder": "Buscar nos favoritos...",
+      "favoritesSearchAria": "Buscar música favorita",
+      "favoritesSearchEmpty": "Nenhuma música favorita encontrada para esta busca.",
+      "bookletSearchAria": "Buscar \"{query}\"",
+      "bookletPagePrefix": "Pág.",
       "favoriteButtonAdd": "Favoritar",
       "favoriteButtonRemove": "Remover favorito",
       "favoriteButtonSaved": "Favorito salvo",
@@ -731,7 +749,69 @@
       "spotifyTitle": "Abrir no Spotify",
       "youtubeTitle": "Abrir no YouTube",
       "spotifyAria": "Abrir no Spotify",
-      "youtubeAria": "Abrir no YouTube"
+      "youtubeAria": "Abrir no YouTube",
+      "favoriteDecisionAccept": "Confirmar",
+      "favoritesReorderSuccess": "Ordem dos favoritos atualizada.",
+      "favoritesReorderError": "Não foi possível reordenar os favoritos.",
+      "currentSongTitle": "Música atual",
+      "nextSongTitle": "Nova música",
+      "customSongsTitle": "Nossas músicas",
+      "customSongsDescription": "Adicione músicas manuais com letra e cifra.",
+      "customSongsAddButton": "Adicionar música",
+      "customSongsEmpty": "Nenhuma música manual adicionada ainda.",
+      "customSongsLoadError": "Não foi possível carregar músicas manuais.",
+      "customSongsReorderSuccess": "Ordem das músicas atualizada.",
+      "customSongsReorderError": "Não foi possível reordenar as músicas.",
+      "customSongModalTitle": "Nova música manual",
+      "customSongEditModalTitle": "Editar música manual",
+      "customSongEditorAria": "Editor de música manual",
+      "customSongTitleLabel": "Título",
+      "customSongTitlePlaceholder": "Ex.: Minha Música",
+      "customSongTitleRequired": "Informe o título da música.",
+      "customSongKeyLabel": "Tom",
+      "customSongKeyPlaceholder": "Ex.: D",
+      "customSongLyricsTab": "Música",
+      "customSongChordsTab": "Cifras",
+      "customSongLyricsLabel": "Texto da música",
+      "customSongChordsLabel": "Texto da cifra",
+      "customSongLyricsPlaceholder": "Digite aqui o texto da música...",
+      "customSongChordsPlaceholder": "Digite aqui a cifra...",
+      "customSongCancelButton": "Cancelar",
+      "customSongSaveButton": "Salvar música",
+      "customSongUpdateButton": "Atualizar música",
+      "customSongCloseAria": "Fechar editor",
+      "customSongSaveSuccess": "Música manual adicionada.",
+      "customSongUpdateSuccess": "Música manual atualizada.",
+      "customSongSaveError": "Não foi possível salvar a música.",
+      "customSongRemoveButton": "Remover",
+      "customSongRemoveConfirmTitle": "Inativar música",
+      "customSongRemoveConfirm": "Deseja inativar \"{title}\"?",
+      "customSongRemoveConfirmCancel": "Cancelar",
+      "customSongRemoveConfirmAccept": "Inativar",
+      "customSongRemoveSuccess": "Música manual inativada.",
+      "customSongDraftRemoveSuccess": "Rascunho removido.",
+      "customSongRemoveError": "Não foi possível remover a música.",
+      "customSongEditButton": "Editar",
+      "customSongUpdatedAt": "Atualizado em",
+      "customSongDraftBadge": "Rascunho",
+      "customSongDraftSaved": "Rascunho salvo automaticamente.",
+      "customSongDraftRecovered": "Rascunho recuperado.",
+      "customSongDraftSaveError": "Não foi possível salvar o rascunho.",
+      "customSongLyricsLoading": "Abrindo letra manual...",
+      "customSongLyricsLoaded": "Letra manual carregada.",
+      "customSongLyricsMissing": "Esta música manual ainda não possui letra.",
+      "customSongChordsLoading": "Abrindo cifra manual...",
+      "customSongChordsLoaded": "Cifra manual carregada.",
+      "customSongChordsMissing": "Esta música manual ainda não possui cifra.",
+      "customSongToneConfirmTitle": "Atualizar tom salvo",
+      "customSongToneConfirmMessage": "Deseja atualizar o tom de \"{title}\" para \"{key}\"?",
+      "customSongToneConfirmCancel": "Não atualizar",
+      "customSongToneConfirmAccept": "Atualizar tom",
+      "customSongToneUpdateSuccess": "Tom da música atualizado com sucesso.",
+      "customSongToneUpdateError": "Não foi possível atualizar o tom salvo.",
+      "favoriteCachedContentMissing": "A música está nos favoritos, mas sem conteúdo local salvo.",
+      "favoriteCachedLyricsDerived": "Letra gerada a partir da cifra salva nos favoritos.",
+      "favoriteCachedLyricsFallback": "Cifra não disponível no favorito. Exibindo letra salva."
     },
     "mystery": {
       "toggleShow": "Exibir jaculatória",
@@ -777,13 +857,86 @@
       "assignCategoryDeactivateConfirmTitle": "Inativar item",
       "assignCategoryDeactivateConfirmMessage": "Deseja inativar \"{title}\"? O item ficará oculto e poderá ser recuperado depois.",
       "assignCategoryDeactivateConfirmAccept": "Inativar",
+      "favoriteRemoveConfirmCancel": "Cancelar",
       "assignCategoryDeactivatePasswordLabel": "Senha de confirmação",
       "assignCategoryDeactivatePasswordPlaceholder": "Digite a senha",
       "assignCategoryDeactivatePasswordRequired": "Informe a senha para inativar.",
       "assignCategoryDeactivatePasswordInvalid": "Senha inválida para inativar o item.",
       "assignCategoryDeactivateSuccess": "Item inativado com sucesso.",
-      "assignCategoryDeactivateError": "Não foi possível inativar o item."
+      "assignCategoryDeactivateError": "Não foi possível inativar o item.",
+      "closeSongPanelAria": "Fechar música do mistério",
+      "groupPickerTitle": "Mistérios",
+      "groupPickerAria": "Escolher grupo de mistérios",
+      "groupPickerCloseAria": "Fechar seleção de mistérios",
+      "aveMariaTitle": "Ave-Marias:",
+      "aveMariaAria": "Escolher a Ave-Maria atual",
+      "assignSearchPlaceholder": "Buscar categoria ou local...",
+      "assignSearchAria": "Buscar local de salvamento",
+      "assignLoadError": "Não foi possível carregar as músicas dos mistérios.",
+      "assignEmpty": "Não foi possível carregar a lista de mistérios.",
+      "assignModalUnavailable": "Não foi possível abrir a seleção de mistério.",
+      "assignCategoryAddPromptRoot": "Novo item na raiz",
+      "assignCategoryAddPromptChild": "Novo item dentro de \"{parent}\"",
+      "assignCategoryAddPromptField": "Nome do item:",
+      "assignCategoryAddModalPlaceholder": "Digite o nome do item",
+      "assignCategoryAddInvalid": "Informe um nome para o item.",
+      "assignCategoryAddSuccess": "Item adicionado com sucesso.",
+      "assignCategoryAddError": "Não foi possível adicionar o item.",
+      "assignCategoryRootLabel": "raiz",
+      "assignSearchResultsQuery": "Busca: \"{query}\"",
+      "assignSearchEmpty": "Nenhum destino encontrado para \"{query}\".",
+      "assignModalTitle": "Adicionar música ao mistério",
+      "groupOptionAria": "Selecionar {group}",
+      "groupSwitchHint": "Clique para escolher o grupo de mistérios",
+      "groupSwitchAria": "Escolher o grupo de mistérios",
+      "modalLinksLabel": "Mistérios:",
+      "aveMariaOptionAria": "Ave-Maria {index}",
+      "aveMariaOptionTitle": "Ave-Maria {index}",
+      "songToggleShow": "Exibir música do mistério",
+      "songToggleEmpty": "Nenhuma música atribuída a este mistério.",
+      "songLyricsEmpty": "A letra desta música ainda não foi encontrada.",
+      "assignLocationInvalidTarget": "Informe o local da música.",
+      "assignLocationRemoveConfirmMessageWithTitle": "Deseja remover \"{title}\" deste local?",
+      "assignLocationExistingChoiceMessage": "Este local já possui \"{current}\". Deseja substituir por \"{next}\" ou remover a atual?"
+    },
+    "rosary": {
+      "closeAria": "Fechar guia do terço",
+      "stepsAria": "Etapas do terço",
+      "prevButton": "Anterior",
+      "nextButton": "Próximo",
+      "finishButton": "Concluir",
+      "stepStartGroup": "Invocação",
+      "stepStartTitle": "Sinal da Cruz",
+      "stepStartSignOfCrossText": "",
+      "holySpiritPrayerTitle": "Oração ao Espírito Santo",
+      "dotStartNumber": "Invocação",
+      "dotStart": "Invocação",
+      "stepInitialBeadsGroup": "Preparação",
+      "stepInitialBlockTitle": "Contas iniciais",
+      "stepInitialBlockText": "Pai-Nosso.\nDeus salve, Virgem filha de Deus Pai, Ave-Maria...\nDeus salve, Virgem mãe de Deus Filho, Ave-Maria...\nDeus salve, Virgem esposa do Espírito Santo, Ave-Maria...\nDeus salve, Virgem templo e sacrário da Santíssima Trindade, Glória ao Pai.",
+      "dotInitialBlockNumber": "Preparação",
+      "dotInitialBlock": "Preparação",
+      "stepMysteriesGroup": "Contemplação",
+      "stepMysteriesTitle": "Mistérios do dia",
+      "stepMysteriesText": "Anunciar o 1º mistério do dia, fazer breve meditação e rezar a dezena: 1 Pai-Nosso, 10 Ave-Marias, 1 Glória e jaculatórias.\n\nRepetir a mesma dinâmica até o 5º mistério, contemplando cada passagem da vida de Jesus e Maria.",
+      "openMysteriesButton": "Abrir mistérios do dia",
+      "dotMysteriesNumber": "Contemplação",
+      "dotMysteries": "Contemplação",
+      "stepFinalGroup": "Agradecimento",
+      "stepFinalTitle": "Oração final",
+      "thanksgivingPrayerTitle": "Agradecimento Final",
+      "salveRainhaPrayerTitle": "Salve Rainha",
+      "dotFinalNumber": "Agradecimento",
+      "dotFinal": "Agradecimento",
+      "dotAria": "Etapa {index}: {title}",
+      "stepFallbackGroup": "Guia do terço",
+      "stepFallbackTitle": "Etapa",
+      "stepFallbackText": "Continue a oração em recolhimento.",
+      "stepCounter": "Etapa {current} de {total}",
+      "todayMysteriesFallback": "Não foi possível abrir os mistérios do dia neste momento.",
+      "holySpiritPrayerUnavailable": "Oração ao Espírito Santo indisponível no momento.",
+      "thanksgivingPrayerUnavailable": "Agradecimento Final indisponível no momento.",
+      "salveRainhaPrayerUnavailable": "Salve Rainha indisponível no momento."
     }
   }
 }
-

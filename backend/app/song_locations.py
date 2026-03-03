@@ -35,6 +35,7 @@ _STORE_LOCK = RLock()
 _STORE_KEY = 'song_locations'
 _ASSIGNMENT_MODE_MYSTERY = 'mystery'
 _ASSIGNMENT_MODE_LOCATION = 'location'
+_DEFAULT_MYSTERY_ROOT_LABEL = 'Misterios'
 
 
 def _normalize_spaces(value: str | None) -> str:
@@ -166,14 +167,35 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_portal_mystery_cards(portal_content_file: Path) -> list[dict[str, object]]:
+def _read_portal_content_payload(portal_content_file: Path) -> dict[str, object] | None:
     if not portal_content_file.exists():
-        return []
+        return None
     try:
         # `utf-8-sig` handles optional BOM transparently.
         raw_payload = json.loads(portal_content_file.read_text(encoding='utf-8-sig'))
     except (OSError, json.JSONDecodeError):
-        return []
+        return None
+    if not isinstance(raw_payload, dict):
+        return None
+    return raw_payload
+
+
+def _read_portal_mystery_root_label(portal_content_file: Path) -> str:
+    payload = _read_portal_content_payload(portal_content_file)
+    if not isinstance(payload, dict):
+        return _DEFAULT_MYSTERY_ROOT_LABEL
+    ui_messages = payload.get('uiMessages')
+    if not isinstance(ui_messages, dict):
+        return _DEFAULT_MYSTERY_ROOT_LABEL
+    mystery_messages = ui_messages.get('mystery')
+    if not isinstance(mystery_messages, dict):
+        return _DEFAULT_MYSTERY_ROOT_LABEL
+    label = _normalize_spaces(str(mystery_messages.get('groupPickerTitle') or ''))
+    return label or _DEFAULT_MYSTERY_ROOT_LABEL
+
+
+def _read_portal_mystery_cards(portal_content_file: Path) -> list[dict[str, object]]:
+    raw_payload = _read_portal_content_payload(portal_content_file)
     if not isinstance(raw_payload, dict):
         return []
     mystery_payload = raw_payload.get('misterios')
@@ -367,7 +389,10 @@ def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[s
         })
         return node_id
 
-    mysteries_root_id = create_node(label='Mistérios', order_index=1)
+    mysteries_root_id = create_node(
+        label=_read_portal_mystery_root_label(portal_content_file),
+        order_index=1,
+    )
     missa_root_id = create_node(label='Missa', order_index=2)
     create_node(label='Festival', order_index=3)
     create_node(label='Entrada', parent_id=missa_root_id, order_index=1)

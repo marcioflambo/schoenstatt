@@ -29,6 +29,7 @@
   const FONT_SCALE_MIN = 0.9;
   const FONT_SCALE_MAX = 1.25;
   const FONT_SCALE_STEP = 0.05;
+  const ANCHOR_SCROLL_EXTRA_OFFSET = 32;
   const PORTAL_CONTENT_URL = './assets/data/portal-content.json';
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const asObject = (value) => (
@@ -93,7 +94,7 @@
   );
   const loadPortalContent = async () => {
     try {
-      const response = await fetch(PORTAL_CONTENT_URL, { cache: 'force-cache' });
+      const response = await fetch(PORTAL_CONTENT_URL, { cache: 'no-store' });
       if (!response.ok) return null;
       const payload = await response.json();
       return payload && typeof payload === 'object' ? payload : null;
@@ -112,14 +113,37 @@
     const value = getNestedValue(portalContent, `uiMessages.${path}`);
     return typeof value === 'string' ? value : fallback;
   };
+  const resolveMessageArgs = (fallback = '', replacements = null) => {
+    const fallbackLooksLikeReplacements = (
+      fallback
+      && typeof fallback === 'object'
+      && !Array.isArray(fallback)
+      && replacements == null
+    );
+    if (fallbackLooksLikeReplacements) {
+      return { fallback: '', replacements: fallback };
+    }
+    return {
+      fallback: typeof fallback === 'string' ? fallback : '',
+      replacements: replacements && typeof replacements === 'object' ? replacements : null,
+    };
+  };
   const readSongMessage = (key, fallback = '', replacements = null) => {
-    const template = readUiMessage(`song.${key}`, fallback);
-    return replacements ? formatTemplate(template, replacements) : template;
+    const safeArgs = resolveMessageArgs(fallback, replacements);
+    const template = readUiMessage(`song.${key}`, safeArgs.fallback);
+    return safeArgs.replacements ? formatTemplate(template, safeArgs.replacements) : template;
   };
   const readMysteryMessage = (key, fallback = '', replacements = null) => {
-    const template = readUiMessage(`mystery.${key}`, fallback);
-    return replacements ? formatTemplate(template, replacements) : template;
+    const safeArgs = resolveMessageArgs(fallback, replacements);
+    const template = readUiMessage(`mystery.${key}`, safeArgs.fallback);
+    return safeArgs.replacements ? formatTemplate(template, safeArgs.replacements) : template;
   };
+  const readRosaryMessage = (key, fallback = '', replacements = null) => {
+    const safeArgs = resolveMessageArgs(fallback, replacements);
+    const template = readUiMessage(`rosary.${key}`, safeArgs.fallback);
+    return safeArgs.replacements ? formatTemplate(template, safeArgs.replacements) : template;
+  };
+  const readStepCardMessage = (key, fallback = '') => readUiMessage(`stepCard.${key}`, fallback);
   const SONG_SEARCH_BUTTON_ICON = [
     '<svg viewBox="0 0 24 24" aria-hidden="true">',
     '<circle cx="11" cy="11" r="6"></circle>',
@@ -162,8 +186,22 @@
       node.setAttribute(attr, value);
     }
   };
-  const STEP_CARD_LABEL_OPEN = 'Ocultar conteúdo';
-  const STEP_CARD_LABEL_CLOSED = 'Ver conteúdo';
+  const resolveRoteiroStepCopy = (stepConfig, field) => {
+    const safeStepConfig = asObject(stepConfig);
+    const keyField = (
+      field === 'content'
+        ? 'contentKey'
+        : (field === 'title' ? 'titleKey' : 'textKey')
+    );
+    const messagePath = String(safeStepConfig[keyField] || '').trim();
+    if (messagePath) {
+      return readUiMessage(messagePath);
+    }
+    const rawValue = safeStepConfig[field];
+    return typeof rawValue === 'string' ? rawValue : '';
+  };
+  const STEP_CARD_LABEL_OPEN = readStepCardMessage('openLabel');
+  const STEP_CARD_LABEL_CLOSED = readStepCardMessage('closedLabel');
   const setStepCardExpanded = (stepNode, expanded) => {
     if (!(stepNode instanceof HTMLElement)) return;
     const contentNode = stepNode.querySelector('.step-card-content');
@@ -269,7 +307,7 @@
     setNodeText('.brand-text small', content.brand?.secondary);
     setNodeAttr('.brand-mark img', 'src', content.brand?.logo?.src);
     setNodeAttr('.brand-mark img', 'alt', content.brand?.logo?.alt);
-    setNodeAttr('.menu-toggle', 'aria-label', readUiMessage('menu.openAria', 'Abrir menu'));
+    setNodeAttr('.menu-toggle', 'aria-label', readUiMessage('menu.openAria'));
 
     if (menuList && typeof content.menu?.ariaLabel === 'string') {
       menuList.setAttribute('aria-label', content.menu.ariaLabel);
@@ -311,20 +349,36 @@
         }
       });
     }
-    setNodeAttr('.font-controls', 'aria-label', readUiMessage('controls.fontGroupAria', 'Controle de fonte'));
-    setNodeAttr('#font-decrease', 'aria-label', readUiMessage('controls.fontDecreaseAria', 'Diminuir fonte'));
-    setNodeAttr('#font-increase', 'aria-label', readUiMessage('controls.fontIncreaseAria', 'Aumentar fonte'));
-    setNodeText('#font-decrease', readUiMessage('controls.fontDecreaseLabel', 'A-'));
-    setNodeText('#font-increase', readUiMessage('controls.fontIncreaseLabel', 'A+'));
-    setNodeAttr('#theme-toggle', 'aria-label', readUiMessage('theme.toggleAria', 'Alternar tema claro e escuro'));
+    setNodeAttr('.font-controls', 'aria-label', readUiMessage('controls.fontGroupAria'));
+    setNodeAttr('#font-decrease', 'aria-label', readUiMessage('controls.fontDecreaseAria'));
+    setNodeAttr('#font-increase', 'aria-label', readUiMessage('controls.fontIncreaseAria'));
+    setNodeText('#font-decrease', readUiMessage('controls.fontDecreaseLabel'));
+    setNodeText('#font-increase', readUiMessage('controls.fontIncreaseLabel'));
+    setNodeAttr('#theme-toggle', 'aria-label', readUiMessage('theme.toggleAria'));
 
     setNodeText('#inicio .eyebrow', content.hero?.eyebrow);
     setNodeText('#inicio h1', content.hero?.title);
     setNodeText('#inicio .hero-lead', content.hero?.lead);
-    updateLinksFromConfig(
-      Array.from(document.querySelectorAll('#inicio .hero-actions a')),
-      content.hero?.actions || []
-    );
+    const heroActionLinks = Array.from(document.querySelectorAll('#inicio .hero-actions a'));
+    const heroActionsConfig = Array.isArray(content.hero?.actions) ? content.hero.actions : [];
+    updateLinksFromConfig(heroActionLinks, heroActionsConfig);
+    if (heroActionsConfig.length) {
+      heroActionLinks.forEach((link, index) => {
+        const item = heroActionsConfig[index];
+        const hasLabel = Boolean(typeof item?.label === 'string' && item.label.trim());
+        link.hidden = !hasLabel;
+        if (hasLabel) {
+          link.removeAttribute('aria-hidden');
+        } else {
+          link.setAttribute('aria-hidden', 'true');
+        }
+      });
+    } else {
+      heroActionLinks.forEach((link) => {
+        link.hidden = false;
+        link.removeAttribute('aria-hidden');
+      });
+    }
     setNodeText('#inicio .today-label', content.hero?.today?.label);
     setNodeText('#inicio .today-note', content.hero?.today?.note);
     setNodeAttr('#inicio .today-visual img', 'src', content.hero?.today?.image?.src);
@@ -334,7 +388,7 @@
     setNodeText('#historia .section-header h2', content.historia?.header?.title);
     setNodeText('#historia .section-header p', content.historia?.header?.description);
     setNodeText('#historia .story-intro', content.historia?.intro);
-    setNodeAttr('#historia .story-tabs', 'aria-label', content.historia?.tabsAriaLabel || 'Capítulos da história');
+    setNodeAttr('#historia .story-tabs', 'aria-label', content.historia?.tabsAriaLabel);
     setNodeAttr('#historia iframe[data-youtube-embed]', 'src', content.historia?.video?.embedUrl);
     setNodeAttr('#historia iframe[data-youtube-embed]', 'title', content.historia?.video?.title);
     const storyFallback = document.querySelector('#historia .story-video-fallback');
@@ -400,17 +454,17 @@
         if (numberNode && typeof stepConfig.number === 'string') {
           numberNode.textContent = stepConfig.number;
         }
-        if (titleNode && typeof stepConfig.title === 'string') {
-          titleNode.textContent = stepConfig.title;
+        const titleText = resolveRoteiroStepCopy(stepConfig, 'title');
+        if (titleNode) {
+          titleNode.textContent = titleText;
         }
-        if (textNode && typeof stepConfig.text === 'string') {
-          textNode.textContent = stepConfig.text;
+        const summaryText = resolveRoteiroStepCopy(stepConfig, 'text');
+        if (textNode) {
+          textNode.textContent = summaryText;
         }
         stepNode.classList.toggle('highlight', Boolean(stepConfig.highlight));
 
-        const detailText = typeof stepConfig.content === 'string'
-          ? stepConfig.content.trim()
-          : '';
+        const detailText = resolveRoteiroStepCopy(stepConfig, 'content').trim();
         const detailNodes = ensureStepCardDetailNodes(stepNode);
         if (detailNodes && detailText) {
           detailNodes.contentNode.textContent = detailText;
@@ -478,9 +532,24 @@
     setNodeAttr('#song-search-clear-cantos', 'title', content.cantos?.search?.clearButtonLabel);
     setNodeText('#song-favorites-title', content.cantos?.favorites?.title);
     setNodeText('#song-favorites-description', content.cantos?.favorites?.description);
-    setNodeText('#custom-songs-title', readSongMessage('customSongsTitle', 'Nossas músicas'));
-    setNodeText('#custom-songs-description', readSongMessage('customSongsDescription', 'Adicione músicas manuais com letra e cifra.'));
-    setNodeText('#custom-songs-add-btn', readSongMessage('customSongsAddButton', 'Adicionar música'));
+    setNodeAttr(
+      '#song-favorites-search-input',
+      'placeholder',
+      readSongMessage('favoritesSearchPlaceholder')
+    );
+    setNodeAttr(
+      '#song-favorites-search-input',
+      'aria-label',
+      readSongMessage('favoritesSearchAria')
+    );
+    setNodeAttr(
+      '#song-favorites-search-input',
+      'title',
+      readSongMessage('favoritesSearchAria')
+    );
+    setNodeText('#custom-songs-title', readSongMessage('customSongsTitle'));
+    setNodeText('#custom-songs-description', readSongMessage('customSongsDescription'));
+    setNodeText('#custom-songs-add-btn', readSongMessage('customSongsAddButton'));
     setNodeText('#booklet-cantos-title', content.cantos?.booklet?.title);
     setNodeText('#booklet-cantos-description', content.cantos?.booklet?.description);
     if (Array.isArray(content.cantos?.booklet?.items)) {
@@ -503,8 +572,9 @@
             ? item.searchQuery.trim()
             : item.title;
           searchButton.dataset.bookletSongQuery = query;
-          searchButton.setAttribute('aria-label', `Buscar "${query}"`);
-          searchButton.setAttribute('title', `Buscar "${query}"`);
+          const searchAria = readSongMessage('bookletSearchAria', { query });
+          searchButton.setAttribute('aria-label', searchAria);
+          searchButton.setAttribute('title', searchAria);
           searchButton.innerHTML = SONG_SEARCH_BUTTON_ICON;
 
           const title = document.createElement('strong');
@@ -513,8 +583,9 @@
 
           const meta = document.createElement('p');
           meta.className = 'booklet-cantos-meta';
+          const pagePrefix = readSongMessage('bookletPagePrefix');
           const pageLabel = typeof item.page === 'string' && item.page.trim()
-            ? `Pág. ${item.page.trim()}`
+            ? `${pagePrefix} ${item.page.trim()}`
             : '';
           const statusLabel = typeof item.status === 'string' ? item.status : '';
           meta.textContent = [pageLabel, statusLabel].filter(Boolean).join(' | ');
@@ -529,73 +600,73 @@
         });
       }
     }
-    setNodeAttr('.song-modal-close', 'aria-label', readSongMessage('closeModalAria', 'Fechar cifra'));
-    setNodeText('#fetched-song-title', readSongMessage('loadedSongTitle', 'Música carregada'));
-    setNodeText('#fetched-song-meta', readSongMessage('originalKeyUnknownTemplate', 'Tom original: -'));
-    setNodeText('.song-modal-tone-label', readSongMessage('toneLabel', 'Tom:'));
-    setNodeAttr('#song-tone-grid', 'aria-label', readSongMessage('tonePickerAriaLabel', 'Escolher tom'));
-    setNodeText('#song-tone-reset', readSongMessage('toneResetLabel', 'Restaurar'));
-    setNodeText('#favorite-confirm-title', readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito'));
-    setNodeText('#favorite-confirm-cancel', readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar'));
-    setNodeText('#favorite-confirm-accept', readSongMessage('favoriteRemoveConfirmAccept', 'Remover'));
+    setNodeAttr('.song-modal-close', 'aria-label', readSongMessage('closeModalAria'));
+    setNodeText('#fetched-song-title', readSongMessage('loadedSongTitle'));
+    setNodeText('#fetched-song-meta', readSongMessage('originalKeyUnknownTemplate'));
+    setNodeText('.song-modal-tone-label', readSongMessage('toneLabel'));
+    setNodeAttr('#song-tone-grid', 'aria-label', readSongMessage('tonePickerAriaLabel'));
+    setNodeText('#song-tone-reset', readSongMessage('toneResetLabel'));
+    setNodeText('#favorite-confirm-title', readSongMessage('favoriteRemoveConfirmTitle'));
+    setNodeText('#favorite-confirm-cancel', readSongMessage('favoriteRemoveConfirmCancel'));
+    setNodeText('#favorite-confirm-accept', readSongMessage('favoriteRemoveConfirmAccept'));
     setNodeText(
       '#favorite-confirm-password-label',
-      readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+      readMysteryMessage('assignCategoryDeactivatePasswordLabel')
     );
     setNodeText(
       '#favorite-confirm-password-error',
-      readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+      readMysteryMessage('assignCategoryDeactivatePasswordRequired')
     );
     setNodeAttr(
       '#favorite-confirm-password-input',
       'placeholder',
-      readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+      readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder')
     );
     setNodeAttr(
       '#favorite-confirm-password-input',
       'aria-label',
-      readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+      readMysteryMessage('assignCategoryDeactivatePasswordLabel')
     );
-    setNodeText('#custom-song-modal-title', readSongMessage('customSongModalTitle', 'Nova música manual'));
-    setNodeText('#custom-song-title-label', readSongMessage('customSongTitleLabel', 'Título'));
-    setNodeText('#custom-song-key-label', readSongMessage('customSongKeyLabel', 'Tom'));
-    setNodeText('#custom-song-tab-lyrics', readSongMessage('customSongLyricsTab', 'Música'));
-    setNodeText('#custom-song-tab-chords', readSongMessage('customSongChordsTab', 'Cifras'));
-    setNodeText('#custom-song-lyrics-label', readSongMessage('customSongLyricsLabel', 'Texto da música'));
-    setNodeText('#custom-song-chords-label', readSongMessage('customSongChordsLabel', 'Texto da cifra'));
-    setNodeText('#custom-song-cancel-btn', readSongMessage('customSongCancelButton', 'Cancelar'));
-    setNodeText('#custom-song-save-btn', readSongMessage('customSongSaveButton', 'Salvar música'));
-    setNodeAttr('#custom-song-title-input', 'placeholder', readSongMessage('customSongTitlePlaceholder', 'Ex.: Minha Música'));
-    setNodeAttr('#custom-song-key-input', 'placeholder', readSongMessage('customSongKeyPlaceholder', 'Ex.: D'));
-    setNodeAttr('#custom-song-lyrics-input', 'placeholder', readSongMessage('customSongLyricsPlaceholder', 'Digite aqui o texto da música...'));
-    setNodeAttr('#custom-song-chords-input', 'placeholder', readSongMessage('customSongChordsPlaceholder', 'Digite aqui a cifra...'));
-    setNodeAttr('#custom-song-modal-close', 'aria-label', readSongMessage('customSongCloseAria', 'Fechar editor'));
-    setNodeAttr('#custom-song-modal-close', 'title', readSongMessage('customSongCloseAria', 'Fechar editor'));
+    setNodeText('#custom-song-modal-title', readSongMessage('customSongModalTitle'));
+    setNodeText('#custom-song-title-label', readSongMessage('customSongTitleLabel'));
+    setNodeText('#custom-song-key-label', readSongMessage('customSongKeyLabel'));
+    setNodeText('#custom-song-tab-lyrics', readSongMessage('customSongLyricsTab'));
+    setNodeText('#custom-song-tab-chords', readSongMessage('customSongChordsTab'));
+    setNodeText('#custom-song-lyrics-label', readSongMessage('customSongLyricsLabel'));
+    setNodeText('#custom-song-chords-label', readSongMessage('customSongChordsLabel'));
+    setNodeText('#custom-song-cancel-btn', readSongMessage('customSongCancelButton'));
+    setNodeText('#custom-song-save-btn', readSongMessage('customSongSaveButton'));
+    setNodeAttr('#custom-song-title-input', 'placeholder', readSongMessage('customSongTitlePlaceholder'));
+    setNodeAttr('#custom-song-key-input', 'placeholder', readSongMessage('customSongKeyPlaceholder'));
+    setNodeAttr('#custom-song-lyrics-input', 'placeholder', readSongMessage('customSongLyricsPlaceholder'));
+    setNodeAttr('#custom-song-chords-input', 'placeholder', readSongMessage('customSongChordsPlaceholder'));
+    setNodeAttr('#custom-song-modal-close', 'aria-label', readSongMessage('customSongCloseAria'));
+    setNodeAttr('#custom-song-modal-close', 'title', readSongMessage('customSongCloseAria'));
     setNodeText(
       '#favorite-confirm-message',
-      readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?')
+      readSongMessage('favoriteRemoveConfirmMessage')
     );
-    setNodeText('#song-save-location-picker-breadcrumb', readMysteryMessage('assignCategorySelect', 'Selecione o caminho'));
-    setNodeText('#song-save-location-picker-back', readMysteryMessage('assignCategoryBack', 'Voltar'));
+    setNodeText('#song-save-location-picker-breadcrumb', readMysteryMessage('assignCategorySelect'));
+    setNodeText('#song-save-location-picker-back', readMysteryMessage('assignCategoryBack'));
     setNodeAttr(
       '#song-save-location-picker-search',
       'placeholder',
-      readMysteryMessage('assignSearchPlaceholder', 'Buscar categoria ou local...')
+      readMysteryMessage('assignSearchPlaceholder')
     );
     setNodeAttr(
       '#song-save-location-picker-search',
       'aria-label',
-      readMysteryMessage('assignSearchAria', 'Buscar local de salvamento')
+      readMysteryMessage('assignSearchAria')
     );
     setNodeAttr(
       '#song-save-location-picker-close',
       'aria-label',
-      readMysteryMessage('assignCategoryCloseAria', 'Fechar seleção')
+      readMysteryMessage('assignCategoryCloseAria')
     );
     setNodeAttr(
       '#song-save-location-picker-close',
       'title',
-      readMysteryMessage('assignCategoryCloseAria', 'Fechar seleção')
+      readMysteryMessage('assignCategoryCloseAria')
     );
 
     setNodeText('#oracoes .section-header .section-kicker', content.oracoes?.header?.kicker);
@@ -603,8 +674,8 @@
     setNodeText('#oracoes .section-header p', content.oracoes?.header?.description);
     if (Array.isArray(content.oracoes?.items)) {
       const prayerGrid = document.querySelector('#oracoes .prayer-grid');
-      const openLabel = content.oracoes?.accordion?.openLabel || 'Ocultar oração';
-      const closedLabel = content.oracoes?.accordion?.closedLabel || 'Ver oração';
+      const openLabel = content.oracoes?.accordion?.openLabel || readUiMessage('oracoes.accordionOpenLabel');
+      const closedLabel = content.oracoes?.accordion?.closedLabel || readUiMessage('oracoes.accordionClosedLabel');
       if (prayerGrid) {
         prayerGrid.innerHTML = '';
         content.oracoes.items.forEach((prayerConfig) => {
@@ -680,7 +751,7 @@
             action.href = item.url;
             action.target = '_blank';
             action.rel = 'noopener';
-            action.textContent = item.linkLabel || 'Abrir';
+            action.textContent = item.linkLabel || readUiMessage('common.openActionLabel');
             card.appendChild(action);
           }
 
@@ -723,19 +794,76 @@
     setNodeText('.site-footer .footer-row a', content.footer?.backToTopLabel);
 
     setNodeAttr('#mystery-modal-links', 'aria-label', content.misterios?.modal?.linksAriaLabel);
+    setNodeAttr('#mystery-modal-links', 'data-label', readMysteryMessage('modalLinksLabel'));
     setNodeAttr('.mystery-modal-close', 'aria-label', content.misterios?.modal?.closeAriaLabel);
     setNodeAttr(
       '#mystery-jaculatory-close',
       'aria-label',
-      readMysteryMessage('closeJaculatoryAria', 'Fechar jaculatória')
+      readMysteryMessage('closeJaculatoryAria')
     );
     setNodeAttr(
       '#mystery-jaculatory-close',
       'title',
-      readMysteryMessage('closeJaculatoryAria', 'Fechar jaculatória')
+      readMysteryMessage('closeJaculatoryAria')
+    );
+    setNodeAttr(
+      '#mystery-modal-song-close',
+      'aria-label',
+      readMysteryMessage('closeSongPanelAria')
+    );
+    setNodeAttr(
+      '#mystery-modal-song-close',
+      'title',
+      readMysteryMessage('closeSongPanelAria')
     );
     setNodeText('#mystery-jaculatory-toggle', content.misterios?.modal?.toggleShow);
     setNodeText('#mystery-jaculatory-panel .mystery-jaculatory-title', content.misterios?.modal?.jaculatoryTitle);
+    setNodeText(
+      '#mystery-group-modal-title',
+      readMysteryMessage('groupPickerTitle')
+    );
+    setNodeAttr(
+      '#mystery-group-modal-options',
+      'aria-label',
+      readMysteryMessage('groupPickerAria')
+    );
+    setNodeAttr(
+      '.mystery-group-modal-close',
+      'aria-label',
+      readMysteryMessage('groupPickerCloseAria')
+    );
+    setNodeAttr(
+      '.mystery-group-modal-close',
+      'title',
+      readMysteryMessage('groupPickerCloseAria')
+    );
+    setNodeText('#mystery-song-assign-title', readMysteryMessage('assignModalTitle'));
+    setNodeAttr('.mystery-song-assign-close', 'aria-label', readMysteryMessage('assignCategoryCloseAria'));
+    setNodeAttr('.mystery-song-assign-close', 'title', readMysteryMessage('assignCategoryCloseAria'));
+    setNodeAttr('.custom-song-tabs', 'aria-label', readSongMessage('customSongEditorAria'));
+    setNodeText('#mystery-ave-maria-panel .mystery-ave-maria-title', readMysteryMessage('aveMariaTitle'));
+    setNodeAttr(
+      '#mystery-ave-maria-options',
+      'aria-label',
+      readMysteryMessage('aveMariaAria')
+    );
+    setNodeAttr(
+      '.rosary-modal-close',
+      'aria-label',
+      readRosaryMessage('closeAria')
+    );
+    setNodeAttr(
+      '.rosary-modal-close',
+      'title',
+      readRosaryMessage('closeAria')
+    );
+    setNodeAttr(
+      '#rosary-modal-dots',
+      'aria-label',
+      readRosaryMessage('stepsAria')
+    );
+    setNodeText('#rosary-modal-prev', readRosaryMessage('prevButton'));
+    setNodeText('#rosary-modal-next', readRosaryMessage('nextButton'));
     if (Array.isArray(content.misterios?.modal?.jaculatoryItems)) {
       const jaculatoryList = document.querySelector('#mystery-jaculatory-panel .mystery-jaculatory-list');
       if (jaculatoryList) {
@@ -790,7 +918,7 @@
   const closeMainMenu = () => {
     if (!menuToggle || !menuList) return;
     menuToggle.setAttribute('aria-expanded', 'false');
-    menuToggle.setAttribute('aria-label', readUiMessage('menu.openAria', 'Abrir menu'));
+    menuToggle.setAttribute('aria-label', readUiMessage('menu.openAria'));
     menuList.classList.remove('open');
     closeMenuDropdowns();
   };
@@ -821,7 +949,7 @@
       }
     }
 
-    const targetTop = Math.max(0, sectionTop + contentOffset - headerOffset);
+    const targetTop = Math.max(0, sectionTop + contentOffset - headerOffset - ANCHOR_SCROLL_EXTRA_OFFSET);
     window.scrollTo({ top: targetTop, behavior });
   };
 
@@ -842,6 +970,17 @@
     const { behavior = 'auto' } = options;
     const target = resolveHashTargetElement();
     if (!target) return false;
+    const revealContainer = target instanceof HTMLElement
+      ? (
+        target.classList.contains('reveal')
+          ? target
+          : target.closest('.reveal')
+      )
+      : null;
+    if (revealContainer instanceof HTMLElement) {
+      // Avoid post-scroll jumps caused by reveal transform changing after anchor alignment.
+      revealContainer.classList.add('is-visible');
+    }
     scrollToSectionWithHeaderOffset(target, { behavior });
     setActiveSectionLink(target.id);
     return true;
@@ -1079,8 +1218,8 @@
       menuToggle.setAttribute(
         'aria-label',
         nextState
-          ? readUiMessage('menu.closeAria', 'Fechar menu')
-          : readUiMessage('menu.openAria', 'Abrir menu')
+          ? readUiMessage('menu.closeAria')
+          : readUiMessage('menu.openAria')
       );
       if (nextState) {
         closeMenuDropdowns();
@@ -1168,14 +1307,14 @@
       themeToggleBtn.setAttribute(
         'aria-label',
         isDark
-          ? readUiMessage('theme.enableLight', 'Ativar tema claro')
-          : readUiMessage('theme.enableDark', 'Ativar tema escuro')
+          ? readUiMessage('theme.enableLight')
+          : readUiMessage('theme.enableDark')
       );
       themeToggleBtn.setAttribute(
         'title',
         isDark
-          ? readUiMessage('theme.darkActive', 'Tema escuro ativo')
-          : readUiMessage('theme.lightActive', 'Tema claro ativo')
+          ? readUiMessage('theme.darkActive')
+          : readUiMessage('theme.lightActive')
       );
     }
 
@@ -1209,6 +1348,7 @@
 
   internalAnchorLinks.forEach((link) => {
     link.addEventListener('click', (event) => {
+      if (link.hasAttribute('data-open-rosary-modal')) return;
       const href = link.getAttribute('href') || '';
       if (!href.startsWith('#') || href.length <= 1) return;
       const target = document.getElementById(href.slice(1));
@@ -1376,9 +1516,21 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => applyMobileLandscapeViewport('resize'));
   }
+  if ('ResizeObserver' in window && siteHeader) {
+    const headerResizeObserver = new ResizeObserver(() => {
+      syncHeaderHeight();
+      if (!portalModeEnabled && window.location.hash) {
+        alignCurrentHashTarget({ behavior: 'auto' });
+      }
+      if (!portalModeEnabled) {
+        scheduleSectionSync();
+      }
+    });
+    headerResizeObserver.observe(siteHeader);
+  }
   window.addEventListener('touchstart', (event) => {
     if (!document.body.classList.contains('landscape-mobile')) return;
-    const hasOpenModal = Boolean(document.querySelector('.mystery-modal.open, .song-modal.open'));
+    const hasOpenModal = Boolean(document.querySelector('.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open'));
     if (hasOpenModal) return;
     const touchTarget = event.target;
     if (touchTarget instanceof Element) {
@@ -1531,14 +1683,29 @@
   const mysteryModalTitle = document.getElementById('mystery-modal-title');
   const mysteryModalText = document.getElementById('mystery-modal-text');
   const mysteryModalGroup = document.getElementById('mystery-modal-group');
+  const mysteryGroupModal = document.getElementById('mystery-group-modal');
+  const mysteryGroupModalOptions = document.getElementById('mystery-group-modal-options');
+  const mysteryGroupModalCloseButtons = document.querySelectorAll('[data-mystery-group-modal-close]');
   const mysteryModalSongToggle = document.getElementById('mystery-modal-song-toggle');
   const mysteryModalSongPanel = document.getElementById('mystery-modal-song-panel');
   const mysteryModalSongTitle = document.getElementById('mystery-modal-song-title');
+  const mysteryModalSongClose = document.getElementById('mystery-modal-song-close');
   const mysteryModalSongLyrics = document.getElementById('mystery-modal-song-lyrics');
+  const mysteryAveMariaOptions = document.getElementById('mystery-ave-maria-options');
   const mysteryJaculatoryToggle = document.getElementById('mystery-jaculatory-toggle');
   const mysteryJaculatoryPanel = document.getElementById('mystery-jaculatory-panel');
   const mysteryJaculatoryClose = document.getElementById('mystery-jaculatory-close');
   const mysteryModalCloseButtons = document.querySelectorAll('[data-mystery-modal-close]');
+  const rosaryModal = document.getElementById('rosary-modal');
+  const rosaryModalTitle = document.getElementById('rosary-modal-title');
+  const rosaryModalGroup = document.getElementById('rosary-modal-group');
+  const rosaryModalStepText = document.getElementById('rosary-modal-step-text');
+  const rosaryModalDots = document.getElementById('rosary-modal-dots');
+  const rosaryModalStepCounter = document.getElementById('rosary-modal-step-counter');
+  const rosaryModalPrevBtn = document.getElementById('rosary-modal-prev');
+  const rosaryModalNextBtn = document.getElementById('rosary-modal-next');
+  const rosaryModalCloseButtons = document.querySelectorAll('[data-rosary-modal-close]');
+  const rosaryModalTriggers = document.querySelectorAll('[data-open-rosary-modal]');
   const mysterySongAssignModal = document.getElementById('mystery-song-assign-modal');
   const mysterySongAssignSong = document.getElementById('mystery-song-assign-song');
   const mysterySongAssignList = document.getElementById('mystery-song-assign-list');
@@ -1575,6 +1742,8 @@
   let songLocationCreateModalParentLabel = '';
   let songLocationCreateModalFocusTarget = null;
   let songLocationCreateModalSubmitting = false;
+  let lastFocusedRosaryTrigger = null;
+  let rosaryModalStepIndex = 0;
   const songSaveLocationPickerTextMeasureContext = (() => {
     const canvas = document.createElement('canvas');
     return canvas.getContext('2d');
@@ -1594,6 +1763,77 @@
     }
     return acc;
   }, {});
+  const normalizePrayerLookupToken = (value) => (
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+  );
+  const readPrayerTextByTitle = (title) => {
+    const targetToken = normalizePrayerLookupToken(title);
+    if (!targetToken) return '';
+    const prayerItems = Array.isArray(portalContent?.oracoes?.items)
+      ? portalContent.oracoes.items
+      : (Array.isArray(portalContent?.oracoes?.cards) ? portalContent.oracoes.cards : []);
+    for (const prayerItem of prayerItems) {
+      const titleToken = normalizePrayerLookupToken(prayerItem?.title);
+      if (titleToken !== targetToken) continue;
+      const text = String(prayerItem?.text || '').trim();
+      if (text) return text;
+    }
+    return '';
+  };
+  const buildRosaryStartStepFallbackText = () => {
+    const holySpiritPrayerTitle = readRosaryMessage('holySpiritPrayerTitle');
+    const holySpiritText = readPrayerTextByTitle(holySpiritPrayerTitle);
+    return [readRosaryMessage('stepStartSignOfCrossText'), holySpiritText].filter(Boolean).join('\n\n');
+  };
+  const buildRosaryFinalStepFallbackText = () => {
+    const thanksgivingPrayerTitle = readRosaryMessage('thanksgivingPrayerTitle');
+    const salveRainhaPrayerTitle = readRosaryMessage('salveRainhaPrayerTitle');
+    const thanksgivingText = readPrayerTextByTitle(thanksgivingPrayerTitle);
+    const salveRainhaText = readPrayerTextByTitle(salveRainhaPrayerTitle);
+    return [thanksgivingText, salveRainhaText].filter(Boolean).join('\n\n');
+  };
+  const rosaryFlowSteps = [
+    {
+      group: readRosaryMessage('stepStartGroup'),
+      title: readRosaryMessage('stepStartTitle'),
+      text: readRosaryMessage('stepStartText', buildRosaryStartStepFallbackText()),
+      dotNumber: readRosaryMessage('dotStartNumber'),
+      dotLabel: readRosaryMessage('dotStart'),
+    },
+    {
+      group: readRosaryMessage('stepInitialBeadsGroup'),
+      title: readRosaryMessage('stepInitialBlockTitle'),
+      hideTitle: true,
+      text: readRosaryMessage('stepInitialBlockText'),
+      dotNumber: readRosaryMessage('dotInitialBlockNumber'),
+      dotLabel: readRosaryMessage('dotInitialBlock'),
+    },
+    {
+      group: readRosaryMessage('stepMysteriesGroup'),
+      title: readRosaryMessage('stepMysteriesTitle'),
+      text: readRosaryMessage('stepMysteriesText'),
+      actionType: 'open_today_mysteries',
+      actionLabel: readRosaryMessage('openMysteriesButton'),
+      dotNumber: readRosaryMessage('dotMysteriesNumber'),
+      dotLabel: readRosaryMessage('dotMysteries'),
+    },
+    {
+      group: readRosaryMessage('stepFinalGroup'),
+      title: readRosaryMessage('stepFinalTitle'),
+      text: readRosaryMessage('stepFinalText', buildRosaryFinalStepFallbackText()),
+      dotNumber: readRosaryMessage('dotFinalNumber'),
+      dotLabel: readRosaryMessage('dotFinal'),
+    },
+  ];
+  const resolveTodayMysterySlot = () => {
+    const slot = mysteryByDay[new Date().getDay()];
+    return slot && typeof slot === 'object' ? slot : null;
+  };
   const normalizeMysteryName = (value) => (
     String(value || '')
       .trim()
@@ -1664,6 +1904,9 @@
   let mysterySongAssignments = {};
   let mysterySongAssignmentsLoading = false;
   let currentMysteryModalSelection = { title: '', group: '' };
+  let mysteryAveMariaCurrent = 0;
+  let mysteryAveMariaAutoJaculatoryTimerId = null;
+  const MYSTERY_AVE_MARIA_AUTO_JACULATORY_DELAY_MS = 15000;
   let mysteryModalSongLoading = false;
   let songLocationTreeRoots = [];
   let songLocationTreeLoading = false;
@@ -1807,6 +2050,28 @@
       && safeSongIdentity.titleKey === safeTargetIdentity.titleKey
     );
   };
+  const buildUsageLabelDedupKey = (value) => {
+    const segments = String(value || '')
+      .split('>')
+      .map((segment) => normalizeKeyToken(String(segment || '').trim()))
+      .filter(Boolean);
+    return segments.join(' > ');
+  };
+  const dedupeUsageLabels = (values) => {
+    const labels = [];
+    const seen = new Set();
+    const rows = Array.isArray(values) ? values : [];
+    rows.forEach((rawValue) => {
+      const label = String(rawValue || '').trim();
+      if (!label) return;
+      const dedupKey = buildUsageLabelDedupKey(label);
+      if (!dedupKey || seen.has(dedupKey)) return;
+      seen.add(dedupKey);
+      labels.push(label);
+    });
+    labels.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
+    return labels;
+  };
 
   const resolveSongMysteryUsageLabels = (songPayload) => {
     const songIdentity = readSongIdentityForMatch(songPayload);
@@ -1814,7 +2079,6 @@
     if (!assignmentRows.length) return [];
 
     const labels = [];
-    const seenLabels = new Set();
     assignmentRows.forEach((assignmentPayload) => {
       const assignment = asObject(assignmentPayload);
       const assignmentIdentity = readSongIdentityForMatch({
@@ -1830,14 +2094,10 @@
 
       const itemLabel = resolveMysteryItemLabel(groupTitle, mysteryTitle);
       const usageLabel = itemLabel ? `${groupTitle} > ${itemLabel}` : groupTitle;
-      const usageKey = normalizeSongMatchToken(usageLabel);
-      if (!usageKey || seenLabels.has(usageKey)) return;
-      seenLabels.add(usageKey);
       labels.push(usageLabel);
     });
 
-    labels.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
-    return labels;
+    return dedupeUsageLabels(labels);
   };
 
   const hasSongMysteryUsage = (songPayload) => {
@@ -1872,7 +2132,6 @@
     if (!assignmentRows.length) return [];
 
     const labels = [];
-    const seenLabels = new Set();
     assignmentRows.forEach((assignmentPayload) => {
       const assignment = asObject(assignmentPayload);
       const assignmentIdentity = readSongIdentityForMatch({
@@ -1889,14 +2148,10 @@
       const usageLabel = path.length
         ? path.join(' > ')
         : locationLabel;
-      const usageKey = normalizeSongMatchToken(usageLabel);
-      if (!usageKey || seenLabels.has(usageKey)) return;
-      seenLabels.add(usageKey);
       labels.push(usageLabel);
     });
 
-    labels.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
-    return labels;
+    return dedupeUsageLabels(labels);
   };
 
   const cacheMysterySongAssignment = (payload) => {
@@ -1936,7 +2191,7 @@
         throw new Error(
           parseMysterySongAssignmentApiError(
             payload,
-            readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+            readMysteryMessage('assignLoadError')
           )
         );
       }
@@ -1963,7 +2218,7 @@
     const safeGroupTitle = String(groupTitle || '').trim();
     const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
     if (!safeGroupTitle || !safeMysteryTitle) {
-      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério para vincular a música.'));
+      throw new Error(readMysteryMessage('assignInvalidTarget'));
     }
 
     const safePayload = asObject(payload);
@@ -1992,7 +2247,7 @@
       throw new Error(
         parseMysterySongAssignmentApiError(
           responsePayload,
-          readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.')
+          readMysteryMessage('assignSaveError')
         )
       );
     }
@@ -2000,7 +2255,7 @@
 
     const saved = cacheMysterySongAssignment(responsePayload.assignment);
     if (!saved) {
-      throw new Error(readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.'));
+      throw new Error(readMysteryMessage('assignSaveError'));
     }
     updateMysteryModalSongToggleState();
     return saved;
@@ -2010,7 +2265,7 @@
     const safeGroupTitle = String(groupTitle || '').trim();
     const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
     if (!safeGroupTitle || !safeMysteryTitle) {
-      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+      throw new Error(readMysteryMessage('assignInvalidTarget'));
     }
 
     const response = await fetch(
@@ -2024,7 +2279,7 @@
       throw new Error(
         parseMysterySongAssignmentApiError(
           responsePayload,
-          readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.')
+          readMysteryMessage('assignRemoveError')
         )
       );
     }
@@ -2066,7 +2321,7 @@
         throw new Error(
           payload?.detail?.message
           || payload?.message
-          || readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+          || readMysteryMessage('assignLoadError')
         );
       }
       const nextAssignments = {};
@@ -2090,7 +2345,7 @@
   const createSongLocationNodeOnServer = async (label, parentId = '') => {
     const safeLabel = String(label || '').trim();
     if (!safeLabel) {
-      throw new Error(readMysteryMessage('assignCategoryAddInvalid', 'Informe um nome para o item.'));
+      throw new Error(readMysteryMessage('assignCategoryAddInvalid'));
     }
     const safeParentId = String(parentId || '').trim();
     const response = await fetch('/api/song-locations/nodes', {
@@ -2108,7 +2363,7 @@
       throw new Error(
         responsePayload?.detail?.message
         || responsePayload?.message
-        || readMysteryMessage('assignCategoryAddError', 'Não foi possível adicionar o item.')
+        || readMysteryMessage('assignCategoryAddError')
       );
     }
     return normalizeSongLocationNodePayload(responsePayload.node);
@@ -2118,11 +2373,11 @@
     const safeNodeId = String(nodeId || '').trim();
     const safePassword = String(password || '');
     if (!safeNodeId) {
-      throw new Error(readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.'));
+      throw new Error(readMysteryMessage('assignCategoryDeactivateError'));
     }
     if (!safePassword.trim()) {
       throw new Error(
-        readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+        readMysteryMessage('assignCategoryDeactivatePasswordRequired')
       );
     }
     const response = await fetch(`/api/song-locations/nodes/${encodeURIComponent(safeNodeId)}`, {
@@ -2134,8 +2389,8 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (!response.ok || !responsePayload.ok) {
       const defaultErrorMessage = response.status === 403
-        ? readMysteryMessage('assignCategoryDeactivatePasswordInvalid', 'Senha inválida para inativar o item.')
-        : readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.');
+        ? readMysteryMessage('assignCategoryDeactivatePasswordInvalid')
+        : readMysteryMessage('assignCategoryDeactivateError');
       throw new Error(
         responsePayload?.detail?.message
         || responsePayload?.message
@@ -2150,7 +2405,7 @@
     const safePayload = asObject(payload);
     const locationId = String(safeTarget.locationId || safeTarget.id || '').trim();
     if (!locationId) {
-      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+      throw new Error(readMysteryMessage('assignInvalidTarget'));
     }
     const locationLabel = String(safeTarget.locationLabel || safeTarget.label || '').trim();
     const rawPath = Array.isArray(safeTarget.locationPath) ? safeTarget.locationPath : [];
@@ -2181,14 +2436,14 @@
       throw new Error(
         responsePayload?.detail?.message
         || responsePayload?.message
-        || readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.')
+        || readMysteryMessage('assignSaveError')
       );
     }
 
     runDeferredTask(fetchSongFavorites, 80);
     const saved = cacheSongLocationAssignment(responsePayload.assignment);
     if (!saved) {
-      throw new Error(readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.'));
+      throw new Error(readMysteryMessage('assignSaveError'));
     }
     return saved;
   };
@@ -2196,7 +2451,7 @@
   const deleteSongLocationAssignmentOnServer = async (locationId) => {
     const safeLocationId = String(locationId || '').trim();
     if (!safeLocationId) {
-      throw new Error(readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'));
+      throw new Error(readMysteryMessage('assignInvalidTarget'));
     }
 
     const response = await fetch(
@@ -2210,7 +2465,7 @@
       throw new Error(
         responsePayload?.detail?.message
         || responsePayload?.message
-        || readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.')
+        || readMysteryMessage('assignRemoveError')
       );
     }
 
@@ -2234,7 +2489,7 @@
         throw new Error(
           payload?.detail?.message
           || payload?.message
-          || readMysteryMessage('assignLoadError', 'Não foi possível carregar as músicas dos mistérios.')
+          || readMysteryMessage('assignLoadError')
         );
       }
       songLocationTreeRoots = normalizeSongLocationTreeRoots(payload.tree);
@@ -2477,12 +2732,10 @@
     }
 
     const titleText = songLocationCreateModalParentLabel
-      ? readMysteryMessage(
-        'assignCategoryAddPromptChild',
-        'Novo item dentro de "{parent}"',
+      ? readMysteryMessage('assignCategoryAddPromptChild',
         { parent: songLocationCreateModalParentLabel }
       )
-      : readMysteryMessage('assignCategoryAddPromptRoot', 'Novo item na raiz');
+      : readMysteryMessage('assignCategoryAddPromptRoot');
     if (songLocationCreateTitle) {
       songLocationCreateTitle.textContent = titleText;
     }
@@ -2511,7 +2764,7 @@
       return option;
     };
 
-    const rootLabel = readMysteryMessage('assignCategoryRootOption', 'Raiz');
+    const rootLabel = readMysteryMessage('assignCategoryRootOption');
     appendOption('', rootLabel);
 
     const seenIds = new Set();
@@ -2583,21 +2836,15 @@
       : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     populateSongLocationCreateParentSelect(songLocationCreateModalParentId);
     if (songLocationCreateTargetHint) {
-      songLocationCreateTargetHint.textContent = readMysteryMessage(
-        'assignCategoryAddTargetField',
-        'Adicionar dentro de:'
-      );
+      songLocationCreateTargetHint.textContent = readMysteryMessage('assignCategoryAddTargetField');
     }
-    const hintText = readMysteryMessage('assignCategoryAddPromptField', 'Nome do item:');
+    const hintText = readMysteryMessage('assignCategoryAddPromptField');
     if (songLocationCreateHint) {
       songLocationCreateHint.textContent = hintText;
     }
     if (songLocationCreateInput) {
       songLocationCreateInput.value = '';
-      songLocationCreateInput.placeholder = readMysteryMessage(
-        'assignCategoryAddModalPlaceholder',
-        'Digite o nome do item'
-      );
+      songLocationCreateInput.placeholder = readMysteryMessage('assignCategoryAddModalPlaceholder');
       songLocationCreateInput.setAttribute('aria-label', hintText);
     }
     setSongLocationCreateModalSubmittingState(false);
@@ -2619,7 +2866,7 @@
     const label = String(songLocationCreateInput?.value || '').trim();
     if (!label) {
       showSongToast(
-        readMysteryMessage('assignCategoryAddInvalid', 'Informe um nome para o item.'),
+        readMysteryMessage('assignCategoryAddInvalid'),
         'is-warning'
       );
       if (songLocationCreateInput instanceof HTMLElement) {
@@ -2647,13 +2894,13 @@
       positionSongSaveLocationPicker();
       closeSongLocationCreateModal({ restoreFocus: false });
       showSongToast(
-        readMysteryMessage('assignCategoryAddSuccess', 'Item adicionado com sucesso.'),
+        readMysteryMessage('assignCategoryAddSuccess'),
         'is-success'
       );
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readMysteryMessage('assignCategoryAddError', 'Não foi possível adicionar o item.');
+        : readMysteryMessage('assignCategoryAddError');
       showSongToast(message, 'is-error');
     } finally {
       if (isSongLocationCreateModalOpen()) {
@@ -2812,7 +3059,7 @@
 
     const mysteryNode = {
       id: 'category:mystery',
-      label: readMysteryMessage('assignCategoryMystery', 'Mistério'),
+      label: readMysteryMessage('assignCategoryMystery'),
       meta: '',
       children: mysteryChildren,
     };
@@ -2906,7 +3153,7 @@
     const mysteryTitle = normalizeMysteryName(safeTarget.mysteryTitle || '');
     if (!groupTitle || !mysteryTitle) {
       showSongToast(
-        readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'),
+        readMysteryMessage('assignInvalidTarget'),
         'is-error'
       );
       return false;
@@ -2915,7 +3162,7 @@
     const song = asObject(songSaveLocationPickerPendingSong || mysterySongAssignPendingSong);
     if (!song.title && !song.url) {
       showSongToast(
-        readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+        readMysteryMessage('assignSongInvalid'),
         'is-error'
       );
       return false;
@@ -2925,24 +3172,20 @@
     const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
     if (hasCurrentAssignment) {
       const currentSongTitle = String(currentAssignment.songTitle || '').trim()
-        || readSongMessage('defaultSongTitle', 'Música atual');
+        || readSongMessage('defaultSongTitle');
       const nextSongTitle = String(song.title || '').trim()
-        || readSongMessage('defaultSongTitle', 'Nova música');
-      const removeMessage = readMysteryMessage(
-        'assignRemoveConfirmMessageWithTitle',
-        'Deseja remover "{title}" deste mistério?',
+        || readSongMessage('defaultSongTitle');
+      const removeMessage = readMysteryMessage('assignRemoveConfirmMessageWithTitle',
         { title: currentSongTitle }
       );
       const existingAction = await openFavoriteDecisionModal({
         triggerElement,
-        title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
-        message: readMysteryMessage(
-          'assignExistingChoiceMessage',
-          'Este mistério já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+        title: readMysteryMessage('assignExistingChoiceTitle'),
+        message: readMysteryMessage('assignExistingChoiceMessage',
           { current: currentSongTitle, next: nextSongTitle }
         ),
-        cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
-        acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+        cancelLabel: readMysteryMessage('assignExistingChoiceRemove'),
+        acceptLabel: readMysteryMessage('assignExistingChoiceReplace'),
         fallbackCancelConfirmMessage: removeMessage,
       });
       if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return false;
@@ -2953,7 +3196,7 @@
         } catch (err) {
           const message = err instanceof Error
             ? err.message
-            : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+            : readMysteryMessage('assignRemoveError');
           showSongToast(message, 'is-error');
           return false;
         }
@@ -2970,7 +3213,7 @@
         renderSongSaveLocationPicker();
         renderSongFavorites();
         showSongToast(
-          readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+          readMysteryMessage('assignRemoveSuccess'),
           'is-success'
         );
         return true;
@@ -2996,7 +3239,7 @@
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+        : readMysteryMessage('assignSaveError');
       showSongToast(message, 'is-error');
       return false;
     }
@@ -3013,7 +3256,7 @@
     renderSongSaveLocationPicker();
     renderSongFavorites();
     showSongToast(
-      readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+      readMysteryMessage('assignSuccess'),
       'is-success'
     );
     closeSongSaveLocationPicker();
@@ -3025,7 +3268,7 @@
     const locationId = String(safeTarget.locationId || safeTarget.id || '').trim();
     if (!locationId) {
       showSongToast(
-        readMysteryMessage('assignInvalidTarget', 'Informe o grupo e o mistério da música.'),
+        readMysteryMessage('assignInvalidTarget'),
         'is-error'
       );
       return false;
@@ -3034,7 +3277,7 @@
     const song = asObject(songSaveLocationPickerPendingSong || mysterySongAssignPendingSong);
     if (!song.title && !song.url) {
       showSongToast(
-        readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+        readMysteryMessage('assignSongInvalid'),
         'is-error'
       );
       return false;
@@ -3044,24 +3287,20 @@
     const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
     if (hasCurrentAssignment) {
       const currentSongTitle = String(currentAssignment.songTitle || '').trim()
-        || readSongMessage('defaultSongTitle', 'Música atual');
+        || readSongMessage('defaultSongTitle');
       const nextSongTitle = String(song.title || '').trim()
-        || readSongMessage('defaultSongTitle', 'Nova música');
-      const removeMessage = readMysteryMessage(
-        'assignRemoveConfirmMessageWithTitle',
-        'Deseja remover "{title}" deste local?',
+        || readSongMessage('defaultSongTitle');
+      const removeMessage = readMysteryMessage('assignRemoveConfirmMessageWithTitle',
         { title: currentSongTitle }
       );
       const existingAction = await openFavoriteDecisionModal({
         triggerElement,
-        title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
-        message: readMysteryMessage(
-          'assignExistingChoiceMessage',
-          'Este local já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+        title: readMysteryMessage('assignExistingChoiceTitle'),
+        message: readMysteryMessage('assignExistingChoiceMessage',
           { current: currentSongTitle, next: nextSongTitle }
         ),
-        cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
-        acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+        cancelLabel: readMysteryMessage('assignExistingChoiceRemove'),
+        acceptLabel: readMysteryMessage('assignExistingChoiceReplace'),
         fallbackCancelConfirmMessage: removeMessage,
       });
       if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return false;
@@ -3072,7 +3311,7 @@
         } catch (err) {
           const message = err instanceof Error
             ? err.message
-            : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+            : readMysteryMessage('assignRemoveError');
           showSongToast(message, 'is-error');
           return false;
         }
@@ -3080,7 +3319,7 @@
         renderSongSaveLocationPicker();
         renderSongFavorites();
         showSongToast(
-          readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+          readMysteryMessage('assignRemoveSuccess'),
           'is-success'
         );
         return true;
@@ -3105,7 +3344,7 @@
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+        : readMysteryMessage('assignSaveError');
       showSongToast(message, 'is-error');
       return false;
     }
@@ -3113,7 +3352,7 @@
     renderSongSaveLocationPicker();
     renderSongFavorites();
     showSongToast(
-      readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+      readMysteryMessage('assignSuccess'),
       'is-success'
     );
     closeSongSaveLocationPicker();
@@ -3124,10 +3363,10 @@
     const node = asObject(nodePayload);
     const nodeId = String(node.locationId || node.id || '').trim();
     const nodeLabel = String(node.label || node.locationLabel || '').trim()
-      || readMysteryMessage('assignCategoryRootLabel', 'raiz');
+      || readMysteryMessage('assignCategoryRootLabel');
     if (!nodeId) {
       showSongToast(
-        readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.'),
+        readMysteryMessage('assignCategoryDeactivateError'),
         'is-error'
       );
       return false;
@@ -3135,17 +3374,15 @@
 
     const shouldDeactivate = await openFavoriteConfirmModal({
       triggerElement,
-      title: readMysteryMessage('assignCategoryDeactivateConfirmTitle', 'Inativar item'),
-      message: readMysteryMessage(
-        'assignCategoryDeactivateConfirmMessage',
-        'Deseja inativar "{title}"? O item ficará oculto e poderá ser recuperado depois.',
+      title: readMysteryMessage('assignCategoryDeactivateConfirmTitle'),
+      message: readMysteryMessage('assignCategoryDeactivateConfirmMessage',
         { title: nodeLabel }
       ),
-      cancelLabel: readMysteryMessage('favoriteRemoveConfirmCancel', 'Cancelar'),
-      acceptLabel: readMysteryMessage('assignCategoryDeactivateConfirmAccept', 'Inativar'),
+      cancelLabel: readMysteryMessage('favoriteRemoveConfirmCancel'),
+      acceptLabel: readMysteryMessage('assignCategoryDeactivateConfirmAccept'),
       requirePassword: true,
-      passwordLabel: readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação'),
-      passwordPlaceholder: readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha'),
+      passwordLabel: readMysteryMessage('assignCategoryDeactivatePasswordLabel'),
+      passwordPlaceholder: readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder'),
     });
     if (!shouldDeactivate) return false;
     const deactivatePassword = consumeFavoriteConfirmPassword();
@@ -3162,14 +3399,14 @@
       renderSongSaveLocationPicker();
       positionSongSaveLocationPicker();
       showSongToast(
-        readMysteryMessage('assignCategoryDeactivateSuccess', 'Item inativado com sucesso.'),
+        readMysteryMessage('assignCategoryDeactivateSuccess'),
         'is-success'
       );
       return true;
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readMysteryMessage('assignCategoryDeactivateError', 'Não foi possível inativar o item.');
+        : readMysteryMessage('assignCategoryDeactivateError');
       showSongToast(message, 'is-error');
       return false;
     }
@@ -3208,10 +3445,10 @@
     }
     if (songSaveLocationPickerBreadcrumb) {
       songSaveLocationPickerBreadcrumb.textContent = isSearching
-        ? readMysteryMessage('assignSearchResultsQuery', 'Busca: "{query}"', { query: normalizedSearchQuery })
+        ? readMysteryMessage('assignSearchResultsQuery', { query: normalizedSearchQuery })
         : (
           pathNodes.map((node) => node.label || '').filter(Boolean).join(' / ')
-          || readMysteryMessage('assignCategorySelect', 'Selecione o caminho')
+          || readMysteryMessage('assignCategorySelect')
         );
     }
 
@@ -3239,9 +3476,7 @@
         const assignedSongTitle = String(assigned.songTitle || '').trim();
         if (assignedSongTitle) {
           button.classList.add('is-assigned');
-          metaText = readMysteryMessage(
-            'assignCurrentSongTitle',
-            'Já possui música atribuída: {title}',
+          metaText = readMysteryMessage('assignCurrentSongTitle',
             { title: assignedSongTitle }
           );
         }
@@ -3250,9 +3485,7 @@
         const assignedSongTitle = String(assigned.songTitle || '').trim();
         if (assignedSongTitle) {
           button.classList.add('is-assigned');
-          metaText = readMysteryMessage(
-            'assignCurrentSongTitle',
-            'Já possui música atribuída: {title}',
+          metaText = readMysteryMessage('assignCurrentSongTitle',
             { title: assignedSongTitle }
           );
         }
@@ -3331,9 +3564,7 @@
       if (!searchResults.length) {
         const emptyNode = document.createElement('p');
         emptyNode.className = 'song-save-location-picker-empty';
-        emptyNode.textContent = readMysteryMessage(
-          'assignSearchEmpty',
-          'Nenhum destino encontrado para "{query}".',
+        emptyNode.textContent = readMysteryMessage('assignSearchEmpty',
           { query: normalizedSearchQuery }
         );
         songSaveLocationPickerList.appendChild(emptyNode);
@@ -3351,7 +3582,7 @@
     if (!nodes.length) {
       const emptyNode = document.createElement('p');
       emptyNode.className = 'song-save-location-picker-empty';
-      emptyNode.textContent = readMysteryMessage('assignEmpty', 'Não foi possível carregar a lista de mistérios.');
+      emptyNode.textContent = readMysteryMessage('assignEmpty');
       songSaveLocationPickerList.appendChild(emptyNode);
       return;
     }
@@ -3368,7 +3599,7 @@
     }
 
     const song = asObject(songPayload);
-    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle');
     const artist = String(song.artist || '').trim();
     songSaveLocationPickerPendingSong = song;
     mysterySongAssignPendingSong = song;
@@ -3450,8 +3681,8 @@
     mysteryModalSongToggle.classList.toggle('is-empty', !hasAssignedSong);
     mysteryModalSongToggle.disabled = mysteryModalSongLoading;
     mysteryModalSongToggle.title = hasAssignedSong
-      ? readMysteryMessage('songToggleShow', 'Exibir música do mistério')
-      : readMysteryMessage('songToggleEmpty', 'Nenhuma música atribuída a este mistério');
+      ? readMysteryMessage('songToggleShow')
+      : readMysteryMessage('songToggleEmpty');
     mysteryModalSongToggle.setAttribute('aria-label', mysteryModalSongToggle.title);
   };
 
@@ -3466,7 +3697,7 @@
     const artist = String(safeAssignment.songArtist || '').trim();
     const sourceUrl = String(safeAssignment.songUrl || '').trim();
     if (!title && !sourceUrl) {
-      throw new Error(readSongMessage('invalidLyricsTarget', 'Não foi possível identificar a música para buscar a letra.'));
+      throw new Error(readSongMessage('invalidLyricsTarget'));
     }
 
     const response = await fetch('/api/songs/fetch-lyrics', {
@@ -3482,7 +3713,7 @@
     if (!response.ok || !payload.ok) {
       const message = payload?.detail?.message
         || payload?.message
-        || readSongMessage('lyricsFetchErrorApi', 'Não foi possível carregar a letra.');
+        || readSongMessage('lyricsFetchErrorApi');
       const code = payload?.detail?.code || payload?.code || '';
       const error = new Error(message);
       if (code) {
@@ -3506,7 +3737,7 @@
     if (!mysterySongGroupsCatalog.length) {
       const emptyNode = document.createElement('p');
       emptyNode.className = 'mystery-song-assign-empty';
-      emptyNode.textContent = readMysteryMessage('assignEmpty', 'Não foi possível carregar a lista de mistérios.');
+      emptyNode.textContent = readMysteryMessage('assignEmpty');
       mysterySongAssignList.appendChild(emptyNode);
       return;
     }
@@ -3555,9 +3786,7 @@
 
           const assignedSongTitle = String(existingAssignment.songTitle || '').trim();
           if (assignedSongTitle) {
-            itemButton.title = readMysteryMessage(
-              'assignCurrentSongTitle',
-              'Já possui música atribuída: {title}',
+            itemButton.title = readMysteryMessage('assignCurrentSongTitle',
               { title: assignedSongTitle }
             );
           }
@@ -3567,7 +3796,7 @@
           const song = asObject(mysterySongAssignPendingSong);
           if (!song.title && !song.url) {
             showSongToast(
-              readMysteryMessage('assignSongInvalid', 'Não foi possível identificar a música para atribuir.'),
+              readMysteryMessage('assignSongInvalid'),
               'is-error'
             );
             return;
@@ -3597,24 +3826,20 @@
 
           if (hasCurrentAssignment) {
             const currentSongTitle = String(currentAssignment.songTitle || '').trim()
-              || readSongMessage('defaultSongTitle', 'Música atual');
+              || readSongMessage('defaultSongTitle');
             const nextSongTitle = String(song.title || '').trim()
-              || readSongMessage('defaultSongTitle', 'Nova música');
-            const removeMessage = readMysteryMessage(
-              'assignRemoveConfirmMessageWithTitle',
-              'Deseja remover "{title}" deste mistério?',
+              || readSongMessage('defaultSongTitle');
+            const removeMessage = readMysteryMessage('assignRemoveConfirmMessageWithTitle',
               { title: currentSongTitle }
             );
             const existingAction = await openFavoriteDecisionModal({
               triggerElement: itemButton,
-              title: readMysteryMessage('assignExistingChoiceTitle', 'Música já vinculada'),
-              message: readMysteryMessage(
-                'assignExistingChoiceMessage',
-                'Este mistério já possui "{current}". Deseja substituir por "{next}" ou remover a atual?',
+              title: readMysteryMessage('assignExistingChoiceTitle'),
+              message: readMysteryMessage('assignExistingChoiceMessage',
                 { current: currentSongTitle, next: nextSongTitle }
               ),
-              cancelLabel: readMysteryMessage('assignExistingChoiceRemove', 'Remover atual'),
-              acceptLabel: readMysteryMessage('assignExistingChoiceReplace', 'Substituir'),
+              cancelLabel: readMysteryMessage('assignExistingChoiceRemove'),
+              acceptLabel: readMysteryMessage('assignExistingChoiceReplace'),
               fallbackCancelConfirmMessage: removeMessage,
             });
             if (existingAction === FAVORITE_CONFIRM_ACTION_DISMISS) return;
@@ -3625,7 +3850,7 @@
               } catch (err) {
                 const message = err instanceof Error
                   ? err.message
-                  : readMysteryMessage('assignRemoveError', 'Não foi possível remover a música do mistério.');
+                  : readMysteryMessage('assignRemoveError');
                 showSongToast(message, 'is-error');
                 return;
               }
@@ -3640,7 +3865,7 @@
 
               refreshAssignListAfterMutation();
               showSongToast(
-                readMysteryMessage('assignRemoveSuccess', 'Música removida do mistério.'),
+                readMysteryMessage('assignRemoveSuccess'),
                 'is-success'
               );
               return;
@@ -3666,7 +3891,7 @@
           } catch (err) {
             const message = err instanceof Error
               ? err.message
-              : readMysteryMessage('assignSaveError', 'Não foi possível salvar a música no mistério.');
+              : readMysteryMessage('assignSaveError');
             showSongToast(message, 'is-error');
             return;
           }
@@ -3679,7 +3904,7 @@
           }
           refreshAssignListAfterMutation();
           showSongToast(
-            readMysteryMessage('assignSuccess', 'Música atribuída ao mistério com sucesso.'),
+            readMysteryMessage('assignSuccess'),
             'is-success'
           );
         });
@@ -3712,14 +3937,14 @@
   const openMysterySongAssignModal = (songPayload, triggerButton = null) => {
     if (!mysterySongAssignModal || !mysterySongAssignList) {
       showSongToast(
-        readMysteryMessage('assignModalUnavailable', 'Não foi possível abrir a seleção de mistério.'),
+        readMysteryMessage('assignModalUnavailable'),
         'is-error'
       );
       return;
     }
 
     const song = asObject(songPayload);
-    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+    const title = String(song.title || '').trim() || readSongMessage('defaultSongTitle');
     const artist = String(song.artist || '').trim();
     mysterySongAssignPendingSong = song;
     lastFocusedMysterySongAssignTrigger = triggerButton instanceof HTMLElement
@@ -3744,7 +3969,7 @@
 
   const resolveMysteryGroupTitle = (group) => {
     const rawGroup = (group || '').trim();
-    if (!rawGroup) return readMysteryMessage('groupFallback', 'Mistério do Terço');
+    if (!rawGroup) return readMysteryMessage('groupFallback');
     if (mysteryItemsByGroup[rawGroup]) return rawGroup;
 
     const normalized = rawGroup
@@ -3752,11 +3977,11 @@
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
 
-    if (normalized.includes('gozoso')) return readMysteryMessage('groupGozosos', 'Mistérios Gozosos');
-    if (normalized.includes('doloroso')) return readMysteryMessage('groupDolorosos', 'Mistérios Dolorosos');
-    if (normalized.includes('glorioso')) return readMysteryMessage('groupGloriosos', 'Mistérios Gloriosos');
-    if (normalized.includes('luminoso')) return readMysteryMessage('groupLuminosos', 'Mistérios Luminosos');
-    return rawGroup || readMysteryMessage('unknownGroup', 'Mistério do Terço');
+    if (normalized.includes('gozoso')) return readMysteryMessage('groupGozosos');
+    if (normalized.includes('doloroso')) return readMysteryMessage('groupDolorosos');
+    if (normalized.includes('glorioso')) return readMysteryMessage('groupGloriosos');
+    if (normalized.includes('luminoso')) return readMysteryMessage('groupLuminosos');
+    return rawGroup || readMysteryMessage('unknownGroup');
   };
 
   const renderMysteryModalLinks = (groupTitle, activeTitle) => {
@@ -3771,10 +3996,10 @@
       const link = document.createElement('a');
       link.href = '#';
       link.className = 'mystery-modal-link';
-      link.textContent = readMysteryMessage('modalLinkLabel', '{index}º Mistério', { index: index + 1 });
+      link.textContent = readMysteryMessage('modalLinkLabel', { index: index + 1 });
       link.dataset.shortLabel = String(index + 1);
       link.title = itemTitle;
-      link.setAttribute('aria-label', readMysteryMessage('modalLinkAria', '{index}º Mistério: {title}', {
+      link.setAttribute('aria-label', readMysteryMessage('modalLinkAria', {
         index: index + 1,
         title: itemTitle
       }));
@@ -3793,9 +4018,184 @@
     });
   };
 
+  const getPreferredMysteryGroups = () => ([
+    readMysteryMessage('groupGozosos'),
+    readMysteryMessage('groupDolorosos'),
+    readMysteryMessage('groupGloriosos'),
+    readMysteryMessage('groupLuminosos'),
+  ]);
+
+  const resolveExistingMysteryGroupKey = (groupLabel) => {
+    const rawGroup = String(groupLabel || '').trim();
+    if (!rawGroup) return '';
+    if (mysteryItemsByGroup[rawGroup]) return rawGroup;
+    const normalizedTarget = normalizeKeyToken(rawGroup);
+    if (!normalizedTarget) return '';
+    const matchedGroup = Object.keys(mysteryItemsByGroup).find(
+      (candidate) => normalizeKeyToken(candidate) === normalizedTarget
+    );
+    return matchedGroup || '';
+  };
+
+  const getOrderedMysteryGroups = () => {
+    const orderedGroups = [];
+    const includedKeys = new Set();
+    const pushGroupIfAvailable = (groupLabel) => {
+      const resolvedGroup = resolveExistingMysteryGroupKey(groupLabel);
+      if (!resolvedGroup) return;
+      if (includedKeys.has(resolvedGroup)) return;
+      const items = mysteryItemsByGroup[resolvedGroup] || [];
+      if (!Array.isArray(items) || !items.length) return;
+      includedKeys.add(resolvedGroup);
+      orderedGroups.push(resolvedGroup);
+    };
+
+    getPreferredMysteryGroups().forEach(pushGroupIfAvailable);
+    Object.keys(mysteryItemsByGroup).forEach(pushGroupIfAvailable);
+    return orderedGroups;
+  };
+
+  const closeMysteryGroupModal = (options = {}) => {
+    const safeOptions = asObject(options);
+    if (mysteryGroupModal) {
+      mysteryGroupModal.classList.remove('open');
+      mysteryGroupModal.setAttribute('aria-hidden', 'true');
+    }
+    if (mysteryModalGroup) {
+      mysteryModalGroup.setAttribute('aria-expanded', 'false');
+      mysteryModalGroup.classList.remove('is-active');
+      if (safeOptions.restoreFocus) {
+        focusWithoutScrollingPage(mysteryModalGroup);
+      }
+    }
+    syncBodyModalLock();
+  };
+
+  const openMysteryFromGroupKeepingIndex = (nextGroup) => {
+    const safeNextGroup = String(nextGroup || '').trim();
+    const resolvedNextGroup = resolveExistingMysteryGroupKey(safeNextGroup)
+      || resolveExistingMysteryGroupKey(resolveMysteryGroupTitle(safeNextGroup));
+    const currentGroup = resolveExistingMysteryGroupKey(currentMysteryModalSelection.group || '');
+    closeMysteryGroupModal();
+    if (!safeNextGroup || !resolvedNextGroup || !currentGroup) return;
+    const currentGroupItems = mysteryItemsByGroup[currentGroup] || [];
+    const nextGroupItems = mysteryItemsByGroup[resolvedNextGroup] || [];
+    if (!nextGroupItems.length) return;
+    const currentIndex = currentGroupItems.findIndex(
+      (itemTitle) => normalizeKeyToken(itemTitle) === normalizeKeyToken(currentMysteryModalSelection.title)
+    );
+    const targetIndex = currentIndex >= 0
+      ? Math.min(currentIndex, nextGroupItems.length - 1)
+      : 0;
+    const nextTitle = nextGroupItems[targetIndex] || nextGroupItems[0];
+    if (!nextTitle) return;
+    openMysteryModal(nextTitle, resolvedNextGroup);
+  };
+
+  const renderMysteryGroupModalOptions = () => {
+    if (!mysteryGroupModalOptions) return;
+    mysteryGroupModalOptions.innerHTML = '';
+    const currentGroupToken = normalizeKeyToken(currentMysteryModalSelection.group || '');
+
+    getPreferredMysteryGroups().forEach((groupLabel) => {
+      const resolvedGroup = resolveExistingMysteryGroupKey(groupLabel);
+      const hasItems = Boolean(resolvedGroup && Array.isArray(mysteryItemsByGroup[resolvedGroup]) && mysteryItemsByGroup[resolvedGroup].length);
+      const optionButton = document.createElement('button');
+      optionButton.type = 'button';
+      optionButton.className = 'mystery-group-modal-option';
+      optionButton.textContent = groupLabel;
+      optionButton.setAttribute('role', 'option');
+      optionButton.setAttribute(
+        'aria-label',
+        readMysteryMessage('groupOptionAria', { group: groupLabel })
+      );
+      if (!hasItems) {
+        optionButton.disabled = true;
+        optionButton.classList.add('is-disabled');
+      } else {
+        if (normalizeKeyToken(resolvedGroup) === currentGroupToken) {
+          optionButton.classList.add('is-active');
+          optionButton.setAttribute('aria-selected', 'true');
+        } else {
+          optionButton.setAttribute('aria-selected', 'false');
+        }
+        optionButton.addEventListener('click', () => {
+          openMysteryFromGroupKeepingIndex(resolvedGroup);
+        });
+      }
+      mysteryGroupModalOptions.appendChild(optionButton);
+    });
+  };
+
+  const openMysteryGroupModal = () => {
+    if (!mysteryModal || !mysteryModal.classList.contains('open')) return;
+    if (!mysteryGroupModal) return;
+    if (getOrderedMysteryGroups().length <= 1) return;
+    renderMysteryGroupModalOptions();
+    mysteryGroupModal.classList.add('open');
+    mysteryGroupModal.setAttribute('aria-hidden', 'false');
+    if (mysteryModalGroup) {
+      mysteryModalGroup.setAttribute('aria-expanded', 'true');
+      mysteryModalGroup.classList.add('is-active');
+    }
+    syncBodyModalLock();
+
+    window.requestAnimationFrame(() => {
+      const activeOption = mysteryGroupModalOptions?.querySelector('.mystery-group-modal-option.is-active:not(:disabled)');
+      if (activeOption instanceof HTMLElement) {
+        focusWithoutScrollingPage(activeOption);
+        return;
+      }
+      const firstOption = mysteryGroupModalOptions?.querySelector('.mystery-group-modal-option:not(:disabled)');
+      if (firstOption instanceof HTMLElement) {
+        focusWithoutScrollingPage(firstOption);
+      }
+    });
+  };
+
+  const toggleMysteryGroupModal = () => {
+    if (!mysteryGroupModal) return;
+    if (getOrderedMysteryGroups().length <= 1) return;
+    if (!mysteryGroupModal.classList.contains('open')) {
+      openMysteryGroupModal();
+      return;
+    }
+    closeMysteryGroupModal({ restoreFocus: true });
+  };
+
+  const syncMysteryGroupSwitchState = () => {
+    if (!mysteryModalGroup) return;
+    const hasMultipleGroups = getOrderedMysteryGroups().length > 1;
+    mysteryModalGroup.classList.toggle('is-switchable', hasMultipleGroups);
+    if (!hasMultipleGroups) {
+      closeMysteryGroupModal();
+      mysteryModalGroup.removeAttribute('role');
+      mysteryModalGroup.removeAttribute('tabindex');
+      mysteryModalGroup.removeAttribute('title');
+      mysteryModalGroup.removeAttribute('aria-label');
+      mysteryModalGroup.removeAttribute('aria-haspopup');
+      mysteryModalGroup.removeAttribute('aria-expanded');
+      return;
+    }
+    mysteryModalGroup.setAttribute('role', 'button');
+    mysteryModalGroup.setAttribute('tabindex', '0');
+    mysteryModalGroup.setAttribute(
+      'title',
+      readMysteryMessage('groupSwitchHint')
+    );
+    mysteryModalGroup.setAttribute(
+      'aria-label',
+      readMysteryMessage('groupSwitchAria')
+    );
+    mysteryModalGroup.setAttribute('aria-haspopup', 'dialog');
+    if (!mysteryModalGroup.hasAttribute('aria-expanded')) {
+      mysteryModalGroup.setAttribute('aria-expanded', 'false');
+    }
+  };
+
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -3859,16 +4259,82 @@
     unlockBodyModalScroll();
   };
 
+  const clearMysteryAveMariaAutoJaculatoryTimer = () => {
+    if (mysteryAveMariaAutoJaculatoryTimerId === null) return;
+    window.clearTimeout(mysteryAveMariaAutoJaculatoryTimerId);
+    mysteryAveMariaAutoJaculatoryTimerId = null;
+  };
+
   const setMysteryJaculatoryVisible = (visible) => {
     if (!mysteryJaculatoryToggle || !mysteryJaculatoryPanel) return;
+    if (visible) {
+      clearMysteryAveMariaAutoJaculatoryTimer();
+    }
+    if (mysteryModal) {
+      mysteryModal.classList.toggle('is-jaculatory-focus', Boolean(visible));
+    }
 
     mysteryJaculatoryPanel.hidden = !visible;
     mysteryJaculatoryToggle.hidden = visible;
     mysteryJaculatoryToggle.setAttribute('aria-expanded', String(visible));
     mysteryJaculatoryToggle.setAttribute('aria-hidden', String(visible));
     mysteryJaculatoryToggle.classList.remove('is-active');
-    mysteryJaculatoryToggle.textContent = readMysteryMessage('toggleShow', 'Exibir jaculatória');
+    mysteryJaculatoryToggle.textContent = readMysteryMessage('toggleShow');
   };
+
+  const setMysteryAveMariaStep = (step) => {
+    clearMysteryAveMariaAutoJaculatoryTimer();
+    if (!mysteryAveMariaOptions) return;
+    const parsed = Number.parseInt(String(step ?? 0), 10);
+    const safeStep = Number.isInteger(parsed) && parsed >= 1 && parsed <= 10 ? parsed : 0;
+    mysteryAveMariaCurrent = safeStep;
+    const optionButtons = Array.from(mysteryAveMariaOptions.querySelectorAll('.mystery-ave-maria-option'));
+    optionButtons.forEach((button, index) => {
+      const value = index + 1;
+      const isComplete = safeStep > 0 && value <= safeStep;
+      const isActive = value === safeStep;
+      button.classList.toggle('is-complete', isComplete);
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-pressed', String(isComplete));
+      if (isActive) {
+        button.setAttribute('aria-current', 'step');
+      } else {
+        button.removeAttribute('aria-current');
+      }
+    });
+
+    if (safeStep !== 10) return;
+    mysteryAveMariaAutoJaculatoryTimerId = window.setTimeout(() => {
+      mysteryAveMariaAutoJaculatoryTimerId = null;
+      if (!mysteryModal || !mysteryModal.classList.contains('open')) return;
+      if (mysteryAveMariaCurrent !== 10) return;
+      if (!mysteryJaculatoryPanel || !mysteryJaculatoryPanel.hidden) return;
+      setMysteryJaculatoryVisible(true);
+    }, MYSTERY_AVE_MARIA_AUTO_JACULATORY_DELAY_MS);
+  };
+
+  const renderMysteryAveMariaOptions = () => {
+    if (!mysteryAveMariaOptions) return;
+    mysteryAveMariaOptions.innerHTML = '';
+    for (let index = 1; index <= 10; index += 1) {
+      const optionButton = document.createElement('button');
+      optionButton.type = 'button';
+      optionButton.className = 'mystery-ave-maria-option';
+      optionButton.textContent = String(index);
+      optionButton.setAttribute(
+        'aria-label',
+        readMysteryMessage('aveMariaOptionAria', { index })
+      );
+      optionButton.setAttribute('title', readMysteryMessage('aveMariaOptionTitle', { index }));
+      optionButton.setAttribute('aria-pressed', 'false');
+      optionButton.addEventListener('click', () => {
+        setMysteryAveMariaStep(index);
+      });
+      mysteryAveMariaOptions.appendChild(optionButton);
+    }
+    setMysteryAveMariaStep(0);
+  };
+  renderMysteryAveMariaOptions();
 
   const toggleMysteryModalSongPanel = async () => {
     if (!mysteryModalSongPanel || !mysteryModalSongTitle || !mysteryModalSongLyrics) return;
@@ -3878,7 +4344,7 @@
     );
     if (!assignment.songTitle && !assignment.songUrl) {
       showSongToast(
-        readMysteryMessage('songToggleEmpty', 'Nenhuma música atribuída a este mistério.'),
+        readMysteryMessage('songToggleEmpty'),
         'is-warning'
       );
       return;
@@ -3911,14 +4377,14 @@
       }
       mysteryModalSongTitle.textContent = persistedAssignment.songArtist
         ? `${persistedAssignment.songTitle} - ${persistedAssignment.songArtist}`
-        : persistedAssignment.songTitle || readSongMessage('defaultSongTitle', 'Música');
+        : persistedAssignment.songTitle || readSongMessage('defaultSongTitle');
       mysteryModalSongLyrics.textContent = String(persistedAssignment.lyricsText || '').trim()
-        || readMysteryMessage('songLyricsEmpty', 'A letra desta música ainda não foi encontrada.');
+        || readMysteryMessage('songLyricsEmpty');
       mysteryModalSongPanel.hidden = false;
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('lyricsLoadError', 'Falha ao carregar a letra.');
+        : readSongMessage('lyricsLoadError');
       showSongToast(message, 'is-error');
     } finally {
       mysteryModalSongLoading = false;
@@ -3930,10 +4396,11 @@
     if (!mysteryModal || !mysteryModalTitle || !mysteryModalText || !mysteryModalGroup) return;
 
     ensureMysteryNavBeforeTitle();
+    closeMysteryGroupModal();
     const shouldResetJaculatory = !mysteryModal.classList.contains('open');
     const resolvedGroup = resolveMysteryGroupTitle(group);
     const meditation = mysteryMeditations[title]
-      || readMysteryMessage('emptyMeditation', 'Meditação em preparação. Em breve o texto completo deste mistério estará disponível.');
+      || readMysteryMessage('emptyMeditation');
     mysteryModalTitle.textContent = title;
     mysteryModalText.textContent = meditation;
     mysteryModalGroup.textContent = resolvedGroup;
@@ -3946,6 +4413,8 @@
     updateMysteryModalSongToggleState();
     void fetchMysterySongAssignments();
     renderMysteryModalLinks(resolvedGroup, title);
+    syncMysteryGroupSwitchState();
+    setMysteryAveMariaStep(0);
     if (shouldResetJaculatory) {
       setMysteryJaculatoryVisible(false);
     }
@@ -3959,10 +4428,12 @@
     const focusTarget = lastFocusedMystery instanceof HTMLElement ? lastFocusedMystery : null;
     mysteryModal.classList.remove('open');
     mysteryModal.setAttribute('aria-hidden', 'true');
+    closeMysteryGroupModal();
     setMysteryJaculatoryVisible(false);
     closeMysterySongPanel();
     mysteryModalSongLoading = false;
     updateMysteryModalSongToggleState();
+    setMysteryAveMariaStep(0);
     syncBodyModalLock();
     if (!hasAnyOpenModal() && focusTarget) {
       window.requestAnimationFrame(() => {
@@ -3970,6 +4441,168 @@
       });
     }
     lastFocusedMystery = null;
+  };
+
+  const clampRosaryStepIndex = (index) => {
+    const maxIndex = Math.max(0, rosaryFlowSteps.length - 1);
+    const parsedIndex = Number.parseInt(String(index ?? 0), 10);
+    if (!Number.isInteger(parsedIndex)) return 0;
+    return Math.min(maxIndex, Math.max(0, parsedIndex));
+  };
+
+  const getRosaryFlowStep = () => rosaryFlowSteps[clampRosaryStepIndex(rosaryModalStepIndex)] || null;
+  const isRosaryMysteriesStep = (step) => (
+    asObject(step).actionType === 'open_today_mysteries'
+  );
+
+  const renderRosaryModalDots = () => {
+    if (!rosaryModalDots) return;
+    rosaryModalDots.innerHTML = '';
+    const currentIndex = clampRosaryStepIndex(rosaryModalStepIndex);
+
+    rosaryFlowSteps.forEach((step, index) => {
+      const safeStep = asObject(step);
+      const dotNumber = String(safeStep.dotNumber || (index + 1));
+      const dotButton = document.createElement('button');
+      dotButton.type = 'button';
+      dotButton.className = 'rosary-modal-dot';
+      dotButton.textContent = dotNumber;
+      dotButton.title = safeStep.dotLabel || safeStep.title || '';
+      dotButton.setAttribute(
+        'aria-label',
+        readRosaryMessage('dotAria', {
+          index: dotNumber,
+          title: safeStep.dotLabel || safeStep.title || ''
+        })
+      );
+      if (index === currentIndex) {
+        dotButton.classList.add('is-active');
+        dotButton.setAttribute('aria-current', 'step');
+      } else if (index < currentIndex) {
+        dotButton.classList.add('is-completed');
+      }
+      dotButton.addEventListener('click', () => {
+        rosaryModalStepIndex = index;
+        renderRosaryModalStep();
+        if (isRosaryMysteriesStep(step)) {
+          openTodayMysteriesFromRosary();
+        }
+      });
+      rosaryModalDots.appendChild(dotButton);
+    });
+  };
+
+  const renderRosaryModalStep = () => {
+    if (!rosaryModal || !rosaryModalTitle || !rosaryModalGroup || !rosaryModalStepText) return;
+    if (!rosaryFlowSteps.length) return;
+
+    rosaryModalStepIndex = clampRosaryStepIndex(rosaryModalStepIndex);
+    const currentStep = getRosaryFlowStep();
+    if (!currentStep) return;
+
+    const stepGroup = String(currentStep.group || '').trim() || readRosaryMessage('stepFallbackGroup');
+    const shouldHideStepTitle = currentStep.hideTitle === true;
+    const stepTitle = shouldHideStepTitle
+      ? ''
+      : (String(currentStep.title || '').trim() || readRosaryMessage('stepFallbackTitle'));
+    const stepText = String(currentStep.text || '').trim();
+    const totalSteps = rosaryFlowSteps.length;
+    const currentStepNumber = rosaryModalStepIndex + 1;
+
+    rosaryModalGroup.textContent = stepGroup;
+    rosaryModalTitle.textContent = stepTitle;
+    rosaryModalTitle.hidden = shouldHideStepTitle;
+    rosaryModalTitle.setAttribute('aria-hidden', shouldHideStepTitle ? 'true' : 'false');
+    rosaryModalStepText.textContent = stepText || readRosaryMessage('stepFallbackText');
+    if (rosaryModalStepCounter) {
+      rosaryModalStepCounter.textContent = readRosaryMessage('stepCounter', {
+        current: currentStepNumber,
+        total: totalSteps
+      });
+    }
+
+    if (rosaryModalPrevBtn) {
+      rosaryModalPrevBtn.disabled = rosaryModalStepIndex <= 0;
+    }
+    if (rosaryModalNextBtn) {
+      const isLastStep = rosaryModalStepIndex >= (totalSteps - 1);
+      rosaryModalNextBtn.textContent = isLastStep
+        ? readRosaryMessage('finishButton')
+        : readRosaryMessage('nextButton');
+    }
+
+    renderRosaryModalDots();
+  };
+
+  const goToRosaryStep = (direction) => {
+    const safeDirection = Number.parseInt(String(direction || 0), 10);
+    if (!Number.isInteger(safeDirection) || safeDirection === 0) return;
+    rosaryModalStepIndex = clampRosaryStepIndex(rosaryModalStepIndex + safeDirection);
+    renderRosaryModalStep();
+    const currentStep = getRosaryFlowStep();
+    if (safeDirection > 0 && isRosaryMysteriesStep(currentStep)) {
+      openTodayMysteriesFromRosary();
+    }
+  };
+
+  const closeRosaryModal = (options = {}) => {
+    if (!rosaryModal) return;
+    const shouldRestoreFocus = options?.restoreFocus !== false;
+    const focusTarget = lastFocusedRosaryTrigger instanceof HTMLElement
+      ? lastFocusedRosaryTrigger
+      : null;
+    rosaryModal.classList.remove('open');
+    rosaryModal.setAttribute('aria-hidden', 'true');
+    syncBodyModalLock();
+    if (shouldRestoreFocus && !hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+    lastFocusedRosaryTrigger = null;
+  };
+
+  const openRosaryModal = (trigger = null, options = {}) => {
+    if (!rosaryModal || !rosaryFlowSteps.length) return;
+    lastFocusedRosaryTrigger = trigger instanceof HTMLElement
+      ? trigger
+      : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    rosaryModalStepIndex = clampRosaryStepIndex(options?.startStepIndex ?? 0);
+    renderRosaryModalStep();
+    rosaryModal.classList.add('open');
+    rosaryModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+
+    window.requestAnimationFrame(() => {
+      const activeDot = rosaryModalDots?.querySelector('.rosary-modal-dot.is-active');
+      if (activeDot instanceof HTMLElement) {
+        focusWithoutScrollingPage(activeDot);
+        return;
+      }
+      if (rosaryModalNextBtn instanceof HTMLElement) {
+        focusWithoutScrollingPage(rosaryModalNextBtn);
+      }
+    });
+  };
+
+  const openTodayMysteriesFromRosary = () => {
+    const daySlot = resolveTodayMysterySlot() || {};
+    const groupTitle = String(daySlot.title || '').trim();
+    const dayItems = Array.isArray(daySlot.items) ? daySlot.items : [];
+    const firstMysteryTitle = normalizeMysteryName(dayItems[0] || '');
+
+    if (groupTitle && firstMysteryTitle) {
+      lastFocusedMystery = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      openMysteryModal(firstMysteryTitle, groupTitle);
+      return;
+    }
+
+    showSongToast(
+      readRosaryMessage('todayMysteriesFallback'),
+      'is-warning'
+    );
   };
 
   const bindMysteryItem = (element) => {
@@ -3983,7 +4616,7 @@
     const handleOpen = () => {
       const title = element.textContent.trim().replace(/^\d+\s*[ºo]\s+/i, '');
       const fallbackGroup = element.closest('.mystery-card')?.querySelector('h3')?.textContent?.trim();
-      const group = element.dataset.mysteryGroup || fallbackGroup || readMysteryMessage('groupFallback', 'Mistério do Terço');
+      const group = element.dataset.mysteryGroup || fallbackGroup || readMysteryMessage('groupFallback');
       lastFocusedMystery = element;
       openMysteryModal(title, group);
     };
@@ -4000,6 +4633,50 @@
   if (mysteryModalCloseButtons.length) {
     mysteryModalCloseButtons.forEach((button) => {
       button.addEventListener('click', closeMysteryModal);
+    });
+  }
+  if (mysteryModalGroup) {
+    mysteryModalGroup.addEventListener('click', () => {
+      if (!mysteryModal.classList.contains('open')) return;
+      toggleMysteryGroupModal();
+    });
+    mysteryModalGroup.addEventListener('keydown', (event) => {
+      if (!mysteryModal.classList.contains('open')) return;
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      openMysteryGroupModal();
+    });
+  }
+  if (mysteryGroupModalCloseButtons.length) {
+    mysteryGroupModalCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => closeMysteryGroupModal({ restoreFocus: true }));
+    });
+  }
+  if (rosaryModalCloseButtons.length) {
+    rosaryModalCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => closeRosaryModal());
+    });
+  }
+  if (rosaryModalPrevBtn) {
+    rosaryModalPrevBtn.addEventListener('click', () => {
+      goToRosaryStep(-1);
+    });
+  }
+  if (rosaryModalNextBtn) {
+    rosaryModalNextBtn.addEventListener('click', () => {
+      if (rosaryModalStepIndex >= (rosaryFlowSteps.length - 1)) {
+        closeRosaryModal();
+        return;
+      }
+      goToRosaryStep(1);
+    });
+  }
+  if (rosaryModalTriggers.length) {
+    rosaryModalTriggers.forEach((trigger) => {
+      trigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        openRosaryModal(trigger);
+      });
     });
   }
 
@@ -4019,6 +4696,12 @@
       void toggleMysteryModalSongPanel();
     });
     updateMysteryModalSongToggleState();
+  }
+  if (mysteryModalSongClose) {
+    mysteryModalSongClose.addEventListener('click', () => {
+      closeMysterySongPanel();
+      updateMysteryModalSongToggleState();
+    });
   }
   if (mysterySongAssignCloseButtons.length) {
     mysterySongAssignCloseButtons.forEach((button) => {
@@ -4087,7 +4770,7 @@
     });
   }
 
-  const daySlot = mysteryByDay[new Date().getDay()];
+  const daySlot = resolveTodayMysterySlot();
   const titleEl = document.getElementById('today-mystery-title');
   const dayEl = document.getElementById('today-mystery-day');
   const listEl = document.getElementById('today-mystery-list');
@@ -4212,10 +4895,10 @@
 
     const closedLabel = button.dataset.closedLabel
       || portalContent?.oracoes?.accordion?.closedLabel
-      || 'Ver oração';
+      || readUiMessage('oracoes.accordionClosedLabel');
     const openLabel = button.dataset.openLabel
       || portalContent?.oracoes?.accordion?.openLabel
-      || 'Ocultar oração';
+      || readUiMessage('oracoes.accordionOpenLabel');
     const stateLabel = open ? openLabel : closedLabel;
     const labelNode = button.querySelector('.accordion-trigger-label');
 
@@ -4279,6 +4962,7 @@
   const songSearchResultsListCantos = document.getElementById('song-search-results-list-cantos');
   const songFavoritesCard = document.getElementById('song-favorites-card');
   const songFavoritesList = document.getElementById('song-favorites-list');
+  const songFavoritesSearchInput = document.getElementById('song-favorites-search-input');
   const customSongsCard = document.getElementById('custom-songs-card');
   const customSongsList = document.getElementById('custom-songs-list');
   const customSongsAddBtn = document.getElementById('custom-songs-add-btn');
@@ -4367,7 +5051,11 @@
   let songFavoritesReorderPending = false;
   let songFavoritesDragId = '';
   let songFavoritesDragStartOrder = [];
+  let songFavoritesSearchQuery = '';
   const songFavoritesByUrl = new Map();
+  const SONG_FAVORITES_SCROLL_MOBILE_BREAKPOINT = 680;
+  const SONG_FAVORITES_SCROLL_ROWS_DESKTOP = 2;
+  const SONG_FAVORITES_SCROLL_ROWS_MOBILE = 4;
   const SONG_SELECTED_KEYS_STORAGE_KEY = 'portal_song_selected_keys_v1';
   const SONG_SELECTED_KEYS_STORAGE_LIMIT = 600;
   const songSelectedKeysByUrl = new Map();
@@ -4375,7 +5063,26 @@
   let songToneFavoritePersistContext = null;
   let songKeyAutoDetectRequestId = 0;
 
-  const normalizeSongUrlKey = (url) => (url || '').trim().toLowerCase();
+  const normalizeSongUrlKey = (url) => {
+    const rawValue = String(url || '').trim();
+    if (!rawValue) return '';
+    try {
+      const parsed = new URL(rawValue);
+      const protocol = String(parsed.protocol || '').toLowerCase();
+      if (protocol !== 'http:' && protocol !== 'https:') {
+        return rawValue.replace(/\/+$/, '').toLowerCase();
+      }
+      const host = String(parsed.hostname || '')
+        .toLowerCase()
+        .replace(/^www\./, '');
+      const path = String(parsed.pathname || '/')
+        .replace(/\/+$/, '')
+        .toLowerCase();
+      return `${host}${path || '/'}`;
+    } catch (_err) {
+      return rawValue.replace(/\/+$/, '').toLowerCase();
+    }
+  };
   const normalizeSongMatchToken = (value) => (
     String(value || '')
       .normalize('NFD')
@@ -4398,12 +5105,11 @@
     const rawUsageLocations = Array.isArray(favorite.usage_locations)
       ? favorite.usage_locations
       : (Array.isArray(favorite.usageLocations) ? favorite.usageLocations : []);
-    const usageLocations = Array.from(new Set(
+    const usageLocations = dedupeUsageLabels(
       rawUsageLocations
         .map((item) => String(item || '').trim())
         .filter(Boolean)
-    ));
-    usageLocations.sort((labelA, labelB) => labelA.localeCompare(labelB, 'pt-BR', { sensitivity: 'base' }));
+    );
     const parsedOrderIndex = Number.parseInt(String(favorite.orderIndex ?? favorite.order_index ?? ''), 10);
     const hasLyrics = Boolean(favorite.has_lyrics) || Boolean(favorite.hasLyrics) || Boolean(lyricsText.trim());
     const hasChords = Boolean(favorite.has_chords) || Boolean(favorite.hasChords) || Boolean(chordsText.trim());
@@ -4412,7 +5118,7 @@
       id: Number(favorite.id) || 0,
       orderIndex: Number.isInteger(parsedOrderIndex) && parsedOrderIndex > 0 ? parsedOrderIndex : 0,
       url,
-      title: (favorite.title || '').trim() || readSongMessage('defaultSongTitle', 'Música'),
+      title: (favorite.title || '').trim() || readSongMessage('defaultSongTitle'),
       artist: (favorite.artist || '').trim(),
       source: (favorite.source || '').trim(),
       sourceLabel: resolveSongSourceLabel(
@@ -4436,6 +5142,35 @@
       updatedAtUtc: (favorite.updated_at_utc || favorite.updatedAtUtc || '').trim(),
       createdAtUtc: (favorite.created_at_utc || favorite.createdAtUtc || '').trim(),
     };
+  };
+  const extractPlainLyricsFromChordsTextLocal = (chordsText) => {
+    const normalizedInput = String(chordsText || '').replace(/\r\n?/g, '\n');
+    if (!normalizedInput.trim()) return '';
+    const outputLines = [];
+    normalizedInput.split('\n').forEach((rawLine) => {
+      if (!rawLine.trim()) {
+        outputLines.push('');
+        return;
+      }
+      const withoutBracketedChords = rawLine.replace(/\[[^\]\n]+\]/g, '');
+      const withoutEmptyParenthesis = withoutBracketedChords.replace(/\(\s*\)/g, '');
+      const compactedLine = withoutEmptyParenthesis.replace(/[ \t]{2,}/g, ' ').trim();
+      if (!compactedLine) return;
+      if (!/[0-9A-Za-zÀ-ÖØ-öø-ÿ]/.test(compactedLine)) return;
+      outputLines.push(compactedLine);
+    });
+    return outputLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const findCachedFavoriteBySongIdentity = (songPayload) => {
+    const songIdentity = readSongIdentityForMatch(songPayload);
+    if (songIdentity.urlKey) {
+      const cachedByUrl = songFavoritesByUrl.get(songIdentity.urlKey);
+      if (cachedByUrl) return cachedByUrl;
+    }
+    if (!songFavorites.length) return null;
+    return songFavorites.find((favorite) => (
+      isSongIdentityMatch(songIdentity, readSongIdentityForMatch(favorite))
+    )) || null;
   };
 
   const sortSongFavoritesByOrder = (favorites) => {
@@ -4464,6 +5199,23 @@
       const key = normalizeSongUrlKey(favorite.url);
       if (!key) return;
       songFavoritesByUrl.set(key, favorite);
+    });
+  };
+  const filterSongFavorites = (favorites, rawQuery = '') => {
+    const safeFavorites = Array.isArray(favorites) ? favorites : [];
+    const normalizedQuery = normalizeSongMatchToken(rawQuery);
+    if (!normalizedQuery) return safeFavorites;
+
+    return safeFavorites.filter((favorite) => {
+      const usageLocations = Array.isArray(favorite?.usageLocations) ? favorite.usageLocations : [];
+      const haystack = normalizeSongMatchToken([
+        favorite?.title,
+        favorite?.artist,
+        favorite?.sourceLabel,
+        favorite?.source,
+        ...usageLocations
+      ].filter(Boolean).join(' '));
+      return haystack.includes(normalizedQuery);
     });
   };
 
@@ -4527,9 +5279,9 @@
     const trimmedExplicit = (explicitSourceLabel || '').trim();
     if (trimmedExplicit) return trimmedExplicit;
 
-    if (source === 'cifraclub') return readSongMessage('sourceLabelCifraClub', 'Cifra Club');
-    if (source === 'letras') return readSongMessage('sourceLabelLetras', 'Letras.mus.br');
-    return readSongMessage('sourceLabelCifras', 'Cifras');
+    if (source === 'cifraclub') return readSongMessage('sourceLabelCifraClub');
+    if (source === 'letras') return readSongMessage('sourceLabelLetras');
+    return readSongMessage('sourceLabelCifras');
   };
 
   const canonicalNote = (rawNote) => {
@@ -5083,19 +5835,17 @@
 
     const targetSong = getCustomSongById(customSongId);
     if (!targetSong || targetSong.isDraft) return true;
-    const safeTitle = (targetSong.title || songState.title || readSongMessage('defaultSongTitle', 'Música')).trim();
+    const safeTitle = (targetSong.title || songState.title || readSongMessage('defaultSongTitle')).trim();
 
     const shouldUpdate = await openFavoriteConfirmModal({
       triggerElement,
       songTitle: safeTitle,
-      title: readSongMessage('customSongToneConfirmTitle', 'Atualizar tom salvo'),
-      message: readSongMessage(
-        'customSongToneConfirmMessage',
-        'Deseja atualizar o tom de "{title}" para "{key}"?',
+      title: readSongMessage('customSongToneConfirmTitle'),
+      message: readSongMessage('customSongToneConfirmMessage',
         { title: safeTitle, key: selectedKey }
       ),
-      cancelLabel: readSongMessage('customSongToneConfirmCancel', 'Não atualizar'),
-      acceptLabel: readSongMessage('customSongToneConfirmAccept', 'Atualizar tom'),
+      cancelLabel: readSongMessage('customSongToneConfirmCancel'),
+      acceptLabel: readSongMessage('customSongToneConfirmAccept'),
     });
     if (!shouldUpdate) return true;
 
@@ -5125,12 +5875,12 @@
       songState.semitones = 0;
       renderFetchedSong();
 
-      setSongFeedback(readSongMessage('customSongToneUpdateSuccess', 'Tom da música atualizado com sucesso.'), 'is-success');
+      setSongFeedback(readSongMessage('customSongToneUpdateSuccess'), 'is-success');
       return true;
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('customSongToneUpdateError', 'Não foi possível atualizar o tom salvo.');
+        : readSongMessage('customSongToneUpdateError');
       showSongToast(message, 'is-error');
       return false;
     }
@@ -5185,17 +5935,14 @@
     }
     if (favoriteConfirmPasswordError) {
       favoriteConfirmPasswordError.hidden = true;
-      favoriteConfirmPasswordError.textContent = readMysteryMessage(
-        'assignCategoryDeactivatePasswordRequired',
-        'Informe a senha para inativar.'
-      );
+      favoriteConfirmPasswordError.textContent = readMysteryMessage('assignCategoryDeactivatePasswordRequired');
     }
   };
 
   const showFavoriteConfirmPasswordError = (message = '') => {
     if (!favoriteConfirmPasswordError || !favoriteConfirmPasswordInput) return;
     const resolvedMessage = String(message || '').trim()
-      || readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.');
+      || readMysteryMessage('assignCategoryDeactivatePasswordRequired');
     favoriteConfirmPasswordError.textContent = resolvedMessage;
     favoriteConfirmPasswordError.hidden = false;
     favoriteConfirmPasswordInput.setAttribute('aria-invalid', 'true');
@@ -5216,11 +5963,11 @@
     favoriteConfirmPasswordInput.removeAttribute('aria-invalid');
     favoriteConfirmPasswordInput.placeholder = String(
       safeOptions.passwordPlaceholder
-      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder')
     ).trim();
     const passwordLabel = String(
       safeOptions.passwordLabel
-      || readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+      || readMysteryMessage('assignCategoryDeactivatePasswordLabel')
     ).trim();
     favoriteConfirmPasswordInput.setAttribute('aria-label', passwordLabel);
     if (favoriteConfirmPasswordLabel) {
@@ -5228,10 +5975,7 @@
     }
     if (favoriteConfirmPasswordError) {
       favoriteConfirmPasswordError.hidden = true;
-      favoriteConfirmPasswordError.textContent = readMysteryMessage(
-        'assignCategoryDeactivatePasswordRequired',
-        'Informe a senha para inativar.'
-      );
+      favoriteConfirmPasswordError.textContent = readMysteryMessage('assignCategoryDeactivatePasswordRequired');
     }
   };
 
@@ -5243,7 +5987,7 @@
     const typedPassword = String(favoriteConfirmPasswordInput?.value || '');
     if (!typedPassword.trim()) {
       showFavoriteConfirmPasswordError(
-        readMysteryMessage('assignCategoryDeactivatePasswordRequired', 'Informe a senha para inativar.')
+        readMysteryMessage('assignCategoryDeactivatePasswordRequired')
       );
       return;
     }
@@ -5308,27 +6052,25 @@
       isOptionsObject
         ? String(options.songTitle || '').trim()
         : String(songTitle || '').trim()
-    ) || readSongMessage('defaultSongTitle', 'Música');
+    ) || readSongMessage('defaultSongTitle');
     const title = String(options.title || '').trim()
-      || readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito');
+      || readSongMessage('favoriteRemoveConfirmTitle');
     const cancelLabel = String(options.cancelLabel || '').trim()
-      || readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar');
+      || readSongMessage('favoriteRemoveConfirmCancel');
     const acceptLabel = String(options.acceptLabel || '').trim()
-      || readSongMessage('favoriteRemoveConfirmAccept', 'Remover');
+      || readSongMessage('favoriteRemoveConfirmAccept');
     const message = String(options.message || '').trim()
-      || readSongMessage(
-        'favoriteRemoveConfirmMessageWithTitle',
-        'Deseja remover "{title}" dos favoritos?',
+      || readSongMessage('favoriteRemoveConfirmMessageWithTitle',
         { title: resolvedSongTitle }
       );
     const requirePassword = Boolean(options.requirePassword);
     const passwordLabel = String(
       options.passwordLabel
-      || readMysteryMessage('assignCategoryDeactivatePasswordLabel', 'Senha de confirmação')
+      || readMysteryMessage('assignCategoryDeactivatePasswordLabel')
     ).trim();
     const passwordPlaceholder = String(
       options.passwordPlaceholder
-      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder', 'Digite a senha')
+      || readMysteryMessage('assignCategoryDeactivatePasswordPlaceholder')
     ).trim();
 
     if (!favoriteConfirmModal || !favoriteConfirmMessage || !favoriteConfirmAcceptBtn) {
@@ -5393,15 +6135,15 @@
       ? safeOptions.triggerElement
       : null;
     const title = String(safeOptions.title || '').trim()
-      || readSongMessage('favoriteRemoveConfirmTitle', 'Remover favorito');
+      || readSongMessage('favoriteRemoveConfirmTitle');
     const cancelLabel = String(safeOptions.cancelLabel || '').trim()
-      || readSongMessage('favoriteRemoveConfirmCancel', 'Cancelar');
+      || readSongMessage('favoriteRemoveConfirmCancel');
     const acceptLabel = String(safeOptions.acceptLabel || '').trim()
-      || readSongMessage('favoriteRemoveConfirmAccept', 'Confirmar');
+      || readSongMessage('favoriteRemoveConfirmAccept');
     const message = String(safeOptions.message || '').trim()
-      || readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?');
+      || readSongMessage('favoriteRemoveConfirmMessage');
     const fallbackCancelConfirmMessage = String(safeOptions.fallbackCancelConfirmMessage || '').trim()
-      || readSongMessage('favoriteRemoveConfirmMessage', 'Tem certeza de que deseja remover este favorito?');
+      || readSongMessage('favoriteRemoveConfirmMessage');
 
     if (!favoriteConfirmModal || !favoriteConfirmMessage || !favoriteConfirmAcceptBtn) {
       const shouldAccept = window.confirm(message);
@@ -5502,7 +6244,7 @@
   };
 
   const currentKeyLabel = () => {
-    if (!songState.originalRoot) return readSongMessage('notInformed', 'Não informado');
+    if (!songState.originalRoot) return readSongMessage('notInformed');
     const preferFlat = songState.originalRoot.includes('b');
     const currentRoot = transposeRoot(songState.originalRoot, songState.semitones, preferFlat);
     return `${currentRoot}${songState.originalSuffix || ''}`;
@@ -5535,7 +6277,7 @@
       songModalToneRow.classList.toggle('is-disabled', !hasRoot);
     }
     if (songModalToneLabel) {
-      songModalToneLabel.textContent = readSongMessage('toneLabel', 'Tom:');
+      songModalToneLabel.textContent = readSongMessage('toneLabel');
     }
   };
 
@@ -5543,21 +6285,21 @@
     if (!songState.loaded) return;
 
     const displayTitle = songState.artist
-      ? `${songState.title || readSongMessage('defaultSongTitle', 'Música')} - ${songState.artist}`
-      : (songState.title || readSongMessage('loadedSongTitle', 'Música carregada'));
+      ? `${songState.title || readSongMessage('defaultSongTitle')} - ${songState.artist}`
+      : (songState.title || readSongMessage('loadedSongTitle'));
 
     if (fetchedSongTitle) {
       fetchedSongTitle.textContent = displayTitle;
     }
 
     if (fetchedSongMeta) {
-      const sourceLabel = songState.sourceLabel || readSongMessage('sourceDefault', 'Portal');
-      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
+      const sourceLabel = songState.sourceLabel || readSongMessage('sourceDefault');
+      const sourcePrefix = readSongMessage('sourcePrefix');
       if (songState.contentType === 'lyrics') {
         fetchedSongMeta.textContent = `${sourcePrefix} ${sourceLabel}`;
       } else {
-        const original = songState.originalKey || readSongMessage('notInformed', 'Não informado');
-        const originalPrefix = readSongMessage('originalKeyPrefix', 'Tom original:');
+        const original = songState.originalKey || readSongMessage('notInformed');
+        const originalPrefix = readSongMessage('originalKeyPrefix');
         fetchedSongMeta.textContent = `${originalPrefix} ${original} | ${sourcePrefix} ${sourceLabel}`;
       }
     }
@@ -5597,7 +6339,7 @@
       button.disabled = true;
       button.classList.add('is-loading');
       button.setAttribute('aria-busy', 'true');
-      const loadingLabel = readSongMessage('loadingAction', 'Carregando...');
+      const loadingLabel = readSongMessage('loadingAction');
       button.setAttribute('title', loadingLabel);
       button.setAttribute('aria-label', loadingLabel);
       return;
@@ -5640,7 +6382,7 @@
     const requestId = songKeyAutoDetectRequestId + 1;
     songKeyAutoDetectRequestId = requestId;
     setSongFeedback(
-      readSongMessage('detectingKey', 'Tom não informado. Identificando automaticamente...'),
+      readSongMessage('detectingKey'),
       'is-loading'
     );
 
@@ -5659,14 +6401,14 @@
       if (!response.ok || !payload.ok) {
         const message = payload?.detail?.message
           || payload?.message
-          || readSongMessage('detectedKeyError', 'Não foi possível identificar o tom automaticamente.');
+          || readSongMessage('detectedKeyError');
         throw new Error(message);
       }
 
       const detectedKey = String(payload.original_key || '').trim();
       const keyParts = splitKey(detectedKey);
       if (!keyParts || !keyParts.root) {
-        throw new Error(readSongMessage('detectedKeyError', 'Não foi possível identificar o tom automaticamente.'));
+        throw new Error(readSongMessage('detectedKeyError'));
       }
 
       const isStale = (
@@ -5687,7 +6429,7 @@
       applySavedSelectedKeyToCurrentSong(songState.sourceUrl, preferredSelectedKey);
       renderFetchedSong();
       setSongFeedback(
-        readSongMessage('detectedKeySuccess', 'Tom identificado automaticamente: {key}.', { key: detectedKey }),
+        readSongMessage('detectedKeySuccess', { key: detectedKey }),
         'is-success'
       );
       return true;
@@ -5703,10 +6445,7 @@
       );
       if (isStale) return false;
 
-      const fallbackMessage = readSongMessage(
-        'detectedKeyError',
-        'Não foi possível identificar o tom automaticamente.'
-      );
+      const fallbackMessage = readSongMessage('detectedKeyError');
       const message = err instanceof Error && err.message
         ? err.message
         : fallbackMessage;
@@ -5718,12 +6457,29 @@
   async function loadSongFromUrl(url, triggerButton = null, selectedResult = null) {
     const safeUrl = (url || '').trim();
     if (!safeUrl) {
-      setSongFeedback(readSongMessage('invalidChordLink', 'A opção selecionada não possui um link válido de cifra.'), 'is-error');
+      setSongFeedback(readSongMessage('invalidChordLink'), 'is-error');
       return;
     }
 
-    setSongActionLoading(triggerButton, true, readSongMessage('chordsButton', 'Cifra'));
-    setSongFeedback(readSongMessage('loadingChord', 'Carregando cifra selecionada...'), 'is-loading');
+    const cachedFavorite = findCachedFavoriteBySongIdentity({
+      url: safeUrl,
+      title: selectedResult?.title || '',
+      artist: selectedResult?.artist || '',
+    });
+    const hasCachedSongData = Boolean(
+      cachedFavorite
+      && (
+        String(cachedFavorite.chordsText || '').trim()
+        || String(cachedFavorite.lyricsText || '').trim()
+      )
+    );
+    if (hasCachedSongData) {
+      openSongFavoriteCached(cachedFavorite, 'chords', triggerButton, { allowExternalFallback: false });
+      return;
+    }
+
+    setSongActionLoading(triggerButton, true, readSongMessage('chordsButton'));
+    setSongFeedback(readSongMessage('loadingChord'), 'is-loading');
 
     try {
       const response = await fetch('/api/songs/fetch', {
@@ -5736,7 +6492,7 @@
 
       const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || readSongMessage('chordFetchErrorApi', 'Não foi possível carregar a cifra.');
+        const message = payload?.detail?.message || payload?.message || readSongMessage('chordFetchErrorApi');
         throw new Error(message);
       }
 
@@ -5749,7 +6505,7 @@
       );
       const keyParts = splitKey(payload.original_key || '');
       songState.loaded = true;
-      songState.title = selectedTitle || payload.title || readSongMessage('defaultSongTitle', 'Música');
+      songState.title = selectedTitle || payload.title || readSongMessage('defaultSongTitle');
       songState.artist = selectedArtist || payload.artist || '';
       songState.source = payload.source || '';
       songState.sourceLabel = resolveSongSourceLabel(songState.source, payload.source_label || '');
@@ -5773,13 +6529,13 @@
       if (!songState.originalRoot) {
         void detectAndApplySongKeyIfMissing(preferredSelectedKey);
       } else {
-        setSongFeedback(readSongMessage('chordLoaded', 'Cifra carregada. Ajuste o tom abaixo do título.'), 'is-success');
+        setSongFeedback(readSongMessage('chordLoaded'), 'is-success');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : readSongMessage('chordLoadError', 'Falha ao carregar a cifra.');
+      const message = err instanceof Error ? err.message : readSongMessage('chordLoadError');
       setSongFeedback(message, 'is-error');
     } finally {
-      setSongActionLoading(triggerButton, false, readSongMessage('chordsButton', 'Cifra'));
+      setSongActionLoading(triggerButton, false, readSongMessage('chordsButton'));
     }
   }
 
@@ -5789,12 +6545,29 @@
     const sourceUrl = (result?.url || '').trim();
 
     if (!title && !sourceUrl) {
-      setSongFeedback(readSongMessage('invalidLyricsTarget', 'Não foi possível identificar a música para buscar a letra.'), 'is-error');
+      setSongFeedback(readSongMessage('invalidLyricsTarget'), 'is-error');
       return;
     }
 
-    setSongActionLoading(triggerButton, true, readSongMessage('lyricsButton', 'Letra'));
-    setSongFeedback(readSongMessage('loadingLyrics', 'Gerando letra a partir da cifra...'), 'is-loading');
+    const cachedFavorite = findCachedFavoriteBySongIdentity({
+      url: sourceUrl,
+      title,
+      artist,
+    });
+    const hasCachedSongData = Boolean(
+      cachedFavorite
+      && (
+        String(cachedFavorite.lyricsText || '').trim()
+        || String(cachedFavorite.chordsText || '').trim()
+      )
+    );
+    if (hasCachedSongData) {
+      openSongFavoriteCached(cachedFavorite, 'lyrics', triggerButton, { allowExternalFallback: false });
+      return;
+    }
+
+    setSongActionLoading(triggerButton, true, readSongMessage('lyricsButton'));
+    setSongFeedback(readSongMessage('loadingLyrics'), 'is-loading');
 
     try {
       const response = await fetch('/api/songs/fetch-lyrics', {
@@ -5811,7 +6584,7 @@
 
       const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || readSongMessage('lyricsFetchErrorApi', 'Não foi possível carregar a letra.');
+        const message = payload?.detail?.message || payload?.message || readSongMessage('lyricsFetchErrorApi');
         const code = payload?.detail?.code || payload?.code || '';
         const error = new Error(message);
         if (code) {
@@ -5821,7 +6594,7 @@
       }
 
       songState.loaded = true;
-      songState.title = title || payload.title || readSongMessage('defaultSongTitle', 'Música');
+      songState.title = title || payload.title || readSongMessage('defaultSongTitle');
       songState.artist = artist || payload.artist || '';
       songState.source = payload.source || result?.source || 'cifraclub';
       songState.sourceLabel = resolveSongSourceLabel(songState.source, payload.source_label || '');
@@ -5841,22 +6614,22 @@
 
       renderFetchedSong();
       openSongModal(triggerButton);
-      setSongFeedback(readSongMessage('lyricsLoaded', 'Letra carregada com sucesso.'), 'is-success');
+      setSongFeedback(readSongMessage('lyricsLoaded'), 'is-success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : readSongMessage('lyricsLoadError', 'Falha ao carregar a letra.');
+      const message = err instanceof Error ? err.message : readSongMessage('lyricsLoadError');
       const isLyricsNotFound = (
         err
         && typeof err === 'object'
         && 'code' in err
         && err.code === 'lyrics_not_found'
-      ) || message === readSongMessage('lyricsNotFoundApiMessage', 'Não foi possível gerar letra a partir da cifra.');
+      ) || message === readSongMessage('lyricsNotFoundApiMessage');
 
       if (isLyricsNotFound) {
-        showSongToast(readSongMessage('lyricsNotFoundToast', 'Não foi possível gerar a letra a partir da cifra desta música.'), 'is-warning');
+        showSongToast(readSongMessage('lyricsNotFoundToast'), 'is-warning');
       }
       setSongFeedback(message, 'is-error');
     } finally {
-      setSongActionLoading(triggerButton, false, readSongMessage('lyricsButton', 'Letra'));
+      setSongActionLoading(triggerButton, false, readSongMessage('lyricsButton'));
     }
   }
 
@@ -5925,13 +6698,13 @@
     button.disabled = Boolean(isLoading || !(button.dataset.songUrlKey || '').trim());
     button.innerHTML = isSaved ? FAVORITE_STAR_FILLED_ICON : FAVORITE_STAR_OUTLINE_ICON;
     button.title = isSaved
-      ? readSongMessage('favoriteButtonRemove', 'Remover favorito')
-      : readSongMessage('favoriteButtonAdd', 'Favoritar');
+      ? readSongMessage('favoriteButtonRemove')
+      : readSongMessage('favoriteButtonAdd');
     button.setAttribute(
       'aria-label',
       isSaved
-        ? readSongMessage('favoriteAriaRemove', 'Remover música dos favoritos')
-        : readSongMessage('favoriteAriaAdd', 'Salvar música nos favoritos')
+        ? readSongMessage('favoriteAriaRemove')
+        : readSongMessage('favoriteAriaAdd')
     );
   };
 
@@ -5942,12 +6715,44 @@
       .forEach((button) => setFavoriteButtonState(button, isSaved, false));
   };
 
-  const openSongFavoriteCached = (favorite, mode, triggerButton) => {
+  const openSongFavoriteCached = (favorite, mode, triggerButton, options = {}) => {
     const safeFavorite = asObject(favorite);
-    const isLyricsMode = mode === 'lyrics';
-    const content = String(isLyricsMode ? (safeFavorite.lyricsText || '') : (safeFavorite.chordsText || ''));
+    const safeOptions = asObject(options);
+    const allowExternalFallback = safeOptions.allowExternalFallback !== false;
+    const requestedLyricsMode = mode === 'lyrics';
+    let resolvedMode = requestedLyricsMode ? 'lyrics' : 'chords';
+    let content = String(requestedLyricsMode ? (safeFavorite.lyricsText || '') : (safeFavorite.chordsText || ''));
+    let usedLyricsFromChordsFallback = false;
+    let usedLyricsOnlyFallback = false;
+
     if (!content.trim()) {
-      if (isLyricsMode) {
+      if (requestedLyricsMode) {
+        const derivedLyrics = extractPlainLyricsFromChordsTextLocal(safeFavorite.chordsText || '');
+        if (derivedLyrics.trim()) {
+          content = derivedLyrics;
+          usedLyricsFromChordsFallback = true;
+        }
+      } else {
+        const lyricsFallback = String(safeFavorite.lyricsText || '');
+        if (lyricsFallback.trim()) {
+          content = lyricsFallback;
+          resolvedMode = 'lyrics';
+          usedLyricsOnlyFallback = true;
+        }
+      }
+    }
+
+    const isLyricsMode = resolvedMode === 'lyrics';
+    if (!content.trim()) {
+      if (!allowExternalFallback) {
+        setSongFeedback(
+          readSongMessage('favoriteCachedContentMissing'),
+          'is-warning'
+        );
+        return;
+      }
+
+      if (requestedLyricsMode) {
         loadLyricsFromService({
           title: safeFavorite.title || '',
           artist: safeFavorite.artist || '',
@@ -5964,19 +6769,19 @@
     }
 
     const fallbackLabel = isLyricsMode
-      ? readSongMessage('lyricsButton', 'Letra')
-      : readSongMessage('chordsButton', 'Cifra');
+      ? readSongMessage('lyricsButton')
+      : readSongMessage('chordsButton');
     setSongActionLoading(triggerButton, true, fallbackLabel);
     setSongFeedback(
       isLyricsMode
-        ? readSongMessage('loadingLyrics', 'Gerando letra a partir da cifra...')
-        : readSongMessage('loadingChord', 'Carregando cifra selecionada...'),
+        ? readSongMessage('loadingLyrics')
+        : readSongMessage('loadingChord'),
       'is-loading'
     );
 
     try {
       songState.loaded = true;
-      songState.title = (safeFavorite.title || '').trim() || readSongMessage('defaultSongTitle', 'Música');
+      songState.title = (safeFavorite.title || '').trim() || readSongMessage('defaultSongTitle');
       songState.artist = (safeFavorite.artist || '').trim();
       songState.semitones = 0;
       songState.originalContent = content;
@@ -6012,10 +6817,19 @@
       if (!isLyricsMode && !songState.originalRoot) {
         void detectAndApplySongKeyIfMissing(safeFavorite.chordsSelectedKey || '');
       } else {
+        const successMessage = (
+          usedLyricsFromChordsFallback
+            ? readSongMessage('favoriteCachedLyricsDerived')
+            : usedLyricsOnlyFallback
+              ? readSongMessage('favoriteCachedLyricsFallback')
+              : (
+                isLyricsMode
+                  ? readSongMessage('favoriteCachedLyricsLoaded')
+                  : readSongMessage('favoriteCachedChordsLoaded')
+              )
+        );
         setSongFeedback(
-          isLyricsMode
-            ? readSongMessage('favoriteCachedLyricsLoaded', 'Letra carregada dos favoritos.')
-            : readSongMessage('favoriteCachedChordsLoaded', 'Cifra carregada dos favoritos.'),
+          successMessage,
           'is-success'
         );
       }
@@ -6031,30 +6845,30 @@
     if (!content.trim()) {
       setSongFeedback(
         isLyricsMode
-          ? readSongMessage('customSongLyricsMissing', 'Esta música manual ainda não possui letra.')
-          : readSongMessage('customSongChordsMissing', 'Esta música manual ainda não possui cifra.'),
+          ? readSongMessage('customSongLyricsMissing')
+          : readSongMessage('customSongChordsMissing'),
         'is-warning'
       );
       return;
     }
 
     const fallbackLabel = isLyricsMode
-      ? readSongMessage('lyricsButton', 'Letra')
-      : readSongMessage('chordsButton', 'Cifra');
+      ? readSongMessage('lyricsButton')
+      : readSongMessage('chordsButton');
     setSongActionLoading(triggerButton, true, fallbackLabel);
     setSongFeedback(
       isLyricsMode
-        ? readSongMessage('customSongLyricsLoading', 'Abrindo letra manual...')
-        : readSongMessage('customSongChordsLoading', 'Abrindo cifra manual...'),
+        ? readSongMessage('customSongLyricsLoading')
+        : readSongMessage('customSongChordsLoading'),
       'is-loading'
     );
 
     try {
       songState.loaded = true;
-      songState.title = safeSong.title || readSongMessage('defaultSongTitle', 'Música');
+      songState.title = safeSong.title || readSongMessage('defaultSongTitle');
       songState.artist = '';
       songState.source = 'manual';
-      songState.sourceLabel = readSongMessage('customSongsTitle', 'Nossas músicas');
+      songState.sourceLabel = readSongMessage('customSongsTitle');
       songState.sourceUrl = '';
       songState.semitones = 0;
       songState.originalContent = content;
@@ -6085,8 +6899,8 @@
       } else {
         setSongFeedback(
           isLyricsMode
-            ? readSongMessage('customSongLyricsLoaded', 'Letra manual carregada.')
-            : readSongMessage('customSongChordsLoaded', 'Cifra manual carregada.'),
+            ? readSongMessage('customSongLyricsLoaded')
+            : readSongMessage('customSongChordsLoaded'),
           'is-success'
         );
       }
@@ -6098,12 +6912,21 @@
   const renderSongFavorites = () => {
     if (!songFavoritesCard || !songFavoritesList) return;
 
+    const normalizedSearchQuery = normalizeSongMatchToken(songFavoritesSearchQuery);
+    const hasActiveSearch = Boolean(normalizedSearchQuery);
+    const filteredFavorites = filterSongFavorites(songFavorites, normalizedSearchQuery);
+
     songFavoritesList.innerHTML = '';
+    songFavoritesList.style.maxHeight = '';
+    songFavoritesList.classList.remove('is-scrollable');
     songFavoritesCard.hidden = false;
+    if (songFavoritesSearchInput) {
+      songFavoritesSearchInput.disabled = songFavoritesLoading;
+    }
     if (songFavoritesLoading) {
       const loadingItem = document.createElement('li');
       loadingItem.className = 'booklet-cantos-item song-favorite-item song-favorites-empty song-favorites-loading';
-      loadingItem.textContent = readSongMessage('favoritesLoading', 'Carregando favoritos...');
+      loadingItem.textContent = readSongMessage('favoritesLoading');
       songFavoritesList.appendChild(loadingItem);
       return;
     }
@@ -6111,15 +6934,24 @@
     if (!songFavorites.length) {
       const emptyItem = document.createElement('li');
       emptyItem.className = 'booklet-cantos-item song-favorite-item song-favorites-empty';
-      emptyItem.textContent = readSongMessage('favoritesEmpty', 'Nenhuma música favoritada ainda.');
+      emptyItem.textContent = readSongMessage('favoritesEmpty');
       songFavoritesList.appendChild(emptyItem);
       return;
     }
-    songFavorites.forEach((favorite) => {
+
+    if (!filteredFavorites.length) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'booklet-cantos-item song-favorite-item song-favorites-empty';
+      emptyItem.textContent = readSongMessage('favoritesSearchEmpty');
+      songFavoritesList.appendChild(emptyItem);
+      return;
+    }
+
+    filteredFavorites.forEach((favorite) => {
       const item = document.createElement('li');
       item.className = 'booklet-cantos-item song-favorite-item';
       const favoriteId = Number.parseInt(String(favorite.id || ''), 10);
-      const isSortable = Number.isInteger(favoriteId) && favoriteId > 0;
+      const isSortable = !hasActiveSearch && Number.isInteger(favoriteId) && favoriteId > 0;
       item.dataset.songFavoriteId = String(favoriteId || '');
       item.dataset.songFavoriteSortable = isSortable ? 'true' : 'false';
       item.draggable = isSortable && !songFavoritesReorderPending;
@@ -6135,19 +6967,19 @@
       coverButton.dataset.bookletSongQuery = query;
       coverButton.setAttribute(
         'aria-label',
-        readSongMessage('favoriteSearchAria', 'Buscar "{query}"', { query })
+        readSongMessage('favoriteSearchAria', { query })
       );
       coverButton.setAttribute(
         'title',
-        readSongMessage('favoriteSearchAria', 'Buscar "{query}"', { query })
+        readSongMessage('favoriteSearchAria', { query })
       );
       const coverImage = document.createElement('img');
       coverImage.className = 'song-favorite-cover';
       coverImage.loading = 'lazy';
       coverImage.decoding = 'async';
       coverImage.alt = favorite.artist
-        ? readSongMessage('avatarAltWithArtist', 'Foto de {artist}', { artist: favorite.artist })
-        : readSongMessage('avatarAltFallback', 'Imagem da música');
+        ? readSongMessage('avatarAltWithArtist', { artist: favorite.artist })
+        : readSongMessage('avatarAltFallback');
       coverImage.src = favorite.imageUrl || songSearchFallbackImage;
       coverImage.addEventListener('error', () => {
         coverImage.src = songSearchFallbackImage;
@@ -6156,14 +6988,14 @@
 
       const title = document.createElement('strong');
       title.className = 'booklet-cantos-title';
-      title.textContent = favorite.title || readSongMessage('defaultSongTitle', 'Música');
+      title.textContent = favorite.title || readSongMessage('defaultSongTitle');
       const assignFromFavoriteBtn = document.createElement('button');
       assignFromFavoriteBtn.type = 'button';
       assignFromFavoriteBtn.className = 'song-favorite-title-btn song-open-save-location-trigger';
-      assignFromFavoriteBtn.title = readMysteryMessage('assignButtonTitle', 'Adicionar aos mistérios');
+      assignFromFavoriteBtn.title = readMysteryMessage('assignButtonTitle');
       assignFromFavoriteBtn.setAttribute(
         'aria-label',
-        readMysteryMessage('assignButtonAria', 'Adicionar música a um mistério')
+        readMysteryMessage('assignButtonAria')
       );
       assignFromFavoriteBtn.disabled = !((favorite.title || '').trim() || (favorite.url || '').trim());
       assignFromFavoriteBtn.appendChild(title);
@@ -6186,8 +7018,8 @@
 
       const meta = document.createElement('p');
       meta.className = 'booklet-cantos-meta';
-      const singerPrefix = readSongMessage('singerPrefix', 'Cantor:');
-      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
+      const singerPrefix = readSongMessage('singerPrefix');
+      const sourcePrefix = readSongMessage('sourcePrefix');
       meta.textContent = favorite.artist
         ? `${singerPrefix} ${favorite.artist} | ${sourcePrefix} ${favorite.sourceLabel}`
         : `${sourcePrefix} ${favorite.sourceLabel}`;
@@ -6201,8 +7033,8 @@
       spotifyAction.className = 'song-search-action song-search-action-external';
       spotifyAction.classList.add('song-favorite-action-spotify');
       spotifyAction.innerHTML = SPOTIFY_ACTION_ICON;
-      spotifyAction.title = readSongMessage('spotifyTitle', 'Abrir no Spotify');
-      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria', 'Abrir no Spotify'));
+      spotifyAction.title = readSongMessage('spotifyTitle');
+      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria'));
       spotifyAction.href = favorite.spotifyUrl || buildExternalSongSearchUrl('spotify', externalQuery);
       spotifyAction.target = '_blank';
       spotifyAction.rel = 'noopener noreferrer';
@@ -6215,8 +7047,8 @@
       youtubeAction.className = 'song-search-action song-search-action-external';
       youtubeAction.classList.add('song-favorite-action-youtube');
       youtubeAction.innerHTML = YOUTUBE_ACTION_ICON;
-      youtubeAction.title = readSongMessage('youtubeTitle', 'Abrir no YouTube');
-      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria', 'Abrir no YouTube'));
+      youtubeAction.title = readSongMessage('youtubeTitle');
+      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria'));
       youtubeAction.href = favorite.youtubeUrl || buildExternalSongSearchUrl('youtube', externalQuery);
       youtubeAction.target = '_blank';
       youtubeAction.rel = 'noopener noreferrer';
@@ -6230,8 +7062,8 @@
       lyricAction.className = 'song-search-action song-favorite-head-action';
       lyricAction.classList.add('song-favorite-action-lyrics');
       lyricAction.innerHTML = LYRICS_ACTION_ICON;
-      lyricAction.title = readSongMessage('lyricsButton', 'Letra');
-      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
+      lyricAction.title = readSongMessage('lyricsButton');
+      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton'));
       lyricAction.disabled = !favorite.hasLyrics && !favorite.url;
       lyricAction.addEventListener('click', () => openSongFavoriteCached(favorite, 'lyrics', lyricAction));
 
@@ -6240,8 +7072,8 @@
       chordAction.className = 'song-search-action song-favorite-head-action';
       chordAction.classList.add('song-favorite-action-chords');
       chordAction.innerHTML = CHORDS_ACTION_ICON;
-      chordAction.title = readSongMessage('chordsButton', 'Cifra');
-      chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
+      chordAction.title = readSongMessage('chordsButton');
+      chordAction.setAttribute('aria-label', readSongMessage('chordsButton'));
       chordAction.disabled = !favorite.hasChords && !favorite.url;
       chordAction.addEventListener('click', () => openSongFavoriteCached(favorite, 'chords', chordAction));
 
@@ -6255,15 +7087,15 @@
       head.appendChild(headActions);
       item.appendChild(head);
       item.appendChild(meta);
-      const usageLabels = Array.from(new Set([
+      const usageLabels = dedupeUsageLabels([
         ...(Array.isArray(favorite.usageLocations) ? favorite.usageLocations : []),
         ...resolveSongMysteryUsageLabels(favorite),
         ...resolveSongLocationUsageLabels(favorite),
-      ]));
+      ]);
       if (usageLabels.length) {
         const usageNode = document.createElement('p');
         usageNode.className = 'song-favorite-usage';
-        usageNode.textContent = `${readSongMessage('favoriteUsagePrefix', 'Usada em:')} ${usageLabels.join(' | ')}`;
+        usageNode.textContent = usageLabels.join(' | ');
         item.appendChild(usageNode);
       }
       songFavoritesList.appendChild(item);
@@ -6334,7 +7166,7 @@
     const urlKey = normalizeSongUrlKey(sourceUrl);
     if (!sourceUrl || !urlKey) {
       setSongFeedback(
-        readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.'),
+        readSongMessage('favoriteSaveError'),
         'is-error',
         widget
       );
@@ -6352,7 +7184,7 @@
       removeSongFavoriteByUrl(urlKey);
       setFavoriteButtonState(triggerButton, false, true);
       setSongFeedback(
-        readSongMessage('favoriteButtonRemoving', 'Removendo favorito...'),
+        readSongMessage('favoriteButtonRemoving'),
         'is-loading',
         widget
       );
@@ -6364,13 +7196,13 @@
         if (!response.ok || !payload.ok) {
           const message = payload?.detail?.message
             || payload?.message
-            || readSongMessage('favoriteRemoveError', 'Não foi possível remover o favorito.');
+            || readSongMessage('favoriteRemoveError');
           throw new Error(message);
         }
 
         setFavoriteButtonState(triggerButton, false, false);
         setSongFeedback(
-          readSongMessage('favoriteRemoveSuccess', 'Favorito removido.'),
+          readSongMessage('favoriteRemoveSuccess'),
           'is-success',
           widget
         );
@@ -6379,7 +7211,7 @@
         applyFavoriteStateToRenderedButtons(urlKey, true);
         const message = err instanceof Error
           ? err.message
-          : readSongMessage('favoriteRemoveError', 'Não foi possível remover o favorito.');
+          : readSongMessage('favoriteRemoveError');
         setSongFeedback(message, 'is-error', widget);
         setFavoriteButtonState(triggerButton, true, false);
       }
@@ -6388,7 +7220,7 @@
 
     setFavoriteButtonState(triggerButton, false, true);
     setSongFeedback(
-      readSongMessage('favoriteButtonSaving', 'Salvando favorito...'),
+      readSongMessage('favoriteButtonSaving'),
       'is-loading',
       widget
     );
@@ -6440,7 +7272,7 @@
       if (!response.ok || !payload.ok) {
         const message = payload?.detail?.message
           || payload?.message
-          || readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.');
+          || readSongMessage('favoriteSaveError');
         throw new Error(message);
       }
 
@@ -6450,7 +7282,7 @@
         applyFavoriteStateToRenderedButtons(savedKey, true);
       }
       setSongFeedback(
-        readSongMessage('favoriteSaveSuccess', 'Música salva nos favoritos.'),
+        readSongMessage('favoriteSaveSuccess'),
         'is-success',
         widget
       );
@@ -6458,7 +7290,7 @@
       removeSongFavoriteByUrl(urlKey);
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('favoriteSaveError', 'Não foi possível salvar o favorito.');
+        : readSongMessage('favoriteSaveError');
       setSongFeedback(message, 'is-error', widget);
       setFavoriteButtonState(triggerButton, false, false);
     }
@@ -6474,7 +7306,7 @@
         throw new Error(
           payload?.detail?.message
           || payload?.message
-          || readSongMessage('favoritesLoadError', 'Não foi possível carregar os favoritos.')
+          || readSongMessage('favoritesLoadError')
         );
       }
 
@@ -6509,7 +7341,7 @@
     if (!response.ok || !responsePayload.ok) {
       const message = responsePayload?.detail?.message
         || responsePayload?.message
-        || readSongMessage('favoritesReorderError', 'Não foi possível reordenar os favoritos.');
+        || readSongMessage('favoritesReorderError');
       throw new Error(message);
     }
     return Array.isArray(responsePayload.favorites)
@@ -6536,13 +7368,13 @@
       const persistedFavorites = await reorderSongFavoritesOnServer(orderedIds);
       applySongFavorites(persistedFavorites);
       showSongToast(
-        readSongMessage('favoritesReorderSuccess', 'Ordem dos favoritos atualizada.'),
+        readSongMessage('favoritesReorderSuccess'),
         'is-success'
       );
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('favoritesReorderError', 'Não foi possível reordenar os favoritos.');
+        : readSongMessage('favoritesReorderError');
       showSongToast(message, 'is-error');
       await fetchSongFavorites();
     } finally {
@@ -6680,7 +7512,7 @@
         throw new Error(
           parseCustomSongApiError(
             payload,
-            readSongMessage('customSongsLoadError', 'Não foi possível carregar músicas manuais.')
+            readSongMessage('customSongsLoadError')
           )
         );
       }
@@ -6709,7 +7541,7 @@
       throw new Error(
         parseCustomSongApiError(
           responsePayload,
-          readSongMessage('customSongSaveError', 'Não foi possível salvar a música.')
+          readSongMessage('customSongSaveError')
         )
       );
     }
@@ -6719,7 +7551,7 @@
   const updateCustomSongOnServer = async (songId, payload) => {
     const safeSongId = String(songId || '').trim();
     if (!safeSongId) {
-      throw new Error(readSongMessage('customSongSaveError', 'Não foi possível salvar a música.'));
+      throw new Error(readSongMessage('customSongSaveError'));
     }
 
     const response = await fetch(`/api/songs/custom/${encodeURIComponent(safeSongId)}`, {
@@ -6734,7 +7566,7 @@
       throw new Error(
         parseCustomSongApiError(
           responsePayload,
-          readSongMessage('customSongSaveError', 'Não foi possível salvar a música.')
+          readSongMessage('customSongSaveError')
         )
       );
     }
@@ -6763,7 +7595,7 @@
       throw new Error(
         parseCustomSongApiError(
           responsePayload,
-          readSongMessage('customSongsReorderError', 'Não foi possível reordenar as músicas.')
+          readSongMessage('customSongsReorderError')
         )
       );
     }
@@ -6775,7 +7607,7 @@
   const deleteCustomSongOnServer = async (songId) => {
     const safeSongId = String(songId || '').trim();
     if (!safeSongId) {
-      throw new Error(readSongMessage('customSongRemoveError', 'Não foi possível remover a música.'));
+      throw new Error(readSongMessage('customSongRemoveError'));
     }
 
     const response = await fetch(`/api/songs/custom/${encodeURIComponent(safeSongId)}`, {
@@ -6786,7 +7618,7 @@
       throw new Error(
         parseCustomSongApiError(
           responsePayload,
-          readSongMessage('customSongRemoveError', 'Não foi possível remover a música.')
+          readSongMessage('customSongRemoveError')
         )
       );
     }
@@ -7071,8 +7903,8 @@
     if (showStatus) {
       setCustomSongDraftStatus(
         success
-          ? readSongMessage('customSongDraftSaved', 'Rascunho salvo automaticamente.')
-          : readSongMessage('customSongDraftSaveError', 'Não foi possível salvar o rascunho.'),
+          ? readSongMessage('customSongDraftSaved')
+          : readSongMessage('customSongDraftSaveError'),
         success ? 'is-success' : 'is-error'
       );
     }
@@ -7101,7 +7933,7 @@
     if (!customSongs.length) {
       const emptyItem = document.createElement('li');
       emptyItem.className = 'custom-song-item custom-song-empty';
-      emptyItem.textContent = readSongMessage('customSongsEmpty', 'Nenhuma música manual adicionada ainda.');
+      emptyItem.textContent = readSongMessage('customSongsEmpty');
       customSongsList.appendChild(emptyItem);
       return;
     }
@@ -7120,7 +7952,7 @@
 
       const titleNode = document.createElement('h4');
       titleNode.className = 'custom-song-item-title';
-      titleNode.textContent = song.title || readSongMessage('defaultSongTitle', 'Música');
+      titleNode.textContent = song.title || readSongMessage('defaultSongTitle');
 
       const headActions = document.createElement('div');
       headActions.className = 'song-favorite-head-actions custom-song-item-head-actions';
@@ -7132,8 +7964,8 @@
       lyricAction.dataset.customSongAction = 'lyrics';
       lyricAction.dataset.customSongId = song.id;
       lyricAction.innerHTML = LYRICS_ACTION_ICON;
-      lyricAction.title = readSongMessage('lyricsButton', 'Letra');
-      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
+      lyricAction.title = readSongMessage('lyricsButton');
+      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton'));
       lyricAction.disabled = !song.lyricsText.trim();
 
       const chordAction = document.createElement('button');
@@ -7143,8 +7975,8 @@
       chordAction.dataset.customSongAction = 'chords';
       chordAction.dataset.customSongId = song.id;
       chordAction.innerHTML = CHORDS_ACTION_ICON;
-      chordAction.title = readSongMessage('chordsButton', 'Cifra');
-      chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
+      chordAction.title = readSongMessage('chordsButton');
+      chordAction.setAttribute('aria-label', readSongMessage('chordsButton'));
       chordAction.disabled = !song.chordsText.trim();
 
       headActions.appendChild(lyricAction);
@@ -7154,11 +7986,11 @@
 
       const metaNode = document.createElement('p');
       metaNode.className = 'custom-song-item-meta';
-      const keyLabel = readSongMessage('customSongKeyLabel', 'Tom');
+      const keyLabel = readSongMessage('customSongKeyLabel');
       const keyValue = song.key || '-';
-      const lyricsLabel = readSongMessage('customSongLyricsTab', 'Música');
-      const chordsLabel = readSongMessage('customSongChordsTab', 'Cifras');
-      const draftLabel = song.isDraft ? readSongMessage('customSongDraftBadge', 'Rascunho') : '';
+      const lyricsLabel = readSongMessage('customSongLyricsTab');
+      const chordsLabel = readSongMessage('customSongChordsTab');
+      const draftLabel = song.isDraft ? readSongMessage('customSongDraftBadge') : '';
       metaNode.textContent = [draftLabel, `${keyLabel}: ${keyValue}`, `${lyricsLabel}: ${song.lyricsText.trim() ? 'OK' : '-'}`, `${chordsLabel}: ${song.chordsText.trim() ? 'OK' : '-'}`]
         .filter(Boolean)
         .join(' | ');
@@ -7167,7 +7999,7 @@
       updatedNode.className = 'custom-song-item-updated';
       const updatedAt = formatCustomSongDateTime(song.updatedAtUtc || song.createdAtUtc);
       updatedNode.textContent = updatedAt
-        ? `${readSongMessage('customSongUpdatedAt', 'Atualizado em')} (UTC): ${updatedAt}`
+        ? `${readSongMessage('customSongUpdatedAt')} (UTC): ${updatedAt}`
         : '';
 
       const actions = document.createElement('div');
@@ -7178,14 +8010,14 @@
       editBtn.className = 'custom-song-item-action';
       editBtn.dataset.customSongAction = 'edit';
       editBtn.dataset.customSongId = song.id;
-      editBtn.textContent = readSongMessage('customSongEditButton', 'Editar');
+      editBtn.textContent = readSongMessage('customSongEditButton');
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'custom-song-item-action';
       removeBtn.dataset.customSongAction = 'remove';
       removeBtn.dataset.customSongId = song.id;
-      removeBtn.textContent = readSongMessage('customSongRemoveButton', 'Remover');
+      removeBtn.textContent = readSongMessage('customSongRemoveButton');
 
       actions.appendChild(editBtn);
       actions.appendChild(removeBtn);
@@ -7246,13 +8078,13 @@
 
     if (customSongModalTitle) {
       customSongModalTitle.textContent = customSongEditingId
-        ? readSongMessage('customSongEditModalTitle', 'Editar música manual')
-        : readSongMessage('customSongModalTitle', 'Nova música manual');
+        ? readSongMessage('customSongEditModalTitle')
+        : readSongMessage('customSongModalTitle');
     }
     if (customSongSaveBtn) {
       customSongSaveBtn.textContent = customSongEditingId
-        ? readSongMessage('customSongUpdateButton', 'Atualizar música')
-        : readSongMessage('customSongSaveButton', 'Salvar música');
+        ? readSongMessage('customSongUpdateButton')
+        : readSongMessage('customSongSaveButton');
     }
 
     const formPayload = draft
@@ -7261,7 +8093,7 @@
     fillCustomSongForm(formPayload);
     setCustomSongDraftStatus(
       draft
-        ? readSongMessage('customSongDraftRecovered', 'Rascunho recuperado.')
+        ? readSongMessage('customSongDraftRecovered')
         : '',
       draft ? 'is-success' : ''
     );
@@ -7281,8 +8113,8 @@
     if (!customSongTitleInput) return;
     const payload = collectCustomSongFormData();
     if (!payload.title) {
-      setCustomSongDraftStatus(readSongMessage('customSongTitleRequired', 'Informe o título da música.'), 'is-error');
-      showSongToast(readSongMessage('customSongTitleRequired', 'Informe o título da música.'), 'is-error');
+      setCustomSongDraftStatus(readSongMessage('customSongTitleRequired'), 'is-error');
+      showSongToast(readSongMessage('customSongTitleRequired'), 'is-error');
       focusWithoutScrollingPage(customSongTitleInput);
       return;
     }
@@ -7318,15 +8150,15 @@
 
       showSongToast(
         isUpdatingPersistedSong
-          ? readSongMessage('customSongUpdateSuccess', 'Música manual atualizada.')
-          : readSongMessage('customSongSaveSuccess', 'Música manual adicionada.'),
+          ? readSongMessage('customSongUpdateSuccess')
+          : readSongMessage('customSongSaveSuccess'),
         'is-success'
       );
       closeCustomSongModal({ preserveDraft: false });
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('customSongSaveError', 'Não foi possível salvar a música.');
+        : readSongMessage('customSongSaveError');
       setCustomSongDraftStatus(message, 'is-error');
       showSongToast(message, 'is-error');
     } finally {
@@ -7342,14 +8174,14 @@
     const targetSong = getCustomSongById(targetId);
     if (!targetSong) return;
 
-    const safeTitle = targetSong.title || readSongMessage('defaultSongTitle', 'Música');
+    const safeTitle = targetSong.title || readSongMessage('defaultSongTitle');
     const shouldRemove = await openFavoriteConfirmModal({
       triggerElement,
       songTitle: safeTitle,
-      title: readSongMessage('customSongRemoveConfirmTitle', 'Inativar música'),
-      message: readSongMessage('customSongRemoveConfirm', 'Deseja inativar "{title}"?', { title: safeTitle }),
-      cancelLabel: readSongMessage('customSongRemoveConfirmCancel', 'Cancelar'),
-      acceptLabel: readSongMessage('customSongRemoveConfirmAccept', 'Inativar'),
+      title: readSongMessage('customSongRemoveConfirmTitle'),
+      message: readSongMessage('customSongRemoveConfirm', { title: safeTitle }),
+      cancelLabel: readSongMessage('customSongRemoveConfirmCancel'),
+      acceptLabel: readSongMessage('customSongRemoveConfirmAccept'),
     });
     if (!shouldRemove) return;
 
@@ -7357,18 +8189,18 @@
       customSongs = customSongs.filter((song) => song.id !== targetId);
       clearCustomSongDraft();
       renderCustomSongs();
-      showSongToast(readSongMessage('customSongRemoveSuccess', 'Rascunho removido.'), 'is-success');
+      showSongToast(readSongMessage('customSongRemoveSuccess'), 'is-success');
       return;
     }
 
     try {
       await deleteCustomSongOnServer(targetId);
       await fetchCustomSongs();
-      showSongToast(readSongMessage('customSongRemoveSuccess', 'Música manual inativada.'), 'is-success');
+      showSongToast(readSongMessage('customSongRemoveSuccess'), 'is-success');
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('customSongRemoveError', 'Não foi possível remover a música.');
+        : readSongMessage('customSongRemoveError');
       showSongToast(message, 'is-error');
     }
   };
@@ -7393,11 +8225,11 @@
       setPersistedCustomSongs(persistedSongs);
       syncStoredCustomDraftToSongList();
       renderCustomSongs();
-      showSongToast(readSongMessage('customSongsReorderSuccess', 'Ordem das músicas atualizada.'), 'is-success');
+      showSongToast(readSongMessage('customSongsReorderSuccess'), 'is-success');
     } catch (err) {
       const message = err instanceof Error
         ? err.message
-        : readSongMessage('customSongsReorderError', 'Não foi possível reordenar as músicas.');
+        : readSongMessage('customSongsReorderError');
       showSongToast(message, 'is-error');
       await fetchCustomSongs();
     } finally {
@@ -7604,11 +8436,66 @@
     });
   };
 
+  const syncSongFavoritesScrollClamp = () => {
+    if (!songFavoritesList) return;
+
+    songFavoritesList.style.maxHeight = '';
+    songFavoritesList.classList.remove('is-scrollable');
+
+    const favoriteItems = Array.from(songFavoritesList.querySelectorAll('.song-favorite-item'))
+      .filter((item) => !item.classList.contains('song-favorites-empty'));
+    if (!favoriteItems.length) return;
+
+    const maxVisibleRows = window.innerWidth <= SONG_FAVORITES_SCROLL_MOBILE_BREAKPOINT
+      ? SONG_FAVORITES_SCROLL_ROWS_MOBILE
+      : SONG_FAVORITES_SCROLL_ROWS_DESKTOP;
+    if (!Number.isFinite(maxVisibleRows) || maxVisibleRows <= 0) return;
+
+    const rowHeights = [];
+    let currentRowTop = null;
+    let currentRowHeight = 0;
+
+    favoriteItems.forEach((item) => {
+      const itemTop = item.offsetTop;
+      const itemHeight = item.offsetHeight;
+      if (!Number.isFinite(itemTop) || !Number.isFinite(itemHeight) || itemHeight <= 0) return;
+
+      if (currentRowTop === null || Math.abs(itemTop - currentRowTop) > 2) {
+        if (currentRowTop !== null) {
+          rowHeights.push(currentRowHeight);
+        }
+        currentRowTop = itemTop;
+        currentRowHeight = itemHeight;
+        return;
+      }
+
+      currentRowHeight = Math.max(currentRowHeight, itemHeight);
+    });
+
+    if (currentRowTop !== null) {
+      rowHeights.push(currentRowHeight);
+    }
+    if (rowHeights.length <= maxVisibleRows) return;
+
+    const styles = window.getComputedStyle(songFavoritesList);
+    const parsedRowGap = Number.parseFloat(styles.rowGap || styles.gap || '0');
+    const rowGap = Number.isFinite(parsedRowGap) ? parsedRowGap : 0;
+    const totalRowsHeight = rowHeights
+      .slice(0, maxVisibleRows)
+      .reduce((total, rowHeight) => total + rowHeight, 0);
+    const maxHeight = totalRowsHeight + (rowGap * Math.max(0, maxVisibleRows - 1));
+    if (!Number.isFinite(maxHeight) || maxHeight <= 0) return;
+
+    songFavoritesList.style.maxHeight = `${Math.ceil(maxHeight)}px`;
+    songFavoritesList.classList.add('is-scrollable');
+  };
+
   const syncSongFavoritesLayout = () => {
     if (!songFavoritesList) return;
     songFavoritesList.querySelectorAll('.song-favorite-item').forEach((item) => {
       syncSongFavoriteItemLayout(item);
     });
+    syncSongFavoritesScrollClamp();
   };
 
   let songSearchLayoutFrame = null;
@@ -7679,8 +8566,8 @@
       avatar.loading = 'lazy';
       avatar.decoding = 'async';
       avatar.alt = result.artist
-        ? readSongMessage('avatarAltWithArtist', 'Foto de {artist}', { artist: result.artist })
-        : readSongMessage('avatarAltFallback', 'Imagem da música');
+        ? readSongMessage('avatarAltWithArtist', { artist: result.artist })
+        : readSongMessage('avatarAltFallback');
       avatar.src = (result.image_url || '').trim() || songSearchFallbackImage;
       avatar.addEventListener('error', () => {
         avatar.src = songSearchFallbackImage;
@@ -7689,12 +8576,12 @@
       const info = document.createElement('div');
       info.className = 'song-search-info';
       const title = document.createElement('strong');
-      title.textContent = result.title || readSongMessage('defaultSongTitle', 'Música');
+      title.textContent = result.title || readSongMessage('defaultSongTitle');
       const meta = document.createElement('p');
       const artist = (result.artist || '').trim();
       const sourceLabel = resolveSongSourceLabel(result.source, result.source_label || '');
-      const singerPrefix = readSongMessage('singerPrefix', 'Cantor:');
-      const sourcePrefix = readSongMessage('sourcePrefix', 'Fonte:');
+      const singerPrefix = readSongMessage('singerPrefix');
+      const sourcePrefix = readSongMessage('sourcePrefix');
       meta.textContent = artist
         ? `${singerPrefix} ${artist} | ${sourcePrefix} ${sourceLabel}`
         : `${sourcePrefix} ${sourceLabel}`;
@@ -7723,10 +8610,10 @@
       assignMysteryAction.type = 'button';
       assignMysteryAction.className = 'song-search-action song-search-action-assign-mystery song-open-save-location-trigger';
       assignMysteryAction.innerHTML = SONG_ASSIGN_PLUS_ICON;
-      assignMysteryAction.title = readMysteryMessage('assignButtonTitle', 'Adicionar aos mistérios');
+      assignMysteryAction.title = readMysteryMessage('assignButtonTitle');
       assignMysteryAction.setAttribute(
         'aria-label',
-        readMysteryMessage('assignButtonAria', 'Adicionar música a um mistério')
+        readMysteryMessage('assignButtonAria')
       );
       assignMysteryAction.disabled = !((result.title || '').trim() || (result.url || '').trim());
       assignMysteryAction.addEventListener('click', (event) => {
@@ -7748,8 +8635,8 @@
       spotifyAction.className = 'song-search-action song-search-action-external';
       spotifyAction.classList.add('song-search-action-spotify');
       spotifyAction.innerHTML = SPOTIFY_ACTION_ICON;
-      spotifyAction.title = readSongMessage('spotifyTitle', 'Abrir no Spotify');
-      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria', 'Abrir no Spotify'));
+      spotifyAction.title = readSongMessage('spotifyTitle');
+      spotifyAction.setAttribute('aria-label', readSongMessage('spotifyAria'));
       const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
       if (spotifyUrl) {
         spotifyAction.href = spotifyUrl;
@@ -7764,8 +8651,8 @@
       youtubeAction.className = 'song-search-action song-search-action-external';
       youtubeAction.classList.add('song-search-action-youtube');
       youtubeAction.innerHTML = YOUTUBE_ACTION_ICON;
-      youtubeAction.title = readSongMessage('youtubeTitle', 'Abrir no YouTube');
-      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria', 'Abrir no YouTube'));
+      youtubeAction.title = readSongMessage('youtubeTitle');
+      youtubeAction.setAttribute('aria-label', readSongMessage('youtubeAria'));
       const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
       if (youtubeUrl) {
         youtubeAction.href = youtubeUrl;
@@ -7781,8 +8668,8 @@
       lyricAction.className = 'song-search-action';
       lyricAction.classList.add('song-search-action-lyrics');
       lyricAction.innerHTML = LYRICS_ACTION_ICON;
-      lyricAction.title = readSongMessage('lyricsButton', 'Letra');
-      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton', 'Letra'));
+      lyricAction.title = readSongMessage('lyricsButton');
+      lyricAction.setAttribute('aria-label', readSongMessage('lyricsButton'));
       lyricAction.disabled = !result.title && !result.url;
       lyricAction.addEventListener('click', () => {
         const cachedFavorite = urlKey ? songFavoritesByUrl.get(urlKey) : null;
@@ -7798,8 +8685,8 @@
       chordAction.className = 'song-search-action';
       chordAction.classList.add('song-search-action-chords');
       chordAction.innerHTML = CHORDS_ACTION_ICON;
-      chordAction.title = readSongMessage('chordsButton', 'Cifra');
-      chordAction.setAttribute('aria-label', readSongMessage('chordsButton', 'Cifra'));
+      chordAction.title = readSongMessage('chordsButton');
+      chordAction.setAttribute('aria-label', readSongMessage('chordsButton'));
       chordAction.disabled = !result.url;
       chordAction.addEventListener('click', () => {
         const cachedFavorite = urlKey ? songFavoritesByUrl.get(urlKey) : null;
@@ -7939,7 +8826,7 @@
       resetSongSearchWidgetState();
       setSongFeedback('');
       if (!fromTyping && !fromLoadMore) {
-        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
+        setFetchSubmitState(false, readSongMessage('searchButton'));
       }
       return;
     }
@@ -7953,13 +8840,13 @@
       clearSongSearchResults(activeWidget);
       hideSongSearchResultsExcept(activeWidget);
       setSongFeedback(
-        readSongMessage('searchMinChars', 'Digite pelo menos {count} caracteres para buscar.', { count: SONG_SEARCH_MIN_CHARS }),
+        readSongMessage('searchMinChars', { count: SONG_SEARCH_MIN_CHARS }),
         '',
         activeWidget
       );
       resetSongSearchWidgetState(activeWidget);
       if (!fromTyping && !fromLoadMore) {
-        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
+        setFetchSubmitState(false, readSongMessage('searchButton'));
       }
       return;
     }
@@ -8016,7 +8903,7 @@
       if (!renderResults.length && requestedPage === 1) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
-        setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
+        setSongFeedback(readSongMessage('searchNoResults'), '', activeWidget);
         searchState.page = 0;
         searchState.hasMore = false;
       } else {
@@ -8027,7 +8914,7 @@
         });
         searchState.page = resolvedPage;
         searchState.hasMore = cacheHasMore;
-        const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: loadedCount });
+        const foundMessage = readSongMessage('searchResultsFound', { count: loadedCount });
         setSongFeedback(foundMessage, 'is-success', activeWidget);
         if (cacheHasMore) {
           window.requestAnimationFrame(() => {
@@ -8036,7 +8923,7 @@
         }
       }
       if (!fromTyping && !fromLoadMore) {
-        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
+        setFetchSubmitState(false, readSongMessage('searchButton'));
       }
       return;
     }
@@ -8051,7 +8938,7 @@
       : null;
 
     if (!fromTyping && !fromLoadMore) {
-      setFetchSubmitState(true, readSongMessage('searchButtonLoading', 'Buscando...'));
+      setFetchSubmitState(true, readSongMessage('searchButtonLoading'));
     }
     if (isLoadMoreRequest) {
       updateSongSearchLoadMoreButton(activeWidget, {
@@ -8059,9 +8946,9 @@
         hasMore: true,
         loading: true
       });
-      setSongFeedback(readSongMessage('searchLoadingMore', 'Carregando mais músicas...'), 'is-loading', activeWidget);
+      setSongFeedback(readSongMessage('searchLoadingMore'), 'is-loading', activeWidget);
     } else {
-      setSongFeedback(readSongMessage('searchingSources', 'Buscando músicas nos portais...'), 'is-loading', activeWidget);
+      setSongFeedback(readSongMessage('searchingSources'), 'is-loading', activeWidget);
       hideSongSearchResultsExcept(activeWidget);
     }
 
@@ -8082,7 +8969,7 @@
 
       const payload = asObject(await response.json().catch(() => ({})));
       if (!response.ok || !payload.ok) {
-        const message = payload?.detail?.message || payload?.message || readSongMessage('searchErrorApi', 'Não foi possível buscar músicas agora.');
+        const message = payload?.detail?.message || payload?.message || readSongMessage('searchErrorApi');
         throw new Error(message);
       }
 
@@ -8111,7 +8998,7 @@
       if (!results.length && responsePage === 1) {
         clearSongSearchResults(activeWidget);
         hideSongSearchResultsExcept(activeWidget);
-        setSongFeedback(readSongMessage('searchNoResults', 'Nenhuma música encontrada para este nome.'), '', activeWidget);
+        setSongFeedback(readSongMessage('searchNoResults'), '', activeWidget);
         searchState.page = 0;
         searchState.hasMore = false;
         searchState.loadingMore = false;
@@ -8125,7 +9012,7 @@
           hasMore: false,
           loading: false
         });
-        setSongFeedback(readSongMessage('searchNoMoreResults', 'Não há mais músicas para carregar.'), '', activeWidget);
+        setSongFeedback(readSongMessage('searchNoMoreResults'), '', activeWidget);
         return;
       }
 
@@ -8142,13 +9029,13 @@
       const loadedCount = updatedCacheEntry
         ? countSongSearchCachedResults(updatedCacheEntry, responsePage)
         : results.length;
-      const foundMessage = readSongMessage('searchResultsFound', '{count} opções encontradas.', { count: loadedCount });
+      const foundMessage = readSongMessage('searchResultsFound', { count: loadedCount });
       setSongFeedback(foundMessage, 'is-success', activeWidget);
     } catch (err) {
       if (err && typeof err === 'object' && err.name === 'AbortError') {
         return;
       }
-      const message = err instanceof Error ? err.message : readSongMessage('searchError', 'Falha ao buscar músicas.');
+      const message = err instanceof Error ? err.message : readSongMessage('searchError');
       searchState.loadingMore = false;
       updateSongSearchLoadMoreButton(activeWidget, {
         hasMore: searchState.hasMore,
@@ -8160,7 +9047,7 @@
         songSearchAbortController = null;
       }
       if (!fromTyping && !fromLoadMore) {
-        setFetchSubmitState(false, readSongMessage('searchButton', 'Buscar música'));
+        setFetchSubmitState(false, readSongMessage('searchButton'));
       }
     }
   };
@@ -8179,7 +9066,23 @@
     }
   };
 
+  if (songFavoritesSearchInput) {
+    songFavoritesSearchInput.addEventListener('input', () => {
+      songFavoritesSearchQuery = String(songFavoritesSearchInput.value || '');
+      renderSongFavorites();
+    });
+    songFavoritesSearchInput.addEventListener('search', () => {
+      songFavoritesSearchQuery = String(songFavoritesSearchInput.value || '');
+      renderSongFavorites();
+    });
+  }
+
   if (songFavoritesList) {
+    songFavoritesList.addEventListener('wheel', (event) => {
+      // Keep wheel scrolling inside the favorites panel and avoid portal section navigation.
+      event.stopPropagation();
+    }, { passive: true });
+
     songFavoritesList.addEventListener('dragstart', (event) => {
       if (songFavoritesReorderPending) return;
       const target = event.target;
@@ -8417,6 +9320,22 @@
         )
       );
       if (clickedInsideSongModalPre) return;
+      const clickedInsideRosaryModalPre = Boolean(
+        rosaryModal
+        && (
+          (targetElement && targetElement.closest('#rosary-modal'))
+          || eventPathIncludes(rosaryModal)
+        )
+      );
+      if (clickedInsideRosaryModalPre) return;
+      const clickedInsideMysteryGroupModalPre = Boolean(
+        mysteryGroupModal
+        && (
+          (targetElement && targetElement.closest('#mystery-group-modal'))
+          || eventPathIncludes(mysteryGroupModal)
+        )
+      );
+      if (clickedInsideMysteryGroupModalPre) return;
       if (isSongLocationCreateModalOpen()) return;
       const clickedInsideSongSaveLocationPicker = Boolean(
         songSaveLocationPicker
@@ -8444,6 +9363,28 @@
       if (clickedInsideSongModal) return;
       const songModalIsOpen = Boolean(songModal && songModal.classList.contains('open'));
       if (songModalIsOpen) return;
+      const clickedInsideRosaryModal = Boolean(
+        targetElement
+        && rosaryModal
+        && targetElement.closest('#rosary-modal')
+      );
+      if (clickedInsideRosaryModal) return;
+      const rosaryModalIsOpen = Boolean(
+        rosaryModal
+        && rosaryModal.classList.contains('open')
+      );
+      if (rosaryModalIsOpen) return;
+      const clickedInsideMysteryGroupModal = Boolean(
+        targetElement
+        && mysteryGroupModal
+        && targetElement.closest('#mystery-group-modal')
+      );
+      if (clickedInsideMysteryGroupModal) return;
+      const mysteryGroupModalIsOpen = Boolean(
+        mysteryGroupModal
+        && mysteryGroupModal.classList.contains('open')
+      );
+      if (mysteryGroupModalIsOpen) return;
       const clickedInsideFavoriteConfirmModal = Boolean(
         targetElement
         && favoriteConfirmModal
@@ -8492,6 +9433,8 @@
         && (
           (songModal && songModal.classList.contains('open') && targetElement.closest('.song-modal-dialog'))
           || (mysteryModal && mysteryModal.classList.contains('open') && targetElement.closest('.mystery-modal-dialog'))
+          || (mysteryGroupModal && mysteryGroupModal.classList.contains('open') && targetElement.closest('.mystery-group-modal-dialog'))
+          || (rosaryModal && rosaryModal.classList.contains('open') && targetElement.closest('.rosary-modal-dialog'))
           || (
             favoriteConfirmModal
             && favoriteConfirmModal.classList.contains('open')
@@ -8617,6 +9560,16 @@
 
       if (customSongModal && customSongModal.classList.contains('open')) {
         closeCustomSongModal({ preserveDraft: true });
+        return;
+      }
+
+      if (mysteryGroupModal && mysteryGroupModal.classList.contains('open')) {
+        closeMysteryGroupModal({ restoreFocus: true });
+        return;
+      }
+
+      if (rosaryModal && rosaryModal.classList.contains('open')) {
+        closeRosaryModal();
         return;
       }
 

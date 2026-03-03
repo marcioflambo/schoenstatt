@@ -153,17 +153,54 @@
 
       const row = document.createElement('div');
       row.className = 'admin-tree-row';
+      const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+      const childList = hasChildren ? renderTreeNodes(node.children) : null;
+      if (childList) {
+        childList.hidden = true;
+      }
 
-      const label = document.createElement('span');
-      label.className = 'admin-tree-label';
-      label.textContent = node.label || 'Sem nome';
-      if (Array.isArray(node.children) && node.children.length) {
+      const labelText = document.createElement('span');
+      labelText.className = 'admin-tree-label-text';
+      labelText.textContent = node.label || 'Sem nome';
+
+      let labelNode = null;
+      if (hasChildren) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'admin-tree-label admin-tree-toggle';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+        toggleBtn.setAttribute('aria-label', `Exibir filhos de "${node.label || 'Sem nome'}"`);
+
+        const caret = document.createElement('span');
+        caret.className = 'admin-tree-caret';
+        caret.setAttribute('aria-hidden', 'true');
+        toggleBtn.appendChild(caret);
+        toggleBtn.appendChild(labelText);
+
         const meta = document.createElement('span');
         meta.className = 'admin-tree-meta';
         meta.textContent = `(${node.children.length} filho(s))`;
-        label.appendChild(meta);
+        toggleBtn.appendChild(meta);
+
+        toggleBtn.addEventListener('click', () => {
+          if (!childList) return;
+          const nextExpanded = toggleBtn.getAttribute('aria-expanded') !== 'true';
+          toggleBtn.setAttribute('aria-expanded', String(nextExpanded));
+          toggleBtn.setAttribute(
+            'aria-label',
+            `${nextExpanded ? 'Ocultar' : 'Exibir'} filhos de "${node.label || 'Sem nome'}"`
+          );
+          item.classList.toggle('is-expanded', nextExpanded);
+          childList.hidden = !nextExpanded;
+        });
+        labelNode = toggleBtn;
+      } else {
+        const label = document.createElement('span');
+        label.className = 'admin-tree-label';
+        label.appendChild(labelText);
+        labelNode = label;
       }
-      row.appendChild(label);
+      row.appendChild(labelNode);
 
       const addChildBtn = document.createElement('button');
       addChildBtn.type = 'button';
@@ -213,8 +250,8 @@
 
       item.appendChild(row);
 
-      if (Array.isArray(node.children) && node.children.length) {
-        item.appendChild(renderTreeNodes(node.children));
+      if (childList) {
+        item.appendChild(childList);
       }
 
       list.appendChild(item);

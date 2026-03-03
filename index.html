@@ -140,7 +140,7 @@
           <h1></h1>
           <p class="hero-lead"></p>
           <div class="hero-actions">
-            <a href="#roteiro" class="btn btn-primary"></a>
+            <a id="hero-start-rosary-link" href="#roteiro" class="btn btn-primary" data-open-rosary-modal></a>
             <a href="#cantos" class="btn btn-ghost"></a>
           </div>
         </div>
@@ -381,7 +381,17 @@
 
         <article id="song-favorites-card" class="booklet-cantos-card song-favorites-card">
           <header class="booklet-cantos-header song-favorites-header">
-            <h3 id="song-favorites-title"></h3>
+            <div class="song-favorites-header-row">
+              <h3 id="song-favorites-title"></h3>
+              <div class="song-favorites-search-wrap">
+                <input
+                  type="search"
+                  id="song-favorites-search-input"
+                  class="song-favorites-search-input"
+                  aria-label=""
+                  placeholder="">
+              </div>
+            </div>
             <p id="song-favorites-description"></p>
           </header>
           <ul id="song-favorites-list" class="booklet-cantos-list song-favorites-list"></ul>
@@ -390,12 +400,12 @@
         <article id="custom-songs-card" class="booklet-cantos-card custom-songs-card">
           <header class="booklet-cantos-header custom-songs-header">
             <div class="custom-songs-header-row">
-              <h3 id="custom-songs-title">Nossas músicas</h3>
+              <h3 id="custom-songs-title"></h3>
               <button type="button" id="custom-songs-add-btn" class="btn btn-primary custom-songs-add-btn">
-                Adicionar música
+                
               </button>
             </div>
-            <p id="custom-songs-description">Adicione músicas manuais com letra e cifra.</p>
+            <p id="custom-songs-description"></p>
           </header>
           <ul id="custom-songs-list" class="booklet-cantos-list custom-songs-list"></ul>
         </article>
@@ -519,15 +529,35 @@
               type="button"
               id="mystery-modal-song-toggle"
               class="mystery-modal-song-toggle"
-              aria-label="Exibir música do mistério"
-              title="Exibir música do mistério"
+              aria-label=""
+              title=""
             ></button>
           </div>
         </div>
         <p id="mystery-modal-text" class="mystery-modal-text"></p>
         <section id="mystery-modal-song-panel" class="mystery-modal-song-panel" hidden>
-          <p id="mystery-modal-song-title" class="mystery-modal-song-title"></p>
+          <div class="mystery-modal-song-head">
+            <p id="mystery-modal-song-title" class="mystery-modal-song-title"></p>
+            <button
+              type="button"
+              id="mystery-modal-song-close"
+              class="mystery-modal-song-close mystery-jaculatory-close"
+              aria-label=""
+              title=""
+            >
+              &times;
+            </button>
+          </div>
           <pre id="mystery-modal-song-lyrics" class="mystery-modal-song-lyrics"></pre>
+        </section>
+        <section id="mystery-ave-maria-panel" class="mystery-ave-maria-panel">
+          <p class="mystery-ave-maria-title"></p>
+          <div
+            id="mystery-ave-maria-options"
+            class="mystery-ave-maria-options"
+            role="group"
+            aria-label=""
+          ></div>
         </section>
       </div>
       <footer class="mystery-modal-footer">
@@ -559,6 +589,56 @@
     </article>
   </div>
 
+  <div id="mystery-group-modal" class="mystery-group-modal" aria-hidden="true">
+    <div class="mystery-group-modal-backdrop" data-mystery-group-modal-close></div>
+    <article
+      class="mystery-group-modal-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mystery-group-modal-title"
+    >
+      <div class="mystery-group-modal-heading">
+        <h3 id="mystery-group-modal-title"></h3>
+        <button
+          type="button"
+          class="mystery-group-modal-close"
+          data-mystery-group-modal-close
+          aria-label=""
+        >
+          &times;
+        </button>
+      </div>
+      <div
+        id="mystery-group-modal-options"
+        class="mystery-group-modal-options"
+        role="listbox"
+        aria-label=""
+      ></div>
+    </article>
+  </div>
+
+  <div id="rosary-modal" class="mystery-modal rosary-modal" aria-hidden="true">
+    <div class="mystery-modal-backdrop rosary-modal-backdrop" data-rosary-modal-close></div>
+    <article class="mystery-modal-dialog rosary-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rosary-modal-title">
+      <div class="mystery-modal-content rosary-modal-content">
+        <div class="mystery-modal-heading-row rosary-modal-heading-row">
+          <p id="rosary-modal-group" class="mystery-modal-group rosary-modal-group"></p>
+          <button type="button" class="mystery-modal-close rosary-modal-close" data-rosary-modal-close aria-label="">&times;</button>
+        </div>
+        <div class="mystery-modal-heading rosary-modal-heading">
+          <div class="mystery-modal-title-row rosary-modal-title-row">
+            <h3 id="rosary-modal-title"></h3>
+          </div>
+        </div>
+        <p id="rosary-modal-step-text" class="mystery-modal-text rosary-modal-step-text"></p>
+        <nav id="rosary-modal-dots" class="rosary-modal-dots" aria-label=""></nav>
+      </div>
+      <footer class="mystery-modal-footer rosary-modal-footer">
+        <p id="rosary-modal-step-counter" class="rosary-modal-step-counter"></p>
+      </footer>
+    </article>
+  </div>
+
   <div id="favorite-confirm-modal" class="favorite-confirm-modal" aria-hidden="true">
     <div class="favorite-confirm-backdrop" data-favorite-confirm-close></div>
     <article
@@ -572,7 +652,7 @@
       <p id="favorite-confirm-message"></p>
       <div id="favorite-confirm-password-wrap" class="favorite-confirm-password-wrap" hidden>
         <label id="favorite-confirm-password-label" class="favorite-confirm-password-label" for="favorite-confirm-password-input">
-          Senha
+          
         </label>
         <input
           type="password"
@@ -599,12 +679,12 @@
       aria-labelledby="mystery-song-assign-title"
     >
       <div class="mystery-song-assign-heading-row">
-        <h3 id="mystery-song-assign-title">Adicionar música ao mistério</h3>
+        <h3 id="mystery-song-assign-title"></h3>
         <button
           type="button"
           class="mystery-song-assign-close"
           data-mystery-song-assign-close
-          aria-label="Fechar"
+          aria-label=""
         >
           &times;
         </button>
@@ -619,14 +699,14 @@
       <div class="song-save-location-picker-head-main">
         <p id="song-save-location-picker-song" class="song-save-location-picker-song"></p>
         <div class="song-save-location-picker-breadcrumb-row">
-          <p id="song-save-location-picker-breadcrumb" class="song-save-location-picker-breadcrumb">Selecione o caminho</p>
+          <p id="song-save-location-picker-breadcrumb" class="song-save-location-picker-breadcrumb"></p>
         </div>
       </div>
       <button
         type="button"
         id="song-save-location-picker-close"
         class="song-save-location-picker-close"
-        aria-label="Fechar seleção"
+        aria-label=""
       >
         &times;
       </button>
@@ -636,8 +716,8 @@
         type="search"
         id="song-save-location-picker-search"
         class="song-save-location-picker-search"
-        placeholder="Buscar categoria ou local..."
-        aria-label="Buscar local de salvamento"
+        placeholder=""
+        aria-label=""
         autocomplete="off"
       />
       <button
@@ -646,7 +726,7 @@
         class="song-save-location-picker-back"
         hidden
       >
-        Voltar
+        
       </button>
     </div>
     <div id="song-save-location-picker-list" class="song-save-location-picker-list"></div>
@@ -661,22 +741,22 @@
       aria-labelledby="custom-song-modal-title"
     >
       <header class="custom-song-header">
-        <h3 id="custom-song-modal-title">Nova música manual</h3>
-        <button type="button" id="custom-song-modal-close" class="custom-song-close" data-custom-song-modal-close aria-label="Fechar">&times;</button>
+        <h3 id="custom-song-modal-title"></h3>
+        <button type="button" id="custom-song-modal-close" class="custom-song-close" data-custom-song-modal-close aria-label="">&times;</button>
       </header>
 
       <div class="custom-song-fields">
         <label class="custom-song-field">
-          <span id="custom-song-title-label">Título</span>
+          <span id="custom-song-title-label"></span>
           <input id="custom-song-title-input" class="custom-song-input" type="text" maxlength="160" />
         </label>
         <label class="custom-song-field custom-song-field-key">
-          <span id="custom-song-key-label">Tom</span>
+          <span id="custom-song-key-label"></span>
           <input id="custom-song-key-input" class="custom-song-input" type="text" maxlength="18" />
         </label>
       </div>
 
-      <nav class="custom-song-tabs" aria-label="Editor">
+      <nav class="custom-song-tabs" aria-label="">
         <button
           type="button"
           id="custom-song-tab-lyrics"
@@ -685,7 +765,7 @@
           aria-controls="custom-song-panel-lyrics"
           aria-selected="true"
         >
-          Música
+          
         </button>
         <button
           type="button"
@@ -695,25 +775,25 @@
           aria-controls="custom-song-panel-chords"
           aria-selected="false"
         >
-          Cifras
+          
         </button>
       </nav>
 
       <section id="custom-song-panel-lyrics" class="custom-song-panel" data-custom-song-panel="lyrics">
-        <label class="custom-song-panel-label" for="custom-song-lyrics-input" id="custom-song-lyrics-label">Texto da música</label>
+        <label class="custom-song-panel-label" for="custom-song-lyrics-input" id="custom-song-lyrics-label"></label>
         <textarea id="custom-song-lyrics-input" class="custom-song-textarea" rows="10"></textarea>
       </section>
 
       <section id="custom-song-panel-chords" class="custom-song-panel" data-custom-song-panel="chords" hidden>
-        <label class="custom-song-panel-label" for="custom-song-chords-input" id="custom-song-chords-label">Texto da cifra</label>
+        <label class="custom-song-panel-label" for="custom-song-chords-input" id="custom-song-chords-label"></label>
         <textarea id="custom-song-chords-input" class="custom-song-textarea" rows="10"></textarea>
       </section>
 
       <p id="custom-song-draft-status" class="custom-song-draft-status" aria-live="polite"></p>
 
       <footer class="custom-song-footer">
-        <button type="button" id="custom-song-cancel-btn" class="btn btn-ghost" data-custom-song-modal-close>Cancelar</button>
-        <button type="button" id="custom-song-save-btn" class="btn btn-primary">Salvar música</button>
+        <button type="button" id="custom-song-cancel-btn" class="btn btn-ghost" data-custom-song-modal-close></button>
+        <button type="button" id="custom-song-save-btn" class="btn btn-primary"></button>
       </footer>
     </article>
   </div>

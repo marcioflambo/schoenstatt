@@ -722,6 +722,16 @@
       <div class="song-save-location-picker-head-main">
         <p id="song-save-location-picker-song" class="song-save-location-picker-song"></p>
         <div class="song-save-location-picker-breadcrumb-row">
+          <button
+            type="button"
+            id="song-save-location-picker-add"
+            class="song-save-location-picker-add"
+            aria-label="Adicionar item"
+            title="Adicionar item"
+            hidden
+          >
+            +
+          </button>
           <p id="song-save-location-picker-breadcrumb" class="song-save-location-picker-breadcrumb"></p>
         </div>
       </div>
@@ -753,6 +763,39 @@
       </button>
     </div>
     <div id="song-save-location-picker-list" class="song-save-location-picker-list"></div>
+  </div>
+
+  <div id="song-location-create-modal" class="song-location-create-modal" aria-hidden="true">
+    <div class="song-location-create-backdrop" data-song-location-create-close></div>
+    <article
+      class="song-location-create-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="song-location-create-title"
+    >
+      <h3 id="song-location-create-title"></h3>
+      <p id="song-location-create-target-hint"></p>
+      <select id="song-location-create-parent" class="song-location-create-parent"></select>
+      <p id="song-location-create-hint"></p>
+      <input
+        id="song-location-create-input"
+        class="song-location-create-input"
+        type="text"
+        maxlength="120"
+        autocomplete="off"
+      />
+      <footer class="song-location-create-actions">
+        <button
+          type="button"
+          id="song-location-create-cancel"
+          class="btn btn-ghost"
+          data-song-location-create-close
+        >
+          Cancelar
+        </button>
+        <button type="button" id="song-location-create-accept" class="btn btn-primary">Adicionar</button>
+      </footer>
+    </article>
   </div>
 
   <div id="custom-song-modal" class="custom-song-modal" aria-hidden="true">

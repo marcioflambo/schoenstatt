@@ -42,6 +42,7 @@ class Settings:
     custom_songs_file: Path
     mystery_song_assignments_file: Path
     song_locations_file: Path
+    song_location_user_nodes_file: Path
     song_location_assignments_file: Path
     song_location_delete_password: str
     spotify_client_id: str
@@ -125,6 +126,16 @@ def _resolve_song_location_assignments_file() -> Path:
     return PROJECT_DIR / 'data' / 'song_location_assignments.json'
 
 
+def _resolve_song_location_user_nodes_file() -> Path:
+    custom_path = os.getenv('SONG_LOCATION_USER_NODES_FILE', '').strip()
+    if custom_path:
+        resolved = Path(custom_path).expanduser()
+        if not resolved.is_absolute():
+            resolved = PROJECT_DIR / resolved
+        return resolved
+    return PROJECT_DIR / 'data' / 'song_location_user_nodes.json'
+
+
 def get_settings() -> Settings:
     return Settings(
         database_url=_build_database_url(),
@@ -134,6 +145,7 @@ def get_settings() -> Settings:
         custom_songs_file=_resolve_custom_songs_file(),
         mystery_song_assignments_file=_resolve_mystery_song_assignments_file(),
         song_locations_file=_resolve_song_locations_file(),
+        song_location_user_nodes_file=_resolve_song_location_user_nodes_file(),
         song_location_assignments_file=_resolve_song_location_assignments_file(),
         song_location_delete_password=os.getenv('SONG_LOCATION_DELETE_PASSWORD', 'FL@MB0'),
         spotify_client_id=os.getenv('SPOTIFY_CLIENT_ID', '').strip(),

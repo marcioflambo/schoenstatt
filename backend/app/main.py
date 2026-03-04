@@ -46,6 +46,10 @@ from .song_location_assignments import (
     list_song_location_assignments,
     upsert_song_location_assignment,
 )
+from .song_location_user_nodes import (
+    create_song_location_user_node,
+    list_song_location_user_nodes,
+)
 from .song_locations import (
     SongLocationNodeCreateRequest,
     SongLocationNodeReorderRequest,
@@ -192,6 +196,175 @@ def _is_song_identity_match(left_identity: dict[str, str], right_identity: dict[
     return bool(left_title and right_title and left_title == right_title)
 
 
+def _normalize_spaces(value: str | None) -> str:
+    return ' '.join((value or '').split()).strip()
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_bool(value: object, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = _normalize_spaces(value).lower()
+        if not normalized:
+            return default
+        if normalized in {'0', 'false', 'no', 'nao', 'off', 'inativo', 'inactive'}:
+            return False
+        if normalized in {'1', 'true', 'yes', 'sim', 'on', 'ativo', 'active'}:
+            return True
+    return default
+
+
+def _normalize_song_location_node_row(raw_node: object) -> dict[str, object] | None:
+    if not isinstance(raw_node, dict):
+        return None
+    node_id = _normalize_spaces(str(raw_node.get('node_id') or raw_node.get('nodeId') or raw_node.get('id') or ''))
+    label = _normalize_spaces(str(raw_node.get('label') or ''))
+    if not node_id or not label:
+        return None
+
+    assignment_mode = _normalize_spaces(
+        str(raw_node.get('assignment_mode') or raw_node.get('assignmentMode') or 'location')
+    ).lower()
+    if assignment_mode != 'mystery':
+        assignment_mode = 'location'
+
+    mystery_group_title = _normalize_spaces(
+        str(raw_node.get('mystery_group_title') or raw_node.get('mysteryGroupTitle') or '')
+    )
+    mystery_title = _normalize_spaces(str(raw_node.get('mystery_title') or raw_node.get('mysteryTitle') or ''))
+    if assignment_mode != 'mystery':
+        mystery_group_title = ''
+        mystery_title = ''
+
+    return {
+        'node_id': node_id,
+        'parent_id': _normalize_spaces(str(raw_node.get('parent_id') or raw_node.get('parentId') or '')),
+        'label': label,
+        'order_index': max(_coerce_int(raw_node.get('order_index') or raw_node.get('orderIndex'), 0), 1),
+        'assignment_mode': assignment_mode,
+        'mystery_group_title': mystery_group_title,
+        'mystery_title': mystery_title,
+        'is_active': _coerce_bool(
+            raw_node.get('is_active') if 'is_active' in raw_node else raw_node.get('isActive'),
+            default=True,
+        ),
+        'deleted_at_utc': str(raw_node.get('deleted_at_utc') or raw_node.get('deletedAtUtc') or ''),
+        'created_at_utc': str(raw_node.get('created_at_utc') or raw_node.get('createdAtUtc') or ''),
+        'updated_at_utc': str(raw_node.get('updated_at_utc') or raw_node.get('updatedAtUtc') or ''),
+    }
+
+
+def _song_location_row_to_payload(row: dict[str, object]) -> dict[str, object]:
+    return {
+        'node_id': row.get('node_id') or '',
+        'parent_id': row.get('parent_id') or '',
+        'label': row.get('label') or '',
+        'order_index': _coerce_int(row.get('order_index'), 0),
+        'assignment_mode': row.get('assignment_mode') or 'location',
+        'mystery_group_title': row.get('mystery_group_title') or '',
+        'mystery_title': row.get('mystery_title') or '',
+        'is_active': _coerce_bool(row.get('is_active'), default=True),
+        'deleted_at_utc': row.get('deleted_at_utc') or None,
+        'created_at_utc': row.get('created_at_utc') or None,
+        'updated_at_utc': row.get('updated_at_utc') or None,
+    }
+
+
+def _sort_song_location_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    sorted_rows = [
+        _normalize_song_location_node_row(item)
+        for item in rows
+    ]
+    safe_rows = [
+        row
+        for row in sorted_rows
+        if isinstance(row, dict) and row.get('node_id') and row.get('label')
+    ]
+    safe_rows.sort(
+        key=lambda row: (
+            str(row.get('parent_id') or ''),
+            _coerce_int(row.get('order_index'), 0),
+            str(row.get('label') or ''),
+            str(row.get('node_id') or ''),
+        )
+    )
+    return safe_rows
+
+
+def _build_song_location_tree_payload(rows: list[dict[str, object]], include_inactive: bool = False) -> dict[str, object]:
+    sorted_rows = _sort_song_location_rows(rows)
+    visible_rows = sorted_rows if include_inactive else [
+        row
+        for row in sorted_rows
+        if _coerce_bool(row.get('is_active'), default=True)
+    ]
+
+    nodes_by_id = {str(row.get('node_id') or ''): _song_location_row_to_payload(row) for row in visible_rows}
+    children_map: dict[str, list[str]] = {}
+    root_ids: list[str] = []
+    for row in visible_rows:
+        node_id = str(row.get('node_id') or '')
+        parent_id = str(row.get('parent_id') or '')
+        if not node_id:
+            continue
+        if parent_id and parent_id in nodes_by_id:
+            children_map.setdefault(parent_id, []).append(node_id)
+        else:
+            root_ids.append(node_id)
+
+    def build_node(node_id: str) -> dict[str, object]:
+        payload = dict(nodes_by_id.get(node_id) or {})
+        child_ids = children_map.get(node_id, [])
+        children = [build_node(child_id) for child_id in child_ids]
+        payload['children'] = children
+        payload['has_children'] = bool(children)
+        return payload
+
+    return {
+        'count': len(visible_rows),
+        'nodes': [_song_location_row_to_payload(row) for row in visible_rows],
+        'tree': [build_node(node_id) for node_id in root_ids],
+    }
+
+
+def _merge_song_location_payloads(
+    base_payload: dict[str, object],
+    user_rows_payload: list[dict[str, object]],
+    *,
+    include_inactive: bool = False,
+) -> dict[str, object]:
+    merged_by_id: dict[str, dict[str, object]] = {}
+    base_nodes = base_payload.get('nodes')
+    if isinstance(base_nodes, list):
+        for raw_node in base_nodes:
+            normalized = _normalize_song_location_node_row(raw_node)
+            if not normalized:
+                continue
+            merged_by_id[str(normalized.get('node_id') or '')] = normalized
+
+    for raw_node in user_rows_payload:
+        normalized = _normalize_song_location_node_row(raw_node)
+        if not normalized:
+            continue
+        merged_by_id[str(normalized.get('node_id') or '')] = normalized
+
+    return _build_song_location_tree_payload(
+        list(merged_by_id.values()),
+        include_inactive=include_inactive,
+    )
+
+
 def _resolve_song_usage_labels(
     favorite_payload: dict[str, object],
     mystery_assignments: list[dict[str, object]],
@@ -267,6 +440,7 @@ def api_health() -> dict[str, object]:
         'custom_songs_store': str(settings.custom_songs_file),
         'mystery_song_assignments_store': str(settings.mystery_song_assignments_file),
         'song_locations_store': str(settings.song_locations_file),
+        'song_location_user_nodes_store': str(settings.song_location_user_nodes_file),
         'song_location_assignments_store': str(settings.song_location_assignments_file),
     }
 
@@ -497,13 +671,33 @@ def api_mystery_song_assignments_delete(
 
 
 @app.get('/api/song-locations')
-def api_song_locations_list(include_inactive: bool = Query(False)) -> dict[str, object]:
+def api_song_locations_list(
+    include_inactive: bool = Query(False),
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = ''
+    if _normalize_spaces(authorization):
+        store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
-        payload = list_song_location_tree(
+        base_payload = list_song_location_tree(
             settings.song_locations_file,
             portal_content_file=PORTAL_CONTENT_FILE,
             include_inactive=include_inactive,
         )
+        if store_namespace:
+            user_nodes = list_song_location_user_nodes(
+                settings.song_location_user_nodes_file,
+                include_inactive=include_inactive,
+                database_url=settings.database_url,
+                store_namespace=store_namespace,
+            )
+            payload = _merge_song_location_payloads(
+                base_payload,
+                user_nodes,
+                include_inactive=include_inactive,
+            )
+        else:
+            payload = base_payload
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
 
@@ -514,12 +708,45 @@ def api_song_locations_list(include_inactive: bool = Query(False)) -> dict[str, 
 
 
 @app.post('/api/song-locations/nodes')
-def api_song_locations_create_node(payload: SongLocationNodeCreateRequest) -> dict[str, object]:
+def api_song_locations_create_node(
+    payload: SongLocationNodeCreateRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
-        node = create_song_location_node(
+        global_payload = list_song_location_tree(
             settings.song_locations_file,
-            payload,
             portal_content_file=PORTAL_CONTENT_FILE,
+            include_inactive=True,
+        )
+        user_nodes = list_song_location_user_nodes(
+            settings.song_location_user_nodes_file,
+            include_inactive=True,
+            database_url=settings.database_url,
+            store_namespace=store_namespace,
+        )
+        merged_payload = _merge_song_location_payloads(
+            global_payload,
+            user_nodes,
+            include_inactive=True,
+        )
+        valid_parent_ids = {
+            _normalize_spaces(str(row.get('node_id') or row.get('nodeId') or row.get('id') or ''))
+            for row in (merged_payload.get('nodes') if isinstance(merged_payload.get('nodes'), list) else [])
+            if isinstance(row, dict)
+            and _normalize_spaces(str(row.get('node_id') or row.get('nodeId') or row.get('id') or ''))
+            and _coerce_bool(
+                row.get('is_active') if 'is_active' in row else row.get('isActive'),
+                default=True,
+            )
+        }
+
+        node = create_song_location_user_node(
+            settings.song_location_user_nodes_file,
+            payload,
+            valid_parent_ids=valid_parent_ids,
+            database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc

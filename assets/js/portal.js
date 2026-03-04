@@ -678,6 +678,17 @@
       'title',
       readMysteryMessage('assignCategoryCloseAria')
     );
+    setNodeText('#song-save-location-picker-add', '+');
+    setNodeAttr(
+      '#song-save-location-picker-add',
+      'aria-label',
+      readMysteryMessage('assignCategoryAddPromptRoot')
+    );
+    setNodeAttr(
+      '#song-save-location-picker-add',
+      'title',
+      readMysteryMessage('assignCategoryAddPromptRoot')
+    );
 
     setNodeText('#oracoes .section-header .section-kicker', content.oracoes?.header?.kicker);
     setNodeText('#oracoes .section-header h2', content.oracoes?.header?.title);
@@ -2388,6 +2399,7 @@
     }
 
     removeCachedMysterySongAssignment(safeGroupTitle, safeMysteryTitle);
+    runDeferredTask(fetchSongFavorites, 80);
     updateMysteryModalSongToggleState();
     return Boolean(responsePayload.removed);
   };
@@ -2463,6 +2475,14 @@
   };
 
   const createSongLocationNodeOnServer = async (label, parentId = '') => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para criar listas na sua árvore.',
+      notify: true,
+      openLoginModal: true,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeLabel = String(label || '').trim();
     if (!safeLabel) {
       throw new Error(readMysteryMessage('assignCategoryAddInvalid'));
@@ -2470,15 +2490,19 @@
     const safeParentId = String(parentId || '').trim();
     const response = await fetch('/api/song-locations/nodes', {
       method: 'POST',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         parent_id: safeParentId || '',
         label: safeLabel,
       }),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         responsePayload?.detail?.message
@@ -2613,6 +2637,7 @@
     }
 
     removeCachedSongLocationAssignment(safeLocationId);
+    runDeferredTask(fetchSongFavorites, 80);
     return Boolean(responsePayload.removed);
   };
 
@@ -2626,8 +2651,15 @@
     if (songLocationTreeLoading) return false;
     songLocationTreeLoading = true;
     try {
-      const response = await fetch('/api/song-locations');
-      const payload = asObject(await response.json().catch(() => ({})));
+      let response = await fetch('/api/song-locations', {
+        headers: buildUserScopedApiHeaders(),
+      });
+      let payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        response = await fetch('/api/song-locations');
+        payload = asObject(await response.json().catch(() => ({})));
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(
           payload?.detail?.message
@@ -3582,9 +3614,18 @@
       songSaveLocationPickerBackBtn.hidden = !canGoBack;
     }
     if (songSaveLocationPickerAddBtn) {
-      // Adicao via portal removida: gestao de criacao/exclusao agora e apenas na URI admin.
-      songSaveLocationPickerAddBtn.hidden = true;
-      songSaveLocationPickerAddBtn.disabled = true;
+      const canAdd = isAuthLoggedIn() && !isSearching;
+      songSaveLocationPickerAddBtn.hidden = !canAdd;
+      songSaveLocationPickerAddBtn.disabled = !canAdd;
+      if (canAdd) {
+        songSaveLocationPickerAddBtn.dataset.parentId = currentParentId;
+        songSaveLocationPickerAddBtn.dataset.parentLabel = String(currentParentNode?.label || '')
+          .trim()
+          .replace(/\s+/g, ' ');
+      } else {
+        delete songSaveLocationPickerAddBtn.dataset.parentId;
+        delete songSaveLocationPickerAddBtn.dataset.parentLabel;
+      }
     }
     if (songSaveLocationPickerBreadcrumb) {
       songSaveLocationPickerBreadcrumb.textContent = isSearching
@@ -4007,6 +4048,8 @@
               }
 
               refreshAssignListAfterMutation();
+              renderSongSaveLocationPicker();
+              renderSongFavorites();
               showSongToast(
                 readMysteryMessage('assignRemoveSuccess'),
                 'is-success'
@@ -4046,6 +4089,8 @@
             updateMysteryModalSongToggleState();
           }
           refreshAssignListAfterMutation();
+          renderSongSaveLocationPicker();
+          renderSongFavorites();
           showSongToast(
             readMysteryMessage('assignSuccess'),
             'is-success'
@@ -7793,8 +7838,8 @@
           : null;
         void openSongSaveLocationPicker(buildSongPayloadFromFavorite(favorite), assignFromFavoriteBtn, openOptions);
       });
-      const headActions = document.createElement('div');
-      headActions.className = 'song-search-actions song-favorite-head-actions';
+      const footerActions = document.createElement('div');
+      footerActions.className = 'song-search-actions song-favorite-actions';
 
       const meta = document.createElement('p');
       meta.className = 'booklet-cantos-meta';
@@ -7894,16 +7939,8 @@
         void openSongSaveLocationPicker(buildSongPayloadFromFavorite(favorite), assignMysteryAction, openOptions);
       });
 
-      headActions.appendChild(spotifyAction);
-      headActions.appendChild(youtubeAction);
-      headActions.appendChild(lyricAction);
-      headActions.appendChild(chordAction);
-      headActions.appendChild(favoriteAction);
-      headActions.appendChild(assignMysteryAction);
-
       head.appendChild(coverButton);
       head.appendChild(assignFromFavoriteBtn);
-      head.appendChild(headActions);
       item.appendChild(head);
       item.appendChild(meta);
       const usageLabels = dedupeUsageLabels([
@@ -7917,6 +7954,13 @@
         usageNode.textContent = usageLabels.join(' | ');
         item.appendChild(usageNode);
       }
+      footerActions.appendChild(spotifyAction);
+      footerActions.appendChild(youtubeAction);
+      footerActions.appendChild(lyricAction);
+      footerActions.appendChild(chordAction);
+      footerActions.appendChild(favoriteAction);
+      footerActions.appendChild(assignMysteryAction);
+      item.appendChild(footerActions);
       songFavoritesList.appendChild(item);
     });
     scheduleSongFavoritesLayoutSync();
@@ -8680,6 +8724,8 @@
   const clearUserScopedSongData = () => {
     songFavoritesLoading = false;
     applySongFavorites([]);
+    songLocationTreeLoading = false;
+    songLocationTreeRoots = [];
     mysterySongAssignmentsLoading = false;
     mysterySongAssignments = {};
     songLocationAssignmentsLoading = false;
@@ -8690,6 +8736,7 @@
     updateMysteryModalSongToggleState();
     renderSongFavorites();
     renderSongSaveLocationPicker();
+    runDeferredTask(fetchSongLocationTree, 40);
   };
 
   const refreshUserScopedSongData = (baseDelay = 0) => {
@@ -8700,8 +8747,9 @@
     const safeDelay = Number.isFinite(baseDelay) ? Math.max(0, Math.trunc(baseDelay)) : 0;
     runDeferredTask(fetchSongFavorites, safeDelay + 40);
     runDeferredTask(fetchMysterySongAssignments, safeDelay + 80);
-    runDeferredTask(fetchSongLocationAssignments, safeDelay + 120);
-    runDeferredTask(fetchCustomSongs, safeDelay + 160);
+    runDeferredTask(fetchSongLocationTree, safeDelay + 120);
+    runDeferredTask(fetchSongLocationAssignments, safeDelay + 160);
+    runDeferredTask(fetchCustomSongs, safeDelay + 200);
   };
 
   const setCustomSongTab = (tabName) => {

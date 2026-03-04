@@ -4404,10 +4404,11 @@ body.theme-dark .song-location-create-input:focus-visible {
 }
 
 .song-favorite-item {
+  display: flex;
+  flex-direction: column;
   padding: 8px 10px;
   gap: 5px;
   height: 100%;
-  align-content: start;
 }
 
 .song-favorite-item.is-sortable {
@@ -4440,16 +4441,14 @@ body.theme-dark .song-location-create-input:focus-visible {
 }
 
 .song-favorite-head {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
 .song-favorite-cover-btn {
-  order: 2;
-  flex: 0 0 44px;
   width: 44px;
   height: 44px;
   min-width: 44px;
@@ -4478,8 +4477,6 @@ body.theme-dark .song-location-create-input:focus-visible {
 }
 
 .song-favorite-title-btn {
-  order: 3;
-  flex: 1 1 calc(100% - 50px);
   border: 0;
   background: transparent;
   color: inherit;
@@ -4487,7 +4484,7 @@ body.theme-dark .song-location-create-input:focus-visible {
   margin: 0;
   text-align: left;
   min-width: 0;
-  width: auto;
+  width: 100%;
   font: inherit;
   cursor: pointer;
 }
@@ -4575,8 +4572,9 @@ body.theme-dark .song-location-create-input:focus-visible {
 }
 
 .song-favorite-actions {
-  margin-top: 3px;
+  margin-top: auto;
   padding-left: 0;
+  padding-top: 4px;
   width: 100%;
   display: flex;
   justify-content: flex-end;
@@ -4591,7 +4589,8 @@ body.theme-dark .song-location-create-input:focus-visible {
 }
 
 .song-favorite-actions .song-search-action.song-search-action-external,
-.song-favorite-actions .song-search-action.song-search-action-favorite {
+.song-favorite-actions .song-search-action.song-search-action-favorite,
+.song-favorite-actions .song-search-action.song-search-action-assign-mystery {
   width: 24px;
   min-width: 24px;
   min-height: 30px;

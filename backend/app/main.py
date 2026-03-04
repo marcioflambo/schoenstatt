@@ -4,12 +4,23 @@ from hmac import compare_digest
 from pathlib import Path
 import unicodedata
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .auth import (
+    AuthAccountUpdateRequest,
+    AuthLoginRequest,
+    AuthRegisterRequest,
+    delete_authenticated_user,
+    get_authenticated_user,
+    login_user,
+    logout_user,
+    register_user,
+    update_authenticated_user,
+)
 from .config import PROJECT_DIR, settings
 from .custom_songs import (
     CustomSongReorderRequest,
@@ -94,6 +105,33 @@ PORTAL_CONTENT_FILE = PROJECT_DIR / 'assets' / 'data' / 'portal-content.json'
 
 class AdminLoginRequest(BaseModel):
     password: str = ''
+
+
+def _extract_bearer_token(authorization_header: str | None) -> str:
+    raw_header = str(authorization_header or '').strip()
+    if not raw_header:
+        raise HTTPException(status_code=401, detail={'message': 'Autenticacao obrigatoria.'})
+
+    scheme, _, token = raw_header.partition(' ')
+    if scheme.lower() != 'bearer' or not token.strip():
+        raise HTTPException(status_code=401, detail={'message': 'Token de autenticacao invalido.'})
+
+    return token.strip()
+
+
+def _resolve_user_store_namespace_from_auth_header(authorization_header: str | None) -> str:
+    token = _extract_bearer_token(authorization_header)
+    try:
+        user_payload = get_authenticated_user(settings.database_url, token)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    store_namespace = ' '.join(str(user_payload.get('guid') or '').split()).strip()
+    if not store_namespace:
+        raise HTTPException(status_code=401, detail={'message': 'Sessao invalida.'})
+    return store_namespace
 
 
 def _assert_admin_password(password: str | None) -> None:
@@ -253,19 +291,23 @@ def api_songs_status() -> dict[str, object]:
 
 
 @app.get('/api/songs/favorites')
-def api_song_favorites_list() -> dict[str, object]:
+def api_song_favorites_list(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         favorites = list_song_favorites(
             settings.song_favorites_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
         mystery_assignments = list_mystery_song_assignments(
             settings.mystery_song_assignments_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
         location_assignments = list_song_location_assignments(
             settings.song_location_assignments_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
 
         synced_favorites: list[dict[str, object]] = []
@@ -291,6 +333,7 @@ def api_song_favorites_list() -> dict[str, object]:
                     favorite_id,
                     usage_locations,
                     database_url=settings.database_url,
+                    store_namespace=store_namespace,
                 )
                 if isinstance(updated_favorite, dict):
                     synced_favorites.append(updated_favorite)
@@ -311,12 +354,17 @@ def api_song_favorites_list() -> dict[str, object]:
 
 
 @app.post('/api/songs/favorites')
-def api_song_favorites_save(payload: SongFavoriteCreateRequest) -> dict[str, object]:
+def api_song_favorites_save(
+    payload: SongFavoriteCreateRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         favorite = save_song_favorite(
             settings.song_favorites_file,
             payload,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -330,12 +378,17 @@ def api_song_favorites_save(payload: SongFavoriteCreateRequest) -> dict[str, obj
 
 
 @app.delete('/api/songs/favorites')
-def api_song_favorites_delete(url: str = Query(..., min_length=1)) -> dict[str, object]:
+def api_song_favorites_delete(
+    url: str = Query(..., min_length=1),
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         removed = delete_song_favorite(
             settings.song_favorites_file,
             url,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -349,12 +402,17 @@ def api_song_favorites_delete(url: str = Query(..., min_length=1)) -> dict[str, 
 
 
 @app.put('/api/songs/favorites/order')
-def api_song_favorites_reorder(payload: SongFavoriteReorderRequest) -> dict[str, object]:
+def api_song_favorites_reorder(
+    payload: SongFavoriteReorderRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         favorites = reorder_song_favorites(
             settings.song_favorites_file,
             payload.ordered_ids,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -369,11 +427,13 @@ def api_song_favorites_reorder(payload: SongFavoriteReorderRequest) -> dict[str,
 
 
 @app.get('/api/mysteries/song-assignments')
-def api_mystery_song_assignments_list() -> dict[str, object]:
+def api_mystery_song_assignments_list(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         assignments = list_mystery_song_assignments(
             settings.mystery_song_assignments_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -386,13 +446,18 @@ def api_mystery_song_assignments_list() -> dict[str, object]:
 
 
 @app.post('/api/mysteries/song-assignments')
-def api_mystery_song_assignments_upsert(payload: MysterySongAssignmentUpsertRequest) -> dict[str, object]:
+def api_mystery_song_assignments_upsert(
+    payload: MysterySongAssignmentUpsertRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         assignment = upsert_mystery_song_assignment(
             settings.mystery_song_assignments_file,
             payload,
             favorites_file=settings.song_favorites_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -409,13 +474,16 @@ def api_mystery_song_assignments_upsert(payload: MysterySongAssignmentUpsertRequ
 def api_mystery_song_assignments_delete(
     group_title: str = Query(..., min_length=1),
     mystery_title: str = Query(..., min_length=1),
+    authorization: str = Header('', alias='Authorization'),
 ) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         removed = delete_mystery_song_assignment(
             settings.mystery_song_assignments_file,
             group_title,
             mystery_title,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -435,7 +503,6 @@ def api_song_locations_list(include_inactive: bool = Query(False)) -> dict[str, 
             settings.song_locations_file,
             portal_content_file=PORTAL_CONTENT_FILE,
             include_inactive=include_inactive,
-            database_url=settings.database_url,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -453,7 +520,6 @@ def api_song_locations_create_node(payload: SongLocationNodeCreateRequest) -> di
             settings.song_locations_file,
             payload,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -474,7 +540,6 @@ def api_song_locations_update_node(node_id: str, payload: SongLocationNodeUpdate
             node_id,
             payload,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         message = str(exc)
@@ -508,7 +573,6 @@ def api_song_locations_delete_node(
             settings.song_locations_file,
             node_id,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         message = str(exc)
@@ -530,7 +594,6 @@ def api_song_locations_restore_node(node_id: str) -> dict[str, object]:
             settings.song_locations_file,
             node_id,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         message = str(exc)
@@ -552,7 +615,6 @@ def api_song_locations_reorder_nodes(payload: SongLocationNodeReorderRequest) ->
             settings.song_locations_file,
             payload,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -567,11 +629,13 @@ def api_song_locations_reorder_nodes(payload: SongLocationNodeReorderRequest) ->
 
 
 @app.get('/api/song-locations/assignments')
-def api_song_location_assignments_list() -> dict[str, object]:
+def api_song_location_assignments_list(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         assignments = list_song_location_assignments(
             settings.song_location_assignments_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -584,13 +648,18 @@ def api_song_location_assignments_list() -> dict[str, object]:
 
 
 @app.post('/api/song-locations/assignments')
-def api_song_location_assignments_upsert(payload: SongLocationAssignmentUpsertRequest) -> dict[str, object]:
+def api_song_location_assignments_upsert(
+    payload: SongLocationAssignmentUpsertRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         assignment = upsert_song_location_assignment(
             settings.song_location_assignments_file,
             payload,
             favorites_file=settings.song_favorites_file,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -604,12 +673,17 @@ def api_song_location_assignments_upsert(payload: SongLocationAssignmentUpsertRe
 
 
 @app.delete('/api/song-locations/assignments')
-def api_song_location_assignments_delete(location_id: str = Query(..., min_length=1)) -> dict[str, object]:
+def api_song_location_assignments_delete(
+    location_id: str = Query(..., min_length=1),
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         removed = delete_song_location_assignment(
             settings.song_location_assignments_file,
             location_id,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -630,6 +704,125 @@ def api_admin_login(payload: AdminLoginRequest) -> dict[str, object]:
     }
 
 
+@app.post('/api/auth/register')
+def api_auth_register(payload: AuthRegisterRequest, request: Request) -> dict[str, object]:
+    try:
+        auth_payload = register_user(
+            settings.database_url,
+            payload,
+            session_days=settings.auth_session_days,
+            user_agent=request.headers.get('user-agent', ''),
+            forwarded_for=request.headers.get('x-forwarded-for', ''),
+            client_ip=request.client.host if request.client else '',
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **auth_payload,
+    }
+
+
+@app.post('/api/auth/login')
+def api_auth_login(payload: AuthLoginRequest, request: Request) -> dict[str, object]:
+    try:
+        auth_payload = login_user(
+            settings.database_url,
+            payload,
+            session_days=settings.auth_session_days,
+            user_agent=request.headers.get('user-agent', ''),
+            forwarded_for=request.headers.get('x-forwarded-for', ''),
+            client_ip=request.client.host if request.client else '',
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **auth_payload,
+    }
+
+
+@app.get('/api/auth/me')
+def api_auth_me(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    token = _extract_bearer_token(authorization)
+
+    try:
+        user_payload = get_authenticated_user(settings.database_url, token)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'user': user_payload,
+    }
+
+
+@app.put('/api/auth/me')
+def api_auth_me_update(
+    payload: AuthAccountUpdateRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    token = _extract_bearer_token(authorization)
+
+    try:
+        user_payload = update_authenticated_user(settings.database_url, token, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'user': user_payload,
+    }
+
+
+@app.delete('/api/auth/me')
+def api_auth_me_delete(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    token = _extract_bearer_token(authorization)
+
+    try:
+        deleted = delete_authenticated_user(settings.database_url, token)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'deleted': deleted,
+    }
+
+
+@app.post('/api/auth/logout')
+def api_auth_logout(authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    token = _extract_bearer_token(authorization)
+
+    try:
+        logged_out = logout_user(settings.database_url, token)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'logged_out': logged_out,
+    }
+
+
 @app.get('/api/admin/song-locations')
 def api_admin_song_locations_list(
     include_inactive: bool = Query(False),
@@ -641,7 +834,6 @@ def api_admin_song_locations_list(
             settings.song_locations_file,
             portal_content_file=PORTAL_CONTENT_FILE,
             include_inactive=include_inactive,
-            database_url=settings.database_url,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -663,7 +855,6 @@ def api_admin_song_locations_create_node(
             settings.song_locations_file,
             payload,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -687,7 +878,6 @@ def api_admin_song_locations_delete_node(
             settings.song_locations_file,
             node_id,
             portal_content_file=PORTAL_CONTENT_FILE,
-            database_url=settings.database_url,
         )
         assignment_cleanup = delete_song_location_assignments_by_location_ids(
             settings.song_location_assignments_file,
@@ -709,12 +899,17 @@ def api_admin_song_locations_delete_node(
 
 
 @app.get('/api/songs/custom')
-def api_custom_songs_list(include_inactive: bool = Query(False)) -> dict[str, object]:
+def api_custom_songs_list(
+    include_inactive: bool = Query(False),
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         songs = list_custom_songs(
             settings.custom_songs_file,
             include_inactive=include_inactive,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -727,12 +922,17 @@ def api_custom_songs_list(include_inactive: bool = Query(False)) -> dict[str, ob
 
 
 @app.post('/api/songs/custom')
-def api_custom_songs_create(payload: CustomSongUpsertRequest) -> dict[str, object]:
+def api_custom_songs_create(
+    payload: CustomSongUpsertRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         song = create_custom_song(
             settings.custom_songs_file,
             payload,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -746,12 +946,17 @@ def api_custom_songs_create(payload: CustomSongUpsertRequest) -> dict[str, objec
 
 
 @app.put('/api/songs/custom/order')
-def api_custom_songs_reorder(payload: CustomSongReorderRequest) -> dict[str, object]:
+def api_custom_songs_reorder(
+    payload: CustomSongReorderRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         songs = reorder_custom_songs(
             settings.custom_songs_file,
             payload.ordered_ids,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
@@ -766,13 +971,19 @@ def api_custom_songs_reorder(payload: CustomSongReorderRequest) -> dict[str, obj
 
 
 @app.put('/api/songs/custom/{song_id}')
-def api_custom_songs_update(song_id: int, payload: CustomSongUpsertRequest) -> dict[str, object]:
+def api_custom_songs_update(
+    song_id: int,
+    payload: CustomSongUpsertRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         song = update_custom_song(
             settings.custom_songs_file,
             song_id,
             payload,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         message = str(exc)
@@ -788,12 +999,14 @@ def api_custom_songs_update(song_id: int, payload: CustomSongUpsertRequest) -> d
 
 
 @app.delete('/api/songs/custom/{song_id}')
-def api_custom_songs_delete(song_id: int) -> dict[str, object]:
+def api_custom_songs_delete(song_id: int, authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         removed = delete_custom_song(
             settings.custom_songs_file,
             song_id,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         message = str(exc)
@@ -809,12 +1022,14 @@ def api_custom_songs_delete(song_id: int) -> dict[str, object]:
 
 
 @app.put('/api/songs/custom/{song_id}/restore')
-def api_custom_songs_restore(song_id: int) -> dict[str, object]:
+def api_custom_songs_restore(song_id: int, authorization: str = Header('', alias='Authorization')) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
     try:
         song = restore_custom_song(
             settings.custom_songs_file,
             song_id,
             database_url=settings.database_url,
+            store_namespace=store_namespace,
         )
     except ValueError as exc:
         message = str(exc)

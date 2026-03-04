@@ -28,6 +28,13 @@ def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
 
 
+def _resolve_store_key(store_namespace: str | None = None) -> str:
+    safe_namespace = _normalize_spaces(store_namespace)
+    if not safe_namespace:
+        return _STORE_KEY
+    return f'{_STORE_KEY}:{safe_namespace}'
+
+
 def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -118,9 +125,13 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+def _read_store(
+    file_path: Path,
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> dict[str, object]:
     if database_url:
-        database_store = load_store(database_url, _STORE_KEY)
+        database_store = load_store(database_url, _resolve_store_key(store_namespace))
         if database_store is not None:
             return _normalize_store(database_store)
         return _empty_store()
@@ -138,10 +149,15 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+def _write_store(
+    file_path: Path,
+    store: dict[str, object],
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> None:
     normalized_store = _normalize_store(store)
     if database_url:
-        save_store(database_url, _STORE_KEY, normalized_store)
+        save_store(database_url, _resolve_store_key(store_namespace), normalized_store)
         return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -180,9 +196,14 @@ def list_custom_songs(
     custom_songs_file: Path,
     include_inactive: bool = False,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows = rows if isinstance(rows, list) else []
 
@@ -213,6 +234,7 @@ def create_custom_song(
     custom_songs_file: Path,
     payload: CustomSongUpsertRequest,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     title = _normalize_spaces(payload.title)
     if not title:
@@ -220,7 +242,11 @@ def create_custom_song(
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
         max_order = max(
@@ -245,7 +271,12 @@ def create_custom_song(
 
         store['last_id'] = max(_coerce_int(store.get('last_id'), 0), song_id)
         store['songs'] = song_rows
-        _write_store(custom_songs_file, store, database_url=database_url)
+        _write_store(
+            custom_songs_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     return _row_to_payload(row)
 
@@ -255,6 +286,7 @@ def update_custom_song(
     song_id: int,
     payload: CustomSongUpsertRequest,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     if song_id <= 0:
         raise ValueError('Musica manual nao encontrada.')
@@ -265,7 +297,11 @@ def update_custom_song(
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -295,7 +331,12 @@ def update_custom_song(
         }
         song_rows[target_index] = row
         store['songs'] = song_rows
-        _write_store(custom_songs_file, store, database_url=database_url)
+        _write_store(
+            custom_songs_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     return _row_to_payload(row)
 
@@ -304,12 +345,17 @@ def delete_custom_song(
     custom_songs_file: Path,
     song_id: int,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> bool:
     if song_id <= 0:
         raise ValueError('Musica manual nao encontrada.')
 
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
         target_index = next(
@@ -335,7 +381,12 @@ def delete_custom_song(
             'deleted_at_utc': now_iso,
         }
         store['songs'] = song_rows
-        _write_store(custom_songs_file, store, database_url=database_url)
+        _write_store(
+            custom_songs_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     return True
 
@@ -344,13 +395,18 @@ def restore_custom_song(
     custom_songs_file: Path,
     song_id: int,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     if song_id <= 0:
         raise ValueError('Musica manual nao encontrada.')
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -374,7 +430,12 @@ def restore_custom_song(
         }
         song_rows[target_index] = row
         store['songs'] = song_rows
-        _write_store(custom_songs_file, store, database_url=database_url)
+        _write_store(
+            custom_songs_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     return _row_to_payload(row)
 
@@ -383,6 +444,7 @@ def reorder_custom_songs(
     custom_songs_file: Path,
     ordered_ids: list[int],
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     seen_ids: set[int] = set()
     normalized_order: list[int] = []
@@ -396,7 +458,11 @@ def reorder_custom_songs(
         normalized_order.append(song_id)
 
     with _STORE_LOCK:
-        store = _read_store(custom_songs_file, database_url=database_url)
+        store = _read_store(
+            custom_songs_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('songs')
         song_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -412,7 +478,12 @@ def reorder_custom_songs(
         ]
         if not active_rows:
             store['songs'] = normalized_rows
-            _write_store(custom_songs_file, store, database_url=database_url)
+            _write_store(
+                custom_songs_file,
+                store,
+                database_url=database_url,
+                store_namespace=store_namespace,
+            )
             return []
 
         active_by_id = {
@@ -449,10 +520,16 @@ def reorder_custom_songs(
                 row['order_index'] = index
 
         store['songs'] = normalized_rows
-        _write_store(custom_songs_file, store, database_url=database_url)
+        _write_store(
+            custom_songs_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     return list_custom_songs(
         custom_songs_file,
         include_inactive=False,
         database_url=database_url,
+        store_namespace=store_namespace,
     )

@@ -36,6 +36,13 @@ def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
 
 
+def _resolve_store_key(store_namespace: str | None = None) -> str:
+    safe_namespace = _normalize_spaces(store_namespace)
+    if not safe_namespace:
+        return _STORE_KEY
+    return f'{_STORE_KEY}:{safe_namespace}'
+
+
 def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -107,9 +114,13 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+def _read_store(
+    file_path: Path,
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> dict[str, object]:
     if database_url:
-        database_store = load_store(database_url, _STORE_KEY)
+        database_store = load_store(database_url, _resolve_store_key(store_namespace))
         if database_store is not None:
             return _normalize_store(database_store)
         return _empty_store()
@@ -127,10 +138,15 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+def _write_store(
+    file_path: Path,
+    store: dict[str, object],
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> None:
     normalized_store = _normalize_store(store)
     if database_url:
-        save_store(database_url, _STORE_KEY, normalized_store)
+        save_store(database_url, _resolve_store_key(store_namespace), normalized_store)
         return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,9 +188,14 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
 def list_song_location_assignments(
     assignments_file: Path,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows = rows if isinstance(rows, list) else []
 
@@ -203,6 +224,7 @@ def upsert_song_location_assignment(
     payload: SongLocationAssignmentUpsertRequest,
     favorites_file: Path | None = None,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     location_id = _normalize_spaces(payload.location_id)
     if not location_id:
@@ -222,7 +244,11 @@ def upsert_song_location_assignment(
     now_iso = _now_utc_iso()
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -266,7 +292,12 @@ def upsert_song_location_assignment(
             assignment_rows.append(row)
 
         store['assignments'] = assignment_rows
-        _write_store(assignments_file, store, database_url=database_url)
+        _write_store(
+            assignments_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     assignment_payload = _row_to_payload(row)
 
@@ -287,6 +318,7 @@ def upsert_song_location_assignment(
                     prefetch_chords_on_save=False,
                 ),
                 database_url=database_url,
+                store_namespace=store_namespace,
             )
         except ValueError:
             pass
@@ -305,13 +337,18 @@ def delete_song_location_assignment(
     assignments_file: Path,
     location_id: str,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> bool:
     safe_location_id = _normalize_spaces(location_id)
     if not safe_location_id:
         raise ValueError('Informe o local para remover a musica.')
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -328,7 +365,12 @@ def delete_song_location_assignment(
         removed = len(kept_rows) != len(normalized_rows)
         if removed:
             store['assignments'] = kept_rows
-            _write_store(assignments_file, store, database_url=database_url)
+            _write_store(
+                assignments_file,
+                store,
+                database_url=database_url,
+                store_namespace=store_namespace,
+            )
 
     return removed
 
@@ -337,6 +379,7 @@ def delete_song_location_assignments_by_location_ids(
     assignments_file: Path,
     location_ids: list[str] | set[str] | tuple[str, ...],
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     normalized_ids = {
         _normalize_spaces(str(raw_id))
@@ -351,7 +394,11 @@ def delete_song_location_assignments_by_location_ids(
         }
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
         normalized_rows = [
@@ -375,7 +422,12 @@ def delete_song_location_assignments_by_location_ids(
         removed = removed_count > 0
         if removed:
             store['assignments'] = kept_rows
-            _write_store(assignments_file, store, database_url=database_url)
+            _write_store(
+                assignments_file,
+                store,
+                database_url=database_url,
+                store_namespace=store_namespace,
+            )
 
     return {
         'removed': removed,

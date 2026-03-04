@@ -368,3 +368,15 @@ body {
     width: 100%;
   }
 }
+
+@media (max-width: 1024px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .admin-input,
+  .admin-select {
+    font-size: 16px !important;
+  }
+}

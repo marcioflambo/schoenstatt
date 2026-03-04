@@ -37,6 +37,13 @@ def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
 
 
+def _resolve_store_key(store_namespace: str | None = None) -> str:
+    safe_namespace = _normalize_spaces(store_namespace)
+    if not safe_namespace:
+        return _STORE_KEY
+    return f'{_STORE_KEY}:{safe_namespace}'
+
+
 def _normalize_mystery_title(value: str | None) -> str:
     title = _normalize_spaces(value)
     if not title:
@@ -131,9 +138,13 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+def _read_store(
+    file_path: Path,
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> dict[str, object]:
     if database_url:
-        database_store = load_store(database_url, _STORE_KEY)
+        database_store = load_store(database_url, _resolve_store_key(store_namespace))
         if database_store is not None:
             return _normalize_store(database_store)
         return _empty_store()
@@ -151,10 +162,15 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+def _write_store(
+    file_path: Path,
+    store: dict[str, object],
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> None:
     normalized_store = _normalize_store(store)
     if database_url:
-        save_store(database_url, _STORE_KEY, normalized_store)
+        save_store(database_url, _resolve_store_key(store_namespace), normalized_store)
         return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,9 +215,14 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
 def list_mystery_song_assignments(
     assignments_file: Path,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows = rows if isinstance(rows, list) else []
 
@@ -229,6 +250,7 @@ def upsert_mystery_song_assignment(
     payload: MysterySongAssignmentUpsertRequest,
     favorites_file: Path | None = None,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     group_title = _normalize_spaces(payload.group_title)
     mystery_title = _normalize_mystery_title(payload.mystery_title)
@@ -244,7 +266,11 @@ def upsert_mystery_song_assignment(
     now_iso = _now_utc_iso()
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -290,7 +316,12 @@ def upsert_mystery_song_assignment(
             assignment_rows.append(row)
 
         store['assignments'] = assignment_rows
-        _write_store(assignments_file, store, database_url=database_url)
+        _write_store(
+            assignments_file,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
 
     assignment_payload = _row_to_payload(row)
 
@@ -312,6 +343,7 @@ def upsert_mystery_song_assignment(
                     prefetch_chords_on_save=False,
                 ),
                 database_url=database_url,
+                store_namespace=store_namespace,
             )
         except ValueError:
             # Mystery assignments may use non-cifra links; skip favorite sync in this case.
@@ -333,6 +365,7 @@ def delete_mystery_song_assignment(
     group_title: str,
     mystery_title: str,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> bool:
     safe_group_title = _normalize_spaces(group_title)
     safe_mystery_title = _normalize_mystery_title(mystery_title)
@@ -342,7 +375,11 @@ def delete_mystery_song_assignment(
     assignment_key = _build_assignment_key(safe_group_title, safe_mystery_title)
 
     with _STORE_LOCK:
-        store = _read_store(assignments_file, database_url=database_url)
+        store = _read_store(
+            assignments_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('assignments')
         assignment_rows: list[dict[str, object]] = rows if isinstance(rows, list) else []
 
@@ -366,6 +403,11 @@ def delete_mystery_song_assignment(
 
         if removed:
             store['assignments'] = kept_rows
-            _write_store(assignments_file, store, database_url=database_url)
+            _write_store(
+                assignments_file,
+                store,
+                database_url=database_url,
+                store_namespace=store_namespace,
+            )
 
     return removed

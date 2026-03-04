@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import json
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 
 from pydantic import BaseModel
-
-from .json_store_db import load_store, save_store
 
 
 class SongLocationNodeCreateRequest(BaseModel):
@@ -32,7 +29,6 @@ class SongLocationNodeReorderRequest(BaseModel):
 
 
 _STORE_LOCK = RLock()
-_STORE_KEY = 'song_locations'
 _ASSIGNMENT_MODE_MYSTERY = 'mystery'
 _ASSIGNMENT_MODE_LOCATION = 'location'
 _DEFAULT_MYSTERY_ROOT_LABEL = 'Misterios'
@@ -226,137 +222,6 @@ def _read_portal_mystery_cards(portal_content_file: Path) -> list[dict[str, obje
     return normalized_cards
 
 
-def _normalize_label_token(value: str | None) -> str:
-    normalized = unicodedata.normalize('NFKD', _normalize_spaces(value).casefold())
-    return ''.join(char for char in normalized if not unicodedata.combining(char))
-
-
-def _is_legacy_minimal_default_store(rows: list[dict[str, object]]) -> bool:
-    safe_rows = _sort_rows(rows)
-    if len(safe_rows) != 4:
-        return False
-
-    rows_by_label: dict[str, dict[str, object]] = {}
-    for row in safe_rows:
-        rows_by_label[_normalize_label_token(str(row.get('label') or ''))] = row
-
-    mysteries = rows_by_label.get('misterios')
-    missa = rows_by_label.get('missa')
-    festival = rows_by_label.get('festival')
-    entrada = rows_by_label.get('entrada')
-    if not all([mysteries, missa, festival, entrada]):
-        return False
-
-    mysteries_id = str(mysteries.get('node_id') or '')
-    missa_id = str(missa.get('node_id') or '')
-    festival_parent = str(festival.get('parent_id') or '')
-    entrada_parent = str(entrada.get('parent_id') or '')
-    has_mystery_assignment_leaf = any(
-        str(row.get('assignment_mode') or '') == _ASSIGNMENT_MODE_MYSTERY
-        for row in safe_rows
-    )
-    if has_mystery_assignment_leaf:
-        return False
-
-    # Legacy broken bootstrap: only root categories and one "Entrada" under "Missa".
-    return (
-        str(mysteries.get('parent_id') or '') == ''
-        and str(missa.get('parent_id') or '') == ''
-        and festival_parent == ''
-        and entrada_parent == missa_id
-        and mysteries_id != ''
-    )
-
-
-def _backfill_legacy_mystery_nodes(
-    store: dict[str, object],
-    portal_content_file: Path,
-) -> dict[str, object]:
-    rows_raw = store.get('nodes')
-    rows = _sort_rows(rows_raw if isinstance(rows_raw, list) else [])
-    if not _is_legacy_minimal_default_store(rows):
-        return store
-
-    mystery_cards = _read_portal_mystery_cards(portal_content_file)
-    if not mystery_cards:
-        return store
-
-    mysteries_root = next(
-        (
-            row
-            for row in rows
-            if _normalize_label_token(str(row.get('label') or '')) == 'misterios'
-            and str(row.get('parent_id') or '') == ''
-        ),
-        None,
-    )
-    if not mysteries_root:
-        return store
-
-    mysteries_root_id = str(mysteries_root.get('node_id') or '')
-    if not mysteries_root_id:
-        return store
-
-    now_iso = _now_utc_iso()
-    max_id = _coerce_int(store.get('last_id'), 0)
-    for row in rows:
-        try:
-            max_id = max(max_id, int(str(row.get('node_id') or '0')))
-        except ValueError:
-            continue
-
-    appended_rows: list[dict[str, object]] = []
-    for group_index, card in enumerate(mystery_cards, start=1):
-        group_title = _normalize_spaces(str(card.get('title') or ''))
-        if not group_title:
-            continue
-
-        max_id += 1
-        group_id = str(max_id)
-        appended_rows.append({
-            'node_id': group_id,
-            'parent_id': mysteries_root_id,
-            'label': group_title,
-            'order_index': group_index,
-            'assignment_mode': _ASSIGNMENT_MODE_LOCATION,
-            'mystery_group_title': '',
-            'mystery_title': '',
-            'is_active': True,
-            'deleted_at_utc': '',
-            'created_at_utc': now_iso,
-            'updated_at_utc': now_iso,
-        })
-
-        raw_items = card.get('items')
-        mystery_items = raw_items if isinstance(raw_items, list) else []
-        for item_index, raw_item in enumerate(mystery_items, start=1):
-            item_title = _normalize_spaces(str(raw_item))
-            if not item_title:
-                continue
-            max_id += 1
-            appended_rows.append({
-                'node_id': str(max_id),
-                'parent_id': group_id,
-                'label': item_title,
-                'order_index': item_index,
-                'assignment_mode': _ASSIGNMENT_MODE_MYSTERY,
-                'mystery_group_title': group_title,
-                'mystery_title': item_title,
-                'is_active': True,
-                'deleted_at_utc': '',
-                'created_at_utc': now_iso,
-                'updated_at_utc': now_iso,
-            })
-
-    if not appended_rows:
-        return store
-
-    return _normalize_store({
-        'last_id': max_id,
-        'nodes': [*rows, *appended_rows],
-    })
-
-
 def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[str, object]:
     now_iso = _now_utc_iso()
     next_id = max(base_last_id, 0)
@@ -393,9 +258,6 @@ def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[s
         label=_read_portal_mystery_root_label(portal_content_file),
         order_index=1,
     )
-    missa_root_id = create_node(label='Missa', order_index=2)
-    create_node(label='Festival', order_index=3)
-    create_node(label='Entrada', parent_id=missa_root_id, order_index=1)
 
     mystery_cards = _read_portal_mystery_cards(portal_content_file)
     if mystery_cards:
@@ -430,34 +292,21 @@ def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[s
 
 def _read_store(
     file_path: Path,
-    database_url: str | None = None,
     *,
     portal_content_file: Path | None = None,
 ) -> dict[str, object]:
-    if database_url:
-        database_store = load_store(database_url, _STORE_KEY)
-        if database_store is not None:
-            normalized = _normalize_store(database_store)
-        else:
-            normalized = _empty_store()
+    if not file_path.exists():
+        normalized = _empty_store()
     else:
-        if not file_path.exists():
-            normalized = _empty_store()
-        else:
-            try:
-                raw = json.loads(file_path.read_text(encoding='utf-8'))
-            except json.JSONDecodeError as exc:
-                raise RuntimeError(f'Arquivo de locais de musicas invalido: {file_path}') from exc
-            except OSError as exc:
-                raise RuntimeError(f'Falha ao ler arquivo de locais de musicas: {exc}') from exc
-            normalized = _normalize_store(raw)
+        try:
+            raw = json.loads(file_path.read_text(encoding='utf-8'))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f'Arquivo de locais de musicas invalido: {file_path}') from exc
+        except OSError as exc:
+            raise RuntimeError(f'Falha ao ler arquivo de locais de musicas: {exc}') from exc
+        normalized = _normalize_store(raw)
 
     if normalized.get('nodes'):
-        if portal_content_file is not None:
-            backfilled = _backfill_legacy_mystery_nodes(normalized, portal_content_file)
-            if backfilled != normalized:
-                _write_store(file_path, backfilled, database_url=database_url)
-                normalized = backfilled
         return normalized
 
     if portal_content_file is None:
@@ -467,15 +316,12 @@ def _read_store(
         _coerce_int(normalized.get('last_id'), 0),
         portal_content_file,
     )
-    _write_store(file_path, default_store, database_url=database_url)
+    _write_store(file_path, default_store)
     return _normalize_store(default_store)
 
 
-def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+def _write_store(file_path: Path, store: dict[str, object]) -> None:
     normalized_store = _normalize_store(store)
-    if database_url:
-        save_store(database_url, _STORE_KEY, normalized_store)
-        return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = file_path.with_suffix(f'{file_path.suffix}.tmp')
@@ -625,12 +471,10 @@ def list_song_location_tree(
     locations_file: Path,
     portal_content_file: Path,
     include_inactive: bool = False,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -652,7 +496,6 @@ def create_song_location_node(
     locations_file: Path,
     payload: SongLocationNodeCreateRequest,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     label = _normalize_spaces(payload.label)
     if not label:
@@ -665,7 +508,6 @@ def create_song_location_node(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -730,7 +572,7 @@ def create_song_location_node(
 
         store['last_id'] = last_id
         store['nodes'] = next_rows
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
         saved_row = row
 
     return _row_to_payload(saved_row)
@@ -741,7 +583,6 @@ def update_song_location_node(
     node_id: str,
     payload: SongLocationNodeUpdateRequest,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
@@ -753,7 +594,6 @@ def update_song_location_node(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -845,7 +685,7 @@ def update_song_location_node(
         ]
         next_rows = _sort_rows(non_siblings + sibling_rows)
         store['nodes'] = next_rows
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
         saved_row = target_row
 
     return _row_to_payload(saved_row)
@@ -855,7 +695,6 @@ def delete_song_location_node(
     locations_file: Path,
     node_id: str,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
@@ -864,7 +703,6 @@ def delete_song_location_node(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -888,7 +726,7 @@ def delete_song_location_node(
             changed_ids.append(current_id)
 
         store['nodes'] = _sort_rows(node_rows)
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
 
     return {
         'removed': bool(changed_ids),
@@ -902,7 +740,6 @@ def hard_delete_song_location_node(
     locations_file: Path,
     node_id: str,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
@@ -911,7 +748,6 @@ def hard_delete_song_location_node(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -948,7 +784,7 @@ def hard_delete_song_location_node(
                 reindexed_rows.append(sibling)
 
         store['nodes'] = _sort_rows(reindexed_rows)
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
 
     removed_ids = sorted(ids_to_remove)
     return {
@@ -964,7 +800,6 @@ def restore_song_location_node(
     locations_file: Path,
     node_id: str,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
@@ -973,7 +808,6 @@ def restore_song_location_node(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -997,7 +831,7 @@ def restore_song_location_node(
             restored_ids.append(current_id)
 
         store['nodes'] = _sort_rows(node_rows)
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
 
     return {
         'restored': bool(restored_ids),
@@ -1010,7 +844,6 @@ def reorder_song_location_nodes(
     locations_file: Path,
     payload: SongLocationNodeReorderRequest,
     portal_content_file: Path,
-    database_url: str | None = None,
 ) -> list[dict[str, object]]:
     parent_id = _normalize_spaces(payload.parent_id)
     ordered_ids: list[str] = []
@@ -1029,7 +862,6 @@ def reorder_song_location_nodes(
     with _STORE_LOCK:
         store = _read_store(
             locations_file,
-            database_url=database_url,
             portal_content_file=portal_content_file,
         )
         rows = store.get('nodes')
@@ -1059,7 +891,7 @@ def reorder_song_location_nodes(
             row['updated_at_utc'] = now_iso
 
         store['nodes'] = _sort_rows(node_rows)
-        _write_store(locations_file, store, database_url=database_url)
+        _write_store(locations_file, store)
 
         reordered_rows = [
             row

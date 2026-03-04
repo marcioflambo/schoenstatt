@@ -34,6 +34,12 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 Endpoints:
 - `GET /api/health`
 - `GET /api/db/ping`
+- `POST /api/auth/register` (campos: `name`, `email`, `password`; retorna `user.guid`)
+- `POST /api/auth/login` (campos: `email`, `password`)
+- `GET /api/auth/me` (header `Authorization: Bearer <token>`)
+- `PUT /api/auth/me` (header `Authorization: Bearer <token>`; campos: `name`, `email`, `password`)
+- `DELETE /api/auth/me` (header `Authorization: Bearer <token>`)
+- `POST /api/auth/logout` (header `Authorization: Bearer <token>`)
 - `POST /api/songs/search` (busca por nome da musica em Cifra Club e Cifras)
 - `POST /api/songs/fetch` (carrega a cifra pela URL escolhida)
 - `GET /api/songs/favorites` (lista musicas favoritadas com cache de letra/cifra)

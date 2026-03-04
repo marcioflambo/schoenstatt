@@ -46,6 +46,13 @@ def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
 
 
+def _resolve_store_key(store_namespace: str | None = None) -> str:
+    safe_namespace = _normalize_spaces(store_namespace)
+    if not safe_namespace:
+        return _STORE_KEY
+    return f'{_STORE_KEY}:{safe_namespace}'
+
+
 def _normalize_song_url_key(value: str | None) -> str:
     return _normalize_spaces(value).lower()
 
@@ -219,9 +226,13 @@ def _normalize_store(raw_store: object) -> dict[str, object]:
     }
 
 
-def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, object]:
+def _read_store(
+    file_path: Path,
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> dict[str, object]:
     if database_url:
-        database_store = load_store(database_url, _STORE_KEY)
+        database_store = load_store(database_url, _resolve_store_key(store_namespace))
         if database_store is not None:
             return _normalize_store(database_store)
         return _empty_store()
@@ -239,10 +250,15 @@ def _read_store(file_path: Path, database_url: str | None = None) -> dict[str, o
     return _normalize_store(raw)
 
 
-def _write_store(file_path: Path, store: dict[str, object], database_url: str | None = None) -> None:
+def _write_store(
+    file_path: Path,
+    store: dict[str, object],
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> None:
     normalized_store = _normalize_store(store)
     if database_url:
-        save_store(database_url, _STORE_KEY, normalized_store)
+        save_store(database_url, _resolve_store_key(store_namespace), normalized_store)
         return
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -296,9 +312,14 @@ def _row_to_payload(row: dict[str, object]) -> dict[str, object]:
 def list_song_favorites(
     favorites_file: Path,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     with _STORE_LOCK:
-        store = _read_store(favorites_file, database_url=database_url)
+        store = _read_store(
+            favorites_file,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
         rows = store.get('favorites')
         favorite_rows = rows if isinstance(rows, list) else []
 
@@ -327,6 +348,7 @@ def save_song_favorite(
     favorites_file: Path,
     payload: SongFavoriteCreateRequest,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object]:
     source_url, source_from_url = _normalize_song_url(payload.url)
     source_url_key = _normalize_song_url_key(source_url)
@@ -512,7 +534,7 @@ def save_song_favorite(
 
     with _STORE_LOCK:
         if database_url:
-            mutate_store(database_url, _STORE_KEY, apply_upsert)
+            mutate_store(database_url, _resolve_store_key(store_namespace), apply_upsert)
         else:
             updated_store = apply_upsert(_read_store(favorites_file, database_url=None))
             _write_store(favorites_file, updated_store, database_url=None)
@@ -524,6 +546,7 @@ def delete_song_favorite(
     favorites_file: Path,
     url: str,
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> bool:
     source_url = _normalize_spaces(url)
     if not source_url:
@@ -554,7 +577,7 @@ def delete_song_favorite(
 
     with _STORE_LOCK:
         if database_url:
-            mutate_store(database_url, _STORE_KEY, apply_remove)
+            mutate_store(database_url, _resolve_store_key(store_namespace), apply_remove)
         else:
             updated_store = apply_remove(_read_store(favorites_file, database_url=None))
             if removed:
@@ -567,6 +590,7 @@ def reorder_song_favorites(
     favorites_file: Path,
     ordered_ids: list[int],
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> list[dict[str, object]]:
     seen_ids: set[int] = set()
     normalized_order: list[int] = []
@@ -650,7 +674,7 @@ def reorder_song_favorites(
 
     with _STORE_LOCK:
         if database_url:
-            mutate_store(database_url, _STORE_KEY, apply_reorder)
+            mutate_store(database_url, _resolve_store_key(store_namespace), apply_reorder)
         else:
             updated_store = apply_reorder(_read_store(favorites_file, database_url=None))
             _write_store(favorites_file, updated_store, database_url=None)
@@ -663,6 +687,7 @@ def set_song_favorite_usage_by_id(
     favorite_id: int,
     usage_locations: list[str],
     database_url: str | None = None,
+    store_namespace: str | None = None,
 ) -> dict[str, object] | None:
     safe_favorite_id = _coerce_int(favorite_id, 0)
     if safe_favorite_id <= 0:
@@ -707,7 +732,7 @@ def set_song_favorite_usage_by_id(
 
     with _STORE_LOCK:
         if database_url:
-            mutate_store(database_url, _STORE_KEY, apply_update)
+            mutate_store(database_url, _resolve_store_key(store_namespace), apply_update)
         else:
             updated_store = apply_update(_read_store(favorites_file, database_url=None))
             if changed:

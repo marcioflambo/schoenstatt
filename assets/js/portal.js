@@ -5,6 +5,12 @@
   const menuCloseButtons = menuList ? menuList.querySelectorAll('[data-menu-close]') : [];
   const menuParentTriggers = menuList ? Array.from(menuList.querySelectorAll('.menu-parent-trigger')) : [];
   const menuBackTriggers = menuList ? Array.from(menuList.querySelectorAll('.menu-back-trigger')) : [];
+  const authMenu = document.getElementById('auth-menu');
+  const authMenuTrigger = document.getElementById('auth-menu-trigger');
+  const authMenuDropdown = document.getElementById('auth-menu-dropdown');
+  const authActionButtons = authMenuDropdown
+    ? Array.from(authMenuDropdown.querySelectorAll('[data-auth-action]'))
+    : [];
   const fontDecreaseBtn = document.getElementById('font-decrease');
   const fontIncreaseBtn = document.getElementById('font-increase');
   const themeToggleBtn = document.getElementById('theme-toggle');
@@ -17,6 +23,10 @@
   const THEME_KEY = 'portal_theme';
   const THEME_LIGHT = 'light';
   const THEME_DARK = 'dark';
+  const AUTH_TOKEN_KEY = 'portal_auth_token';
+  const AUTH_USER_KEY = 'portal_auth_user';
+  const AUTH_PASSWORD_MIN_LENGTH = 6;
+  const AUTH_PASSWORD_MAX_LENGTH = 128;
   const PORTAL_MODE_ENABLED = true;
   const PORTAL_ACTIVE_CLASS = 'is-portal-active';
   const PORTAL_LEAVING_CLASS = 'is-portal-leaving';
@@ -915,12 +925,27 @@
 
   const isCompactMenuViewport = () => window.innerWidth <= COMPACT_MENU_BREAKPOINT;
 
+  const closeAuthDropdown = () => {
+    if (!authMenu || !authMenuTrigger || !authMenuDropdown) return;
+    authMenu.classList.remove('is-open');
+    authMenuTrigger.setAttribute('aria-expanded', 'false');
+    authMenuDropdown.hidden = true;
+  };
+
+  const openAuthDropdown = () => {
+    if (!authMenu || !authMenuTrigger || !authMenuDropdown) return;
+    authMenu.classList.add('is-open');
+    authMenuTrigger.setAttribute('aria-expanded', 'true');
+    authMenuDropdown.hidden = false;
+  };
+
   const closeMainMenu = () => {
     if (!menuToggle || !menuList) return;
     menuToggle.setAttribute('aria-expanded', 'false');
     menuToggle.setAttribute('aria-label', readUiMessage('menu.openAria'));
     menuList.classList.remove('open');
     closeMenuDropdowns();
+    closeAuthDropdown();
   };
 
   const syncHeaderHeight = () => {
@@ -1223,6 +1248,7 @@
       );
       if (nextState) {
         closeMenuDropdowns();
+        closeAuthDropdown();
       }
       menuList.classList.toggle('open', nextState);
       if (!nextState) closeMainMenu();
@@ -1241,10 +1267,38 @@
     });
 
     document.addEventListener('click', (event) => {
-      const isInsideMenu = menuList.contains(event.target) || menuToggle.contains(event.target);
+      const isInsideMenu = (
+        menuList.contains(event.target)
+        || menuToggle.contains(event.target)
+        || (authMenu && authMenu.contains(event.target))
+      );
       if (!isInsideMenu) {
         closeMainMenu();
       }
+    });
+  }
+
+  if (authMenu && authMenuTrigger && authMenuDropdown) {
+    closeAuthDropdown();
+
+    authMenuTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const isExpanded = authMenuTrigger.getAttribute('aria-expanded') === 'true';
+      if (isExpanded) {
+        closeAuthDropdown();
+        return;
+      }
+      closeMainMenu();
+      openAuthDropdown();
+    });
+
+    authMenuDropdown.addEventListener('click', (event) => {
+      const targetButton = event.target instanceof Element
+        ? event.target.closest('[data-auth-action]')
+        : null;
+      if (!targetButton) return;
+      closeAuthDropdown();
     });
   }
 
@@ -1594,38 +1648,47 @@
   };
 
   if (youtubeEmbed && videoFallback) {
+    const hasEmbedSrc = Boolean((youtubeEmbed.getAttribute('src') || '').trim());
+    if (!hasEmbedSrc) {
+      youtubeEmbed.hidden = true;
+      youtubeEmbed.setAttribute('aria-hidden', 'true');
+      showVideoFallback();
+    }
+
     if (window.location.protocol === 'file:') {
       showVideoFallback();
     }
 
-    youtubeEmbed.addEventListener('error', showVideoFallback);
+    if (hasEmbedSrc) {
+      youtubeEmbed.addEventListener('error', showVideoFallback);
 
-    window.addEventListener('message', (event) => {
-      try {
-        const hostname = new URL(event.origin).hostname;
-        const isYoutubeOrigin = hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com');
-        if (!isYoutubeOrigin) return;
+      window.addEventListener('message', (event) => {
+        try {
+          const hostname = new URL(event.origin).hostname;
+          const isYoutubeOrigin = hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com');
+          if (!isYoutubeOrigin) return;
 
-        const payload = typeof event.data === 'string'
-          ? event.data
-          : (
-            event.data && typeof event.data === 'object'
-              ? JSON.stringify(event.data)
-              : ''
-          );
-        if (
-          typeof payload === 'string'
-          && (
-            payload.includes('"error":153')
-            || payload.includes('"errorCode":153')
-          )
-        ) {
-          showVideoFallback();
+          const payload = typeof event.data === 'string'
+            ? event.data
+            : (
+              event.data && typeof event.data === 'object'
+                ? JSON.stringify(event.data)
+                : ''
+            );
+          if (
+            typeof payload === 'string'
+            && (
+              payload.includes('"error":153')
+              || payload.includes('"errorCode":153')
+            )
+          ) {
+            showVideoFallback();
+          }
+        } catch (err) {
+          return;
         }
-      } catch (err) {
-        return;
-      }
-    });
+      });
+    }
   }
 
   const storyData = (
@@ -2182,11 +2245,28 @@
   };
 
   const fetchMysterySongAssignments = async () => {
+    if (!isAuthLoggedIn()) {
+      mysterySongAssignmentsLoading = false;
+      mysterySongAssignments = {};
+      updateMysteryModalSongToggleState();
+      renderSongFavorites();
+      return false;
+    }
+
     if (mysterySongAssignmentsLoading) return false;
     mysterySongAssignmentsLoading = true;
     try {
-      const response = await fetch('/api/mysteries/song-assignments');
+      const response = await fetch('/api/mysteries/song-assignments', {
+        headers: buildUserScopedApiHeaders(),
+      });
       const payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        mysterySongAssignments = {};
+        updateMysteryModalSongToggleState();
+        renderSongFavorites();
+        return false;
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(
           parseMysterySongAssignmentApiError(
@@ -2215,6 +2295,13 @@
   };
 
   const saveMysterySongAssignmentOnServer = async (groupTitle, mysteryTitle, payload) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para vincular música ao mistério.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeGroupTitle = String(groupTitle || '').trim();
     const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
     if (!safeGroupTitle || !safeMysteryTitle) {
@@ -2224,9 +2311,9 @@
     const safePayload = asObject(payload);
     const response = await fetch('/api/mysteries/song-assignments', {
       method: 'POST',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         group_title: safeGroupTitle,
         group_day: String(safePayload.groupDay || safePayload.group_day || '').trim(),
@@ -2243,6 +2330,10 @@
       }),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseMysterySongAssignmentApiError(
@@ -2262,6 +2353,13 @@
   };
 
   const deleteMysterySongAssignmentOnServer = async (groupTitle, mysteryTitle) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para remover vínculo do mistério.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeGroupTitle = String(groupTitle || '').trim();
     const safeMysteryTitle = normalizeMysteryName(mysteryTitle);
     if (!safeGroupTitle || !safeMysteryTitle) {
@@ -2272,9 +2370,14 @@
       `/api/mysteries/song-assignments?group_title=${encodeURIComponent(safeGroupTitle)}&mystery_title=${encodeURIComponent(safeMysteryTitle)}`,
       {
         method: 'DELETE',
+        headers: buildUserScopedApiHeaders(),
       }
     );
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseMysterySongAssignmentApiError(
@@ -2312,11 +2415,28 @@
   };
 
   const fetchSongLocationAssignments = async () => {
+    if (!isAuthLoggedIn()) {
+      songLocationAssignmentsLoading = false;
+      songLocationAssignments = {};
+      renderSongFavorites();
+      renderSongSaveLocationPicker();
+      return false;
+    }
+
     if (songLocationAssignmentsLoading) return false;
     songLocationAssignmentsLoading = true;
     try {
-      const response = await fetch('/api/song-locations/assignments');
+      const response = await fetch('/api/song-locations/assignments', {
+        headers: buildUserScopedApiHeaders(),
+      });
       const payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        songLocationAssignments = {};
+        renderSongFavorites();
+        renderSongSaveLocationPicker();
+        return false;
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(
           payload?.detail?.message
@@ -2401,6 +2521,13 @@
   };
 
   const saveSongLocationAssignmentOnServer = async (target, payload) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para vincular música ao local.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeTarget = asObject(target);
     const safePayload = asObject(payload);
     const locationId = String(safeTarget.locationId || safeTarget.id || '').trim();
@@ -2413,9 +2540,9 @@
 
     const response = await fetch('/api/song-locations/assignments', {
       method: 'POST',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         location_id: locationId,
         location_label: locationLabel,
@@ -2432,6 +2559,10 @@
       }),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         responsePayload?.detail?.message
@@ -2449,6 +2580,13 @@
   };
 
   const deleteSongLocationAssignmentOnServer = async (locationId) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para remover vínculo do local.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeLocationId = String(locationId || '').trim();
     if (!safeLocationId) {
       throw new Error(readMysteryMessage('assignInvalidTarget'));
@@ -2458,9 +2596,14 @@
       `/api/song-locations/assignments?location_id=${encodeURIComponent(safeLocationId)}`,
       {
         method: 'DELETE',
+        headers: buildUserScopedApiHeaders(),
       }
     );
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         responsePayload?.detail?.message
@@ -4195,7 +4338,7 @@
 
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open, .auth-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -4967,6 +5110,18 @@
   const customSongsList = document.getElementById('custom-songs-list');
   const customSongsAddBtn = document.getElementById('custom-songs-add-btn');
   const songToast = document.getElementById('song-toast');
+  const authModal = document.getElementById('auth-modal');
+  const authModalTitle = document.getElementById('auth-modal-title');
+  const authModalCloseButtons = document.querySelectorAll('[data-auth-modal-close]');
+  const authForm = document.getElementById('auth-form');
+  const authNameField = document.getElementById('auth-name-field');
+  const authNameInput = document.getElementById('auth-name-input');
+  const authEmailInput = document.getElementById('auth-email-input');
+  const authPasswordInput = document.getElementById('auth-password-input');
+  const authPasswordToggle = document.getElementById('auth-password-toggle');
+  const authFormFeedback = document.getElementById('auth-form-feedback');
+  const authSubmitBtn = document.getElementById('auth-submit-btn');
+  const authDeleteBtn = document.getElementById('auth-delete-btn');
   const favoriteConfirmModal = document.getElementById('favorite-confirm-modal');
   const favoriteConfirmTitle = document.getElementById('favorite-confirm-title');
   const favoriteConfirmMessage = document.getElementById('favorite-confirm-message');
@@ -5011,6 +5166,11 @@
   const FAVORITE_CONFIRM_ACTION_ACCEPT = 'accept';
   const FAVORITE_CONFIRM_ACTION_CANCEL = 'cancel';
   const FAVORITE_CONFIRM_ACTION_DISMISS = 'dismiss';
+  let authMode = 'login';
+  let authRequestPending = false;
+  let authToken = '';
+  let authUser = null;
+  let lastFocusedAuthTrigger = null;
   const songSearchWidgets = [
     {
       id: 'header',
@@ -5374,6 +5534,7 @@
   };
 
   const persistFavoriteTonePreference = async (persistPayload) => {
+    if (!isAuthLoggedIn()) return;
     const payload = asObject(persistPayload);
     const url = (payload.url || '').trim();
     const selectedKey = normalizeSongSelectedKey(payload.chords_selected_key || '');
@@ -5382,12 +5543,16 @@
     try {
       const response = await fetch('/api/songs/favorites', {
         method: 'POST',
-        headers: {
+        headers: buildUserScopedApiHeaders({
           'Content-Type': 'application/json'
-        },
+        }),
         body: JSON.stringify(payload)
       });
       const responsePayload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        return;
+      }
       if (!response.ok || !responsePayload.ok) {
         throw new Error(responsePayload?.detail?.message || responsePayload?.message || 'favorite_tone_save_failed');
       }
@@ -5774,6 +5939,610 @@
     }, 3600);
   };
 
+  const normalizeAuthUser = (value) => {
+    const safeValue = value && typeof value === 'object' ? value : null;
+    if (!safeValue) return null;
+    const guid = String(safeValue.guid || '').trim();
+    const name = String(safeValue.name || safeValue.full_name || safeValue.fullName || '').trim();
+    const email = String(safeValue.email || '').trim().toLowerCase();
+    if (!guid || !email) return null;
+    return { guid, name, email };
+  };
+
+  const isAuthLoggedIn = () => Boolean(authToken && normalizeAuthUser(authUser));
+
+  const persistAuthState = () => {
+    try {
+      if (authToken) {
+        window.localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+      } else {
+        window.localStorage.removeItem(AUTH_TOKEN_KEY);
+      }
+      const normalizedUser = normalizeAuthUser(authUser);
+      if (normalizedUser) {
+        window.localStorage.setItem(AUTH_USER_KEY, JSON.stringify(normalizedUser));
+      } else {
+        window.localStorage.removeItem(AUTH_USER_KEY);
+      }
+    } catch (err) {
+      return;
+    }
+  };
+
+  const clearAuthState = () => {
+    authToken = '';
+    authUser = null;
+    persistAuthState();
+  };
+
+  const extractApiErrorMessage = (payload, fallbackMessage) => {
+    const fallback = String(fallbackMessage || 'Erro inesperado.');
+    if (!payload || typeof payload !== 'object') return fallback;
+
+    const detail = payload.detail;
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail.trim();
+    }
+    if (detail && typeof detail === 'object') {
+      const detailMessage = detail.message;
+      if (typeof detailMessage === 'string' && detailMessage.trim()) {
+        return detailMessage.trim();
+      }
+    }
+
+    const message = payload.message;
+    if (typeof message === 'string' && message.trim()) {
+      return message.trim();
+    }
+
+    return fallback;
+  };
+
+  const requestAuthJson = async (url, options = {}) => {
+    const response = await fetch(url, options);
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (err) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(extractApiErrorMessage(payload, 'Falha ao autenticar.'));
+    }
+
+    return payload && typeof payload === 'object' ? payload : {};
+  };
+
+  const buildUserScopedApiHeaders = (headers = {}) => {
+    const mergedHeaders = headers && typeof headers === 'object' ? { ...headers } : {};
+    const safeToken = String(authToken || '').trim();
+    if (safeToken) {
+      mergedHeaders.Authorization = `Bearer ${safeToken}`;
+    }
+    return mergedHeaders;
+  };
+
+  const isUserScopedApiUnauthorized = (response) => Number(response?.status) === 401;
+
+  const handleUserScopedApiUnauthorized = (options = {}) => {
+    const {
+      notify = false,
+      openLoginModal = false,
+      message = 'Sessao expirada. Faça login novamente.',
+      trigger = null,
+    } = asObject(options);
+    clearAuthState();
+    renderAuthMenu();
+    clearUserScopedSongData();
+    if (notify) {
+      showSongToast(String(message || 'Sessao expirada. Faça login novamente.'), 'is-warning');
+    }
+    if (openLoginModal) {
+      openAuthModal('login', trigger instanceof HTMLElement ? trigger : null);
+    }
+  };
+
+  const ensureLoggedInForUserScopedAction = (options = {}) => {
+    if (isAuthLoggedIn()) return true;
+    const {
+      message = 'Faça login para continuar.',
+      trigger = null,
+      notify = true,
+    } = asObject(options);
+    if (notify) {
+      showSongToast(String(message || 'Faça login para continuar.'), 'is-warning');
+    }
+    openAuthModal('login', trigger instanceof HTMLElement ? trigger : null);
+    return false;
+  };
+
+  const setAuthFormFeedback = (message = '') => {
+    if (!authFormFeedback) return;
+    const safeMessage = String(message || '').trim();
+    authFormFeedback.textContent = safeMessage;
+    authFormFeedback.hidden = !safeMessage;
+  };
+
+  const setAuthPasswordVisibility = (visible) => {
+    if (!authPasswordInput || !authPasswordToggle) return;
+    const isVisible = Boolean(visible);
+    authPasswordInput.type = isVisible ? 'text' : 'password';
+    authPasswordToggle.classList.toggle('is-visible', isVisible);
+    authPasswordToggle.setAttribute('aria-pressed', String(isVisible));
+    const label = isVisible ? 'Ocultar senha' : 'Exibir senha';
+    authPasswordToggle.setAttribute('aria-label', label);
+    authPasswordToggle.setAttribute('title', label);
+  };
+
+  const normalizeAuthMode = (mode = 'login') => {
+    const safeMode = String(mode || '').trim().toLowerCase();
+    if (safeMode === 'register') return 'register';
+    if (safeMode === 'account') return 'account';
+    return 'login';
+  };
+
+  const syncAuthFormMode = (mode = 'login') => {
+    const normalizedMode = normalizeAuthMode(mode);
+    const isRegisterMode = normalizedMode === 'register';
+    const isAccountMode = normalizedMode === 'account';
+    const showNameField = isRegisterMode || isAccountMode;
+
+    if (authNameField) {
+      authNameField.hidden = !showNameField;
+      authNameField.setAttribute('aria-hidden', showNameField ? 'false' : 'true');
+      if (showNameField) {
+        authNameField.style.removeProperty('display');
+      } else {
+        authNameField.style.display = 'none';
+      }
+    }
+    if (authNameInput) {
+      authNameInput.required = showNameField;
+      if (!showNameField) {
+        authNameInput.value = '';
+      }
+    }
+    if (authPasswordInput) {
+      authPasswordInput.required = true;
+      authPasswordInput.setAttribute(
+        'autocomplete',
+        isRegisterMode || isAccountMode ? 'new-password' : 'current-password'
+      );
+      if (isRegisterMode) {
+        authPasswordInput.placeholder = 'Minimo de 6 caracteres';
+      } else if (isAccountMode) {
+        authPasswordInput.placeholder = 'Minimo de 6 caracteres';
+      } else {
+        authPasswordInput.placeholder = '';
+      }
+    }
+    if (authDeleteBtn) {
+      authDeleteBtn.hidden = !isAccountMode;
+      authDeleteBtn.setAttribute('aria-hidden', isAccountMode ? 'false' : 'true');
+      if (isAccountMode) {
+        authDeleteBtn.style.removeProperty('display');
+      } else {
+        authDeleteBtn.style.display = 'none';
+      }
+    }
+    if (authForm) {
+      authForm.classList.toggle('is-account-mode', isAccountMode);
+    }
+    const actions = authForm ? authForm.querySelector('.auth-form-actions') : null;
+    if (actions instanceof HTMLElement) {
+      actions.classList.toggle('is-account-mode', isAccountMode);
+    }
+  };
+
+  const renderAuthMenu = () => {
+    const loggedIn = isAuthLoggedIn();
+    const safeUser = normalizeAuthUser(authUser);
+
+    if (authMenuTrigger) {
+      const baseLabel = loggedIn
+        ? `Conta de ${safeUser?.email || 'usuario'}`
+        : 'Abrir menu de autenticacao';
+      authMenuTrigger.setAttribute('aria-label', baseLabel);
+      authMenuTrigger.setAttribute('title', loggedIn ? (safeUser?.email || 'Conta') : 'Conta');
+    }
+
+    authActionButtons.forEach((button) => {
+      const action = String(button.dataset.authAction || '').trim();
+      const visibleWhenLoggedOut = action === 'login' || action === 'register';
+      const visibleWhenLoggedIn = action === 'account' || action === 'logout';
+      button.hidden = loggedIn ? !visibleWhenLoggedIn : !visibleWhenLoggedOut;
+    });
+  };
+
+  const setAuthSubmitState = (pending) => {
+    authRequestPending = Boolean(pending);
+    const normalizedMode = normalizeAuthMode(authMode);
+
+    if (authSubmitBtn) {
+      if (authRequestPending) {
+        authSubmitBtn.textContent = 'Aguarde...';
+      } else {
+        authSubmitBtn.textContent = (
+          normalizedMode === 'register'
+            ? 'Criar conta'
+            : (normalizedMode === 'account' ? 'Alterar' : 'Entrar')
+        );
+      }
+      authSubmitBtn.disabled = authRequestPending;
+    }
+
+    if (authDeleteBtn) authDeleteBtn.disabled = authRequestPending;
+    if (authEmailInput) authEmailInput.disabled = authRequestPending;
+    if (authPasswordInput) authPasswordInput.disabled = authRequestPending;
+    if (authPasswordToggle) authPasswordToggle.disabled = authRequestPending;
+    if (authNameInput) authNameInput.disabled = authRequestPending || normalizeAuthMode(authMode) === 'login';
+  };
+
+  const closeAuthModal = (options = {}) => {
+    if (!authModal) return;
+    const { restoreFocus = true } = options;
+    authModal.classList.remove('open');
+    authModal.setAttribute('aria-hidden', 'true');
+    setAuthFormFeedback('');
+    setAuthSubmitState(false);
+    syncBodyModalLock();
+    if (restoreFocus && lastFocusedAuthTrigger) {
+      focusWithoutScrollingPage(lastFocusedAuthTrigger);
+    }
+  };
+
+  const openAuthModal = (mode = 'login', trigger = null) => {
+    if (!authModal) return;
+    const finalMode = normalizeAuthMode(mode);
+    const safeUser = normalizeAuthUser(authUser);
+    if (finalMode === 'account' && !safeUser) {
+      openAuthModal('login', trigger);
+      return;
+    }
+
+    authMode = finalMode;
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedAuthTrigger = trigger || activeElement || authMenuTrigger || null;
+
+    const showRegister = finalMode === 'register';
+    const showAccount = finalMode === 'account';
+    syncAuthFormMode(finalMode);
+
+    if (authModalTitle) {
+      authModalTitle.textContent = showRegister ? 'Registro' : (showAccount ? 'Conta' : 'Login');
+    }
+
+    if (authSubmitBtn) {
+      authSubmitBtn.textContent = showRegister ? 'Criar conta' : (showAccount ? 'Alterar' : 'Entrar');
+    }
+
+    if (authForm) {
+      authForm.reset();
+    }
+    setAuthPasswordVisibility(false);
+    if (showAccount) {
+      if (authNameInput) {
+        authNameInput.value = safeUser?.name || '';
+      }
+      if (authEmailInput) {
+        authEmailInput.value = safeUser?.email || '';
+      }
+      if (authPasswordInput) {
+        authPasswordInput.value = '';
+      }
+    } else if (authEmailInput && isAuthLoggedIn()) {
+      authEmailInput.value = safeUser?.email || '';
+    }
+
+    setAuthFormFeedback('');
+    setAuthSubmitState(false);
+    authModal.classList.add('open');
+    authModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+
+    window.requestAnimationFrame(() => {
+      const targetField = (showRegister || showAccount) ? authNameInput : authEmailInput;
+      if (targetField instanceof HTMLElement) {
+        focusWithoutScrollingPage(targetField);
+      }
+    });
+  };
+
+  const applyAuthPayload = (payload) => {
+    const safePayload = payload && typeof payload === 'object' ? payload : {};
+    const nextToken = String(safePayload.token || '').trim();
+    const nextUser = normalizeAuthUser(safePayload.user);
+    if (!nextToken || !nextUser) {
+      throw new Error('Resposta de autenticacao invalida.');
+    }
+    authToken = nextToken;
+    authUser = nextUser;
+    persistAuthState();
+    renderAuthMenu();
+    refreshUserScopedSongData(0);
+  };
+
+  const restoreAuthState = () => {
+    try {
+      const storedToken = String(window.localStorage.getItem(AUTH_TOKEN_KEY) || '').trim();
+      const rawUser = window.localStorage.getItem(AUTH_USER_KEY);
+      let parsedUser = null;
+      if (rawUser) {
+        parsedUser = JSON.parse(rawUser);
+      }
+      authToken = storedToken;
+      authUser = normalizeAuthUser(parsedUser);
+      if (!authToken || !authUser) {
+        clearAuthState();
+      }
+    } catch (err) {
+      clearAuthState();
+    }
+    renderAuthMenu();
+  };
+
+  const syncAuthSession = async () => {
+    if (!authToken) return;
+    try {
+      const payload = await requestAuthJson('/api/auth/me', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const normalizedUser = normalizeAuthUser(payload.user);
+      if (!normalizedUser) {
+        throw new Error('Sessao invalida.');
+      }
+      authUser = normalizedUser;
+      persistAuthState();
+      renderAuthMenu();
+    } catch (err) {
+      clearAuthState();
+      renderAuthMenu();
+    }
+  };
+
+  const handleAuthLogout = async () => {
+    const previousToken = String(authToken || '').trim();
+    clearAuthState();
+    clearUserScopedSongData();
+    renderAuthMenu();
+    closeAuthModal({ restoreFocus: false });
+
+    if (previousToken) {
+      try {
+        await requestAuthJson('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${previousToken}`,
+          },
+        });
+      } catch (err) {
+        // Keep local logout even if server call fails.
+      }
+    }
+
+    showSongToast('Sessao encerrada.', 'is-success');
+  };
+
+  const handleAuthAccountDelete = async (triggerButton = null) => {
+    if (!isAuthLoggedIn()) {
+      openAuthModal('login', triggerButton);
+      return;
+    }
+
+    const shouldDelete = await openFavoriteConfirmModal({
+      triggerElement: triggerButton,
+      title: 'Excluir conta',
+      message: 'Tem certeza que deseja deletar sua conta? Esta acao nao pode ser desfeita.',
+      acceptLabel: 'Deletar',
+      requirePassword: false,
+    });
+    if (!shouldDelete) return;
+
+    setAuthFormFeedback('');
+    setAuthSubmitState(true);
+    try {
+      await requestAuthJson('/api/auth/me', {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      clearAuthState();
+      clearUserScopedSongData();
+      renderAuthMenu();
+      closeAuthModal({ restoreFocus: false });
+      showSongToast('Conta removida com sucesso.', 'is-success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao remover conta.';
+      setAuthFormFeedback(message);
+    } finally {
+      setAuthSubmitState(false);
+    }
+  };
+
+  const handleAuthMenuAction = async (action, triggerButton = null) => {
+    const safeAction = String(action || '').trim();
+    if (!safeAction) return;
+
+    if (safeAction === 'login') {
+      openAuthModal('login', triggerButton);
+      return;
+    }
+    if (safeAction === 'register') {
+      openAuthModal('register', triggerButton);
+      return;
+    }
+    if (safeAction === 'account') {
+      const safeUser = normalizeAuthUser(authUser);
+      if (!safeUser) {
+        openAuthModal('login', triggerButton);
+        return;
+      }
+      openAuthModal('account', triggerButton);
+      return;
+    }
+    if (safeAction === 'logout') {
+      await handleAuthLogout();
+    }
+  };
+
+  restoreAuthState();
+  runDeferredTask(syncAuthSession, 180);
+
+  if (authActionButtons.length) {
+    authActionButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const action = String(button.dataset.authAction || '').trim();
+        void handleAuthMenuAction(action, button);
+      });
+    });
+  }
+
+  if (authModalCloseButtons.length) {
+    authModalCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        closeAuthModal();
+      });
+    });
+  }
+
+  if (authPasswordToggle && authPasswordInput) {
+    authPasswordToggle.addEventListener('click', () => {
+      const isCurrentlyVisible = authPasswordInput.type === 'text';
+      setAuthPasswordVisibility(!isCurrentlyVisible);
+      focusWithoutScrollingPage(authPasswordInput);
+      const cursorPosition = Number(authPasswordInput.value.length);
+      try {
+        authPasswordInput.setSelectionRange(cursorPosition, cursorPosition);
+      } catch (_err) {
+        // Ignore if selection cannot be restored.
+      }
+    });
+  }
+
+  if (authDeleteBtn) {
+    authDeleteBtn.addEventListener('click', () => {
+      void handleAuthAccountDelete(authDeleteBtn);
+    });
+  }
+
+  if (authForm && authEmailInput && authPasswordInput) {
+    authForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (authRequestPending) return;
+
+      const safeMode = normalizeAuthMode(authMode);
+      const safeName = String(authNameInput?.value || '').trim();
+      const safeEmail = String(authEmailInput.value || '').trim().toLowerCase();
+      const safePassword = String(authPasswordInput.value || '');
+
+      if ((safeMode === 'register' || safeMode === 'account') && !safeName) {
+        setAuthFormFeedback('Informe o nome.');
+        if (authNameInput instanceof HTMLElement) {
+          focusWithoutScrollingPage(authNameInput);
+        }
+        return;
+      }
+      if (!safeEmail) {
+        setAuthFormFeedback('Informe o email.');
+        focusWithoutScrollingPage(authEmailInput);
+        return;
+      }
+      if (!safePassword) {
+        setAuthFormFeedback('Informe a senha.');
+        focusWithoutScrollingPage(authPasswordInput);
+        return;
+      }
+      if (safePassword.length < AUTH_PASSWORD_MIN_LENGTH) {
+        setAuthFormFeedback(`Senha deve ter ao menos ${AUTH_PASSWORD_MIN_LENGTH} caracteres.`);
+        focusWithoutScrollingPage(authPasswordInput);
+        return;
+      }
+      if (safePassword.length > AUTH_PASSWORD_MAX_LENGTH) {
+        setAuthFormFeedback(`Senha deve ter no maximo ${AUTH_PASSWORD_MAX_LENGTH} caracteres.`);
+        focusWithoutScrollingPage(authPasswordInput);
+        return;
+      }
+      if (safeMode === 'account' && !isAuthLoggedIn()) {
+        setAuthFormFeedback('Sessao expirada. Faça login novamente.');
+        openAuthModal('login');
+        return;
+      }
+      if (safeMode === 'account') {
+        const shouldUpdate = await openFavoriteConfirmModal({
+          triggerElement: authSubmitBtn,
+          title: 'Confirmar alteracao',
+          message: 'Deseja salvar as alteracoes da conta?',
+          acceptLabel: 'Alterar',
+          requirePassword: false,
+        });
+        if (!shouldUpdate) {
+          return;
+        }
+      }
+
+      setAuthFormFeedback('');
+      setAuthSubmitState(true);
+      try {
+        const endpoint = (
+          safeMode === 'register'
+            ? '/api/auth/register'
+            : (safeMode === 'account' ? '/api/auth/me' : '/api/auth/login')
+        );
+        const method = safeMode === 'account' ? 'PUT' : 'POST';
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        if (safeMode === 'account') {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+        const payload = await requestAuthJson(endpoint, {
+          method,
+          headers,
+          body: JSON.stringify(
+            safeMode === 'register'
+              ? { name: safeName, email: safeEmail, password: safePassword }
+              : (
+                safeMode === 'account'
+                  ? { name: safeName, email: safeEmail, password: safePassword }
+                  : { email: safeEmail, password: safePassword }
+              )
+          ),
+        });
+
+        if (safeMode === 'account') {
+          const normalizedUser = normalizeAuthUser(payload.user);
+          if (!normalizedUser) {
+            throw new Error('Resposta de conta invalida.');
+          }
+          authUser = normalizedUser;
+          persistAuthState();
+          renderAuthMenu();
+          refreshUserScopedSongData(0);
+        } else {
+          applyAuthPayload(payload);
+        }
+
+        closeAuthModal({ restoreFocus: false });
+        showSongToast(
+          safeMode === 'register'
+            ? 'Conta criada com sucesso.'
+            : (safeMode === 'account' ? 'Conta atualizada com sucesso.' : 'Login realizado com sucesso.'),
+          'is-success'
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Falha ao autenticar.';
+        setAuthFormFeedback(message);
+      } finally {
+        setAuthSubmitState(false);
+      }
+    });
+  }
+
   const hideSongSearchResultsExcept = (targetWidget = null) => {
     if (!songSearchWidgets.length) return;
     songSearchWidgets.forEach((widget) => {
@@ -6063,6 +6832,7 @@
       || readSongMessage('favoriteRemoveConfirmMessageWithTitle',
         { title: resolvedSongTitle }
       );
+    const showCancel = options.showCancel !== false;
     const requirePassword = Boolean(options.requirePassword);
     const passwordLabel = String(
       options.passwordLabel
@@ -6102,6 +6872,13 @@
     }
     if (favoriteConfirmCancelBtn) {
       favoriteConfirmCancelBtn.textContent = cancelLabel;
+      favoriteConfirmCancelBtn.hidden = !showCancel;
+      favoriteConfirmCancelBtn.setAttribute('aria-hidden', showCancel ? 'false' : 'true');
+      if (showCancel) {
+        favoriteConfirmCancelBtn.style.removeProperty('display');
+      } else {
+        favoriteConfirmCancelBtn.style.display = 'none';
+      }
     }
     favoriteConfirmAcceptBtn.textContent = acceptLabel;
     favoriteConfirmMessage.textContent = message;
@@ -6158,6 +6935,9 @@
     }
     if (favoriteConfirmCancelBtn) {
       favoriteConfirmCancelBtn.textContent = cancelLabel;
+      favoriteConfirmCancelBtn.hidden = false;
+      favoriteConfirmCancelBtn.setAttribute('aria-hidden', 'false');
+      favoriteConfirmCancelBtn.style.removeProperty('display');
     }
     favoriteConfirmAcceptBtn.textContent = acceptLabel;
     favoriteConfirmMessage.textContent = message;
@@ -7014,7 +7794,7 @@
         void openSongSaveLocationPicker(buildSongPayloadFromFavorite(favorite), assignFromFavoriteBtn, openOptions);
       });
       const headActions = document.createElement('div');
-      headActions.className = 'song-favorite-head-actions';
+      headActions.className = 'song-search-actions song-favorite-head-actions';
 
       const meta = document.createElement('p');
       meta.className = 'booklet-cantos-meta';
@@ -7028,6 +7808,7 @@
         title: favorite.title,
         artist: favorite.artist,
       });
+      const urlKey = normalizeSongUrlKey(favorite.url);
 
       const spotifyAction = document.createElement('a');
       spotifyAction.className = 'song-search-action song-search-action-external';
@@ -7059,7 +7840,7 @@
 
       const lyricAction = document.createElement('button');
       lyricAction.type = 'button';
-      lyricAction.className = 'song-search-action song-favorite-head-action';
+      lyricAction.className = 'song-search-action song-search-action-lyrics song-favorite-head-action';
       lyricAction.classList.add('song-favorite-action-lyrics');
       lyricAction.innerHTML = LYRICS_ACTION_ICON;
       lyricAction.title = readSongMessage('lyricsButton');
@@ -7069,7 +7850,7 @@
 
       const chordAction = document.createElement('button');
       chordAction.type = 'button';
-      chordAction.className = 'song-search-action song-favorite-head-action';
+      chordAction.className = 'song-search-action song-search-action-chords song-favorite-head-action';
       chordAction.classList.add('song-favorite-action-chords');
       chordAction.innerHTML = CHORDS_ACTION_ICON;
       chordAction.title = readSongMessage('chordsButton');
@@ -7077,10 +7858,48 @@
       chordAction.disabled = !favorite.hasChords && !favorite.url;
       chordAction.addEventListener('click', () => openSongFavoriteCached(favorite, 'chords', chordAction));
 
+      const favoriteAction = document.createElement('button');
+      favoriteAction.type = 'button';
+      favoriteAction.className = 'song-search-action song-search-action-favorite';
+      favoriteAction.dataset.songUrlKey = urlKey;
+      setFavoriteButtonState(favoriteAction, Boolean(urlKey && songFavoritesByUrl.has(urlKey)), false);
+      favoriteAction.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        saveSongFavorite(buildSongPayloadFromFavorite(favorite), favoriteAction);
+      });
+
+      const assignMysteryAction = document.createElement('button');
+      assignMysteryAction.type = 'button';
+      assignMysteryAction.className = 'song-search-action song-search-action-assign-mystery song-open-save-location-trigger';
+      assignMysteryAction.innerHTML = SONG_ASSIGN_PLUS_ICON;
+      assignMysteryAction.title = readMysteryMessage('assignButtonTitle');
+      assignMysteryAction.setAttribute(
+        'aria-label',
+        readMysteryMessage('assignButtonAria')
+      );
+      assignMysteryAction.disabled = !((favorite.title || '').trim() || (favorite.url || '').trim());
+      assignMysteryAction.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const hasPointerPosition = (
+          event instanceof MouseEvent
+          && event.detail > 0
+          && Number.isFinite(event.clientX)
+          && Number.isFinite(event.clientY)
+        );
+        const openOptions = hasPointerPosition
+          ? { clientX: event.clientX, clientY: event.clientY }
+          : null;
+        void openSongSaveLocationPicker(buildSongPayloadFromFavorite(favorite), assignMysteryAction, openOptions);
+      });
+
       headActions.appendChild(spotifyAction);
       headActions.appendChild(youtubeAction);
       headActions.appendChild(lyricAction);
       headActions.appendChild(chordAction);
+      headActions.appendChild(favoriteAction);
+      headActions.appendChild(assignMysteryAction);
 
       head.appendChild(coverButton);
       head.appendChild(assignFromFavoriteBtn);
@@ -7161,6 +7980,13 @@
   };
 
   const saveSongFavorite = async (result, triggerButton, widget = null) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para salvar favoritos.',
+      trigger: triggerButton,
+    })) {
+      return;
+    }
+
     const safeResult = asObject(result);
     const sourceUrl = (safeResult.url || '').trim();
     const urlKey = normalizeSongUrlKey(sourceUrl);
@@ -7191,8 +8017,17 @@
       try {
         const response = await fetch(`/api/songs/favorites?url=${encodeURIComponent(sourceUrl)}`, {
           method: 'DELETE',
+          headers: buildUserScopedApiHeaders(),
         });
         const payload = asObject(await response.json().catch(() => ({})));
+        if (isUserScopedApiUnauthorized(response)) {
+          handleUserScopedApiUnauthorized({
+            notify: true,
+            openLoginModal: true,
+            trigger: triggerButton,
+          });
+          throw new Error('Sessao expirada. Faça login novamente.');
+        }
         if (!response.ok || !payload.ok) {
           const message = payload?.detail?.message
             || payload?.message
@@ -7252,9 +8087,9 @@
       });
       const response = await fetch('/api/songs/favorites', {
         method: 'POST',
-        headers: {
+        headers: buildUserScopedApiHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           url: sourceUrl,
           title: safeResult.title || '',
@@ -7269,6 +8104,14 @@
       });
 
       const payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized({
+          notify: true,
+          openLoginModal: true,
+          trigger: triggerButton,
+        });
+        throw new Error('Sessao expirada. Faça login novamente.');
+      }
       if (!response.ok || !payload.ok) {
         const message = payload?.detail?.message
           || payload?.message
@@ -7297,11 +8140,25 @@
   };
 
   const fetchSongFavorites = async () => {
+    if (!isAuthLoggedIn()) {
+      songFavoritesLoading = false;
+      applySongFavorites([]);
+      return false;
+    }
+
     songFavoritesLoading = true;
     renderSongFavorites();
     try {
-      const response = await fetch('/api/songs/favorites');
+      const response = await fetch('/api/songs/favorites', {
+        headers: buildUserScopedApiHeaders(),
+      });
       const payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        songFavoritesLoading = false;
+        applySongFavorites([]);
+        return false;
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(
           payload?.detail?.message
@@ -7329,15 +8186,22 @@
     if (!normalizedIds.length) {
       return sortSongFavoritesByOrder(songFavorites);
     }
+    if (!isAuthLoggedIn()) {
+      throw new Error('Faça login para reordenar favoritos.');
+    }
 
     const response = await fetch('/api/songs/favorites/order', {
       method: 'PUT',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({ ordered_ids: normalizedIds }),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       const message = responsePayload?.detail?.message
         || responsePayload?.message
@@ -7505,9 +8369,25 @@
   );
 
   const fetchCustomSongs = async () => {
+    if (!isAuthLoggedIn()) {
+      setPersistedCustomSongs([]);
+      syncStoredCustomDraftToSongList();
+      renderCustomSongs();
+      return false;
+    }
+
     try {
-      const response = await fetch('/api/songs/custom');
+      const response = await fetch('/api/songs/custom', {
+        headers: buildUserScopedApiHeaders(),
+      });
       const payload = asObject(await response.json().catch(() => ({})));
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized();
+        setPersistedCustomSongs([]);
+        syncStoredCustomDraftToSongList();
+        renderCustomSongs();
+        return false;
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(
           parseCustomSongApiError(
@@ -7529,14 +8409,25 @@
   };
 
   const createCustomSongOnServer = async (payload) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para criar música personalizada.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const response = await fetch('/api/songs/custom', {
       method: 'POST',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(payload),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseCustomSongApiError(
@@ -7549,6 +8440,13 @@
   };
 
   const updateCustomSongOnServer = async (songId, payload) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para alterar música personalizada.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeSongId = String(songId || '').trim();
     if (!safeSongId) {
       throw new Error(readSongMessage('customSongSaveError'));
@@ -7556,12 +8454,16 @@
 
     const response = await fetch(`/api/songs/custom/${encodeURIComponent(safeSongId)}`, {
       method: 'PUT',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(payload),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseCustomSongApiError(
@@ -7582,15 +8484,22 @@
     if (!normalizedIds.length) {
       return customSongs.filter((song) => !song.isDraft);
     }
+    if (!isAuthLoggedIn()) {
+      throw new Error('Faça login para reordenar músicas personalizadas.');
+    }
 
     const response = await fetch('/api/songs/custom/order', {
       method: 'PUT',
-      headers: {
+      headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({ ordered_ids: normalizedIds }),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseCustomSongApiError(
@@ -7605,6 +8514,13 @@
   };
 
   const deleteCustomSongOnServer = async (songId) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para remover música personalizada.',
+      notify: false,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeSongId = String(songId || '').trim();
     if (!safeSongId) {
       throw new Error(readSongMessage('customSongRemoveError'));
@@ -7612,8 +8528,13 @@
 
     const response = await fetch(`/api/songs/custom/${encodeURIComponent(safeSongId)}`, {
       method: 'DELETE',
+      headers: buildUserScopedApiHeaders(),
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
         parseCustomSongApiError(
@@ -7754,6 +8675,33 @@
     );
 
     return Boolean(storedDraft);
+  };
+
+  const clearUserScopedSongData = () => {
+    songFavoritesLoading = false;
+    applySongFavorites([]);
+    mysterySongAssignmentsLoading = false;
+    mysterySongAssignments = {};
+    songLocationAssignmentsLoading = false;
+    songLocationAssignments = {};
+    setPersistedCustomSongs([]);
+    syncStoredCustomDraftToSongList();
+    renderCustomSongs();
+    updateMysteryModalSongToggleState();
+    renderSongFavorites();
+    renderSongSaveLocationPicker();
+  };
+
+  const refreshUserScopedSongData = (baseDelay = 0) => {
+    if (!isAuthLoggedIn()) {
+      clearUserScopedSongData();
+      return;
+    }
+    const safeDelay = Number.isFinite(baseDelay) ? Math.max(0, Math.trunc(baseDelay)) : 0;
+    runDeferredTask(fetchSongFavorites, safeDelay + 40);
+    runDeferredTask(fetchMysterySongAssignments, safeDelay + 80);
+    runDeferredTask(fetchSongLocationAssignments, safeDelay + 120);
+    runDeferredTask(fetchCustomSongs, safeDelay + 160);
   };
 
   const setCustomSongTab = (tabName) => {
@@ -9163,6 +10111,7 @@
   }
 
   runDeferredTask(fetchSongFavorites, 350);
+  runDeferredTask(fetchMysterySongAssignments, 470);
   runDeferredTask(fetchSongLocationTree, 420);
   runDeferredTask(fetchSongLocationAssignments, 520);
 
@@ -9312,6 +10261,14 @@
         )
       );
       if (clickedInsideMysterySongAssignModalPre) return;
+      const clickedInsideAuthModalPre = Boolean(
+        authModal
+        && (
+          (targetElement && targetElement.closest('#auth-modal'))
+          || eventPathIncludes(authModal)
+        )
+      );
+      if (clickedInsideAuthModalPre) return;
       const clickedInsideSongModalPre = Boolean(
         songModal
         && (
@@ -9418,6 +10375,17 @@
         && mysterySongAssignModal.classList.contains('open')
       );
       if (mysterySongAssignModalIsOpen) return;
+      const clickedInsideAuthModal = Boolean(
+        targetElement
+        && authModal
+        && targetElement.closest('#auth-modal')
+      );
+      if (clickedInsideAuthModal) return;
+      const authModalIsOpen = Boolean(
+        authModal
+        && authModal.classList.contains('open')
+      );
+      if (authModalIsOpen) return;
 
       const clickedInsideSongSearch = songSearchWidgets.some((widget) => (
         (widget.form && widget.form.contains(target))
@@ -9449,6 +10417,11 @@
             mysterySongAssignModal
             && mysterySongAssignModal.classList.contains('open')
             && targetElement.closest('.mystery-song-assign-dialog')
+          )
+          || (
+            authModal
+            && authModal.classList.contains('open')
+            && targetElement.closest('.auth-modal-dialog')
           )
           || (
             songLocationCreateModal
@@ -9540,6 +10513,11 @@
 
       if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
         closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS);
+        return;
+      }
+
+      if (authModal && authModal.classList.contains('open')) {
+        closeAuthModal();
         return;
       }
 

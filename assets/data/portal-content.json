@@ -101,7 +101,6 @@
       "description": "Inspirado no estilo do vídeo indicado, esta seção organiza a história em blocos curtos: significado do título, origem em Schoenstatt e missão para a vida de oração."
     },
     "video": {
-      "embedUrl": "https://www.youtube-nocookie.com/embed/1YUYV_F-p3M?rel=0&modestbranding=1&playsinline=1",
       "title": "Mãe Rainha Três Vezes Admirável - Qual o significado?",
       "fallbackText": "Se aparecer o erro 153 no player incorporado, abra direto no",
       "fallbackLinkLabel": "YouTube",
@@ -191,7 +190,7 @@
     "header": {
       "kicker": "Guia rápido",
       "title": "Como rezar o terço em comunidade",
-      "description": "Estrutura pronta para encontros presenciais, familiares ou grupos de missa."
+      "description": "Estrutura pronta para encontros presenciais, familiares ou grupos de oração."
     },
     "steps": [
       {

@@ -37,6 +37,7 @@ def _build_database_url() -> str | None:
 class Settings:
     database_url: str | None
     cors_allow_origins: list[str]
+    auth_session_days: int
     song_favorites_file: Path
     custom_songs_file: Path
     mystery_song_assignments_file: Path
@@ -51,6 +52,14 @@ class Settings:
 def _parse_origins(value: str) -> list[str]:
     origins = [item.strip() for item in value.split(',') if item.strip()]
     return origins or ['*']
+
+
+def _parse_positive_int(value: str, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
 
 
 def _resolve_song_favorites_file() -> Path:
@@ -120,6 +129,7 @@ def get_settings() -> Settings:
     return Settings(
         database_url=_build_database_url(),
         cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '*')),
+        auth_session_days=_parse_positive_int(os.getenv('AUTH_SESSION_DAYS', '30'), 30),
         song_favorites_file=_resolve_song_favorites_file(),
         custom_songs_file=_resolve_custom_songs_file(),
         mystery_song_assignments_file=_resolve_mystery_song_assignments_file(),

@@ -50,6 +50,39 @@ CREATE INDEX IF NOT EXISTS idx_app_user_sessions_expires_at
 CREATE INDEX IF NOT EXISTS idx_app_user_sessions_revoked_at
     ON app_user_sessions (revoked_at);
 
+CREATE TABLE IF NOT EXISTS app_auth_qr_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    session_guid UUID NOT NULL DEFAULT gen_random_uuid(),
+    approve_token_hash VARCHAR(255) NOT NULL,
+    poll_token_hash VARCHAR(255) NOT NULL,
+    requester_user_agent TEXT NOT NULL DEFAULT '',
+    requester_ip_address INET NULL,
+    approver_user_agent TEXT NOT NULL DEFAULT '',
+    approver_ip_address INET NULL,
+    approved_user_id BIGINT NULL REFERENCES app_users(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    expires_at TIMESTAMPTZ NOT NULL,
+    approved_at TIMESTAMPTZ NULL,
+    consumed_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_app_auth_qr_sessions_session_guid UNIQUE (session_guid),
+    CONSTRAINT ck_app_auth_qr_sessions_approve_token_not_blank CHECK (btrim(approve_token_hash) <> ''),
+    CONSTRAINT ck_app_auth_qr_sessions_poll_token_not_blank CHECK (btrim(poll_token_hash) <> ''),
+    CONSTRAINT ck_app_auth_qr_sessions_status_valid CHECK (
+        status IN ('pending', 'approved', 'consumed', 'expired')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_auth_qr_sessions_expires_at
+    ON app_auth_qr_sessions (expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_app_auth_qr_sessions_status
+    ON app_auth_qr_sessions (status);
+
+CREATE INDEX IF NOT EXISTS idx_app_auth_qr_sessions_approved_user_id
+    ON app_auth_qr_sessions (approved_user_id);
+
 CREATE OR REPLACE FUNCTION set_row_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -67,6 +100,12 @@ EXECUTE FUNCTION set_row_updated_at();
 DROP TRIGGER IF EXISTS trg_app_user_sessions_updated_at ON app_user_sessions;
 CREATE TRIGGER trg_app_user_sessions_updated_at
 BEFORE UPDATE ON app_user_sessions
+FOR EACH ROW
+EXECUTE FUNCTION set_row_updated_at();
+
+DROP TRIGGER IF EXISTS trg_app_auth_qr_sessions_updated_at ON app_auth_qr_sessions;
+CREATE TRIGGER trg_app_auth_qr_sessions_updated_at
+BEFORE UPDATE ON app_auth_qr_sessions
 FOR EACH ROW
 EXECUTE FUNCTION set_row_updated_at();
 

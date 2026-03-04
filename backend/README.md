@@ -18,6 +18,10 @@
    - `GET http://127.0.0.1:8000/api/db/ping`
    - `POST http://127.0.0.1:8000/api/auth/register` (`name`, `email`, `password`)
    - `POST http://127.0.0.1:8000/api/auth/login` (`email`, `password`)
+   - `POST http://127.0.0.1:8000/api/auth/qr/start`
+   - `GET http://127.0.0.1:8000/api/auth/qr/status?session_guid=...&poll_token=...`
+   - `POST http://127.0.0.1:8000/api/auth/qr/approve` (`session_guid`, `approve_token`, `Authorization: Bearer ...`)
+   - `POST http://127.0.0.1:8000/api/auth/qr/complete` (`session_guid`, `poll_token`)
    - `GET http://127.0.0.1:8000/api/auth/me`
    - `PUT http://127.0.0.1:8000/api/auth/me` (`name`, `email`, `password`)
    - `DELETE http://127.0.0.1:8000/api/auth/me`
@@ -35,11 +39,18 @@
   - `app_json_store` (persistencia JSON atual da aplicacao)
   - `app_users` (`user_guid` unico por usuario, `full_name`, `email`, `password_hash`)
   - `app_user_sessions` (controle de sessao/login)
+  - `app_auth_qr_sessions` (login por QR com aprovacao do celular)
 
 Aplicar manualmente:
 
 ```powershell
 psql "$env:DATABASE_URL" -f backend/sql/001_init_auth_schema.sql
+```
+
+Se a base ja existir com o schema antigo:
+
+```powershell
+psql "$env:DATABASE_URL" -f backend/sql/002_add_auth_qr_sessions.sql
 ```
 
 ## Executar com Docker (hot reload)

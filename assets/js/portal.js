@@ -5644,7 +5644,16 @@
   const authForm = document.getElementById('auth-form');
   const authNameField = document.getElementById('auth-name-field');
   const authNameInput = document.getElementById('auth-name-input');
+  const authQrOptionField = document.getElementById('auth-qr-option-field');
+  const authQrOpenBtn = document.getElementById('auth-qr-open-btn');
+  const authQrPanel = document.getElementById('auth-qr-panel');
+  const authQrImage = document.getElementById('auth-qr-image');
+  const authQrStatus = document.getElementById('auth-qr-status');
+  const authQrRefreshBtn = document.getElementById('auth-qr-refresh-btn');
+  const authQrCloseBtn = document.getElementById('auth-qr-close-btn');
+  const authEmailField = document.getElementById('auth-email-field');
   const authEmailInput = document.getElementById('auth-email-input');
+  const authPasswordField = document.getElementById('auth-password-field');
   const authPasswordInput = document.getElementById('auth-password-input');
   const authPasswordToggle = document.getElementById('auth-password-toggle');
   const authFormFeedback = document.getElementById('auth-form-feedback');
@@ -5694,11 +5703,29 @@
   const FAVORITE_CONFIRM_ACTION_ACCEPT = 'accept';
   const FAVORITE_CONFIRM_ACTION_CANCEL = 'cancel';
   const FAVORITE_CONFIRM_ACTION_DISMISS = 'dismiss';
+  const AUTH_QR_STATUS_PENDING = 'pending';
+  const AUTH_QR_STATUS_APPROVED = 'approved';
+  const AUTH_QR_STATUS_CONSUMED = 'consumed';
+  const AUTH_QR_STATUS_EXPIRED = 'expired';
+  const AUTH_QR_POLL_INTERVAL_MS = 1600;
+  const AUTH_QR_QUERY_SESSION_KEY = 'auth_qr_session';
+  const AUTH_QR_QUERY_TOKEN_KEY = 'auth_qr_token';
   let authMode = 'login';
   let authRequestPending = false;
   let authToken = '';
   let authUser = null;
   let lastFocusedAuthTrigger = null;
+  let authQrRequestPending = false;
+  let authQrPanelOpen = false;
+  let authQrSessionGuid = '';
+  let authQrPollToken = '';
+  let authQrApproveUrl = '';
+  let authQrExpiresAtUtc = '';
+  let authQrPollTimerId = null;
+  let authQrCompletePending = false;
+  let authQrPollInFlight = false;
+  let pendingAuthQrApproval = null;
+  let authQrApprovalHandling = false;
   const songSearchWidgets = [
     {
       id: 'header',
@@ -6603,6 +6630,252 @@
     authPasswordToggle.setAttribute('title', label);
   };
 
+  const buildAuthQrImageUrl = (rawApproveUrl = '') => {
+    const safeValue = String(rawApproveUrl || '').trim();
+    if (!safeValue) return '';
+    return safeValue;
+  };
+
+  const clearAuthQrPollTimer = () => {
+    if (authQrPollTimerId) {
+      window.clearTimeout(authQrPollTimerId);
+      authQrPollTimerId = null;
+    }
+  };
+
+  const setAuthQrStatusMessage = (message = '', type = '') => {
+    if (!authQrStatus) return;
+    const safeMessage = String(message || '').trim();
+    const safeType = String(type || '').trim();
+    authQrStatus.textContent = safeMessage;
+    authQrStatus.classList.remove('is-warning', 'is-success', 'is-error', 'is-loading');
+    if (safeType) authQrStatus.classList.add(safeType);
+    authQrStatus.hidden = !safeMessage;
+  };
+
+  const setAuthQrRequestState = (pending) => {
+    authQrRequestPending = Boolean(pending);
+    const disabled = authQrRequestPending || authRequestPending;
+    if (authQrOpenBtn) authQrOpenBtn.disabled = disabled;
+    if (authQrRefreshBtn) authQrRefreshBtn.disabled = disabled;
+    if (authQrCloseBtn) authQrCloseBtn.disabled = authQrRequestPending;
+  };
+
+  const resetAuthQrSessionState = () => {
+    clearAuthQrPollTimer();
+    authQrCompletePending = false;
+    authQrPollInFlight = false;
+    authQrSessionGuid = '';
+    authQrPollToken = '';
+    authQrApproveUrl = '';
+    authQrExpiresAtUtc = '';
+    if (authQrImage) {
+      authQrImage.removeAttribute('src');
+    }
+    setAuthQrStatusMessage('');
+    setAuthQrRequestState(false);
+  };
+
+  const readAuthQrApprovalFromUrl = () => {
+    try {
+      const currentUrl = new URL(window.location.href);
+      const sessionGuid = String(currentUrl.searchParams.get(AUTH_QR_QUERY_SESSION_KEY) || '').trim();
+      const approveToken = String(currentUrl.searchParams.get(AUTH_QR_QUERY_TOKEN_KEY) || '').trim();
+      if (!sessionGuid || !approveToken) return null;
+      return { sessionGuid, approveToken };
+    } catch (_err) {
+      return null;
+    }
+  };
+
+  const clearAuthQrApprovalFromUrl = () => {
+    try {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete(AUTH_QR_QUERY_SESSION_KEY);
+      currentUrl.searchParams.delete(AUTH_QR_QUERY_TOKEN_KEY);
+      const nextQuery = currentUrl.searchParams.toString();
+      const nextUrl = `${currentUrl.pathname}${nextQuery ? `?${nextQuery}` : ''}${currentUrl.hash || ''}`;
+      window.history.replaceState({}, document.title, nextUrl);
+    } catch (_err) {
+      return;
+    }
+  };
+
+  const maybeHandlePendingAuthQrApproval = async (triggerElement = null) => {
+    if (!pendingAuthQrApproval || authQrApprovalHandling) return false;
+    if (!isAuthLoggedIn()) return false;
+    const safePending = asObject(pendingAuthQrApproval);
+    const sessionGuid = String(safePending.sessionGuid || '').trim();
+    const approveToken = String(safePending.approveToken || '').trim();
+    if (!sessionGuid || !approveToken) {
+      pendingAuthQrApproval = null;
+      clearAuthQrApprovalFromUrl();
+      return false;
+    }
+
+    authQrApprovalHandling = true;
+    try {
+      const shouldApprove = await openFavoriteConfirmModal({
+        triggerElement: triggerElement instanceof HTMLElement ? triggerElement : null,
+        title: 'Autorizar login por QR Code',
+        message: 'Deseja autorizar o login no computador usando sua conta atual?',
+        acceptLabel: 'Autorizar',
+        cancelLabel: 'Cancelar',
+        requirePassword: false,
+      });
+      if (!shouldApprove) {
+        showSongToast('Aprovacao de QR Code cancelada.', 'is-warning');
+        pendingAuthQrApproval = null;
+        clearAuthQrApprovalFromUrl();
+        return false;
+      }
+
+      await requestAuthJson('/api/auth/qr/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          session_guid: sessionGuid,
+          approve_token: approveToken,
+        }),
+      });
+      showSongToast('Login no computador autorizado.', 'is-success');
+      pendingAuthQrApproval = null;
+      clearAuthQrApprovalFromUrl();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao autorizar QR Code.';
+      showSongToast(message, 'is-error');
+      return false;
+    } finally {
+      authQrApprovalHandling = false;
+    }
+  };
+
+  const completeAuthQrLogin = async () => {
+    if (authQrCompletePending || !authQrSessionGuid || !authQrPollToken) return false;
+    authQrCompletePending = true;
+    setAuthQrStatusMessage('Confirmando login...', 'is-loading');
+    setAuthQrRequestState(true);
+    try {
+      const payload = await requestAuthJson('/api/auth/qr/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_guid: authQrSessionGuid,
+          poll_token: authQrPollToken,
+        }),
+      });
+      applyAuthPayload(payload);
+      authQrPanelOpen = false;
+      syncAuthFormMode(authMode);
+      resetAuthQrSessionState();
+      closeAuthModal({ restoreFocus: false });
+      showSongToast('Login por QR Code realizado com sucesso.', 'is-success');
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao concluir login por QR Code.';
+      setAuthQrStatusMessage(message, 'is-error');
+      setAuthQrRequestState(false);
+      return false;
+    } finally {
+      authQrCompletePending = false;
+    }
+  };
+
+  const pollAuthQrStatus = async () => {
+    clearAuthQrPollTimer();
+    if (!authQrPanelOpen || !authQrSessionGuid || !authQrPollToken || authQrPollInFlight) return;
+    authQrPollInFlight = true;
+    try {
+      const query = new URLSearchParams({
+        session_guid: authQrSessionGuid,
+        poll_token: authQrPollToken,
+      }).toString();
+      const payload = await requestAuthJson(`/api/auth/qr/status?${query}`, {
+        method: 'GET',
+      });
+      const status = String(payload.status || '').trim().toLowerCase();
+      const expiresAtUtc = String(payload.expires_at_utc || '').trim();
+      authQrExpiresAtUtc = expiresAtUtc || authQrExpiresAtUtc;
+      if (status === AUTH_QR_STATUS_APPROVED) {
+        setAuthQrStatusMessage('Aprovado no celular. Finalizando login...', 'is-success');
+        await completeAuthQrLogin();
+        return;
+      }
+      if (status === AUTH_QR_STATUS_EXPIRED) {
+        setAuthQrStatusMessage('QR Code expirado. Gere um novo para continuar.', 'is-warning');
+        return;
+      }
+      if (status === AUTH_QR_STATUS_CONSUMED) {
+        setAuthQrStatusMessage('QR Code ja utilizado. Gere um novo para continuar.', 'is-warning');
+        return;
+      }
+
+      let countdownText = '';
+      if (authQrExpiresAtUtc) {
+        const expiresAtMs = Date.parse(authQrExpiresAtUtc);
+        if (Number.isFinite(expiresAtMs)) {
+          const remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000));
+          if (remainingSeconds > 0) {
+            countdownText = ` (${remainingSeconds}s)`;
+          }
+        }
+      }
+      setAuthQrStatusMessage(`Aguardando aprovacao no celular${countdownText}.`, 'is-loading');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao consultar QR Code.';
+      setAuthQrStatusMessage(message, 'is-error');
+      return;
+    } finally {
+      authQrPollInFlight = false;
+    }
+
+    if (!authQrPanelOpen || authQrCompletePending) return;
+    authQrPollTimerId = window.setTimeout(() => {
+      void pollAuthQrStatus();
+    }, AUTH_QR_POLL_INTERVAL_MS);
+  };
+
+  const startAuthQrLogin = async () => {
+    if (authQrRequestPending || authRequestPending) return;
+    resetAuthQrSessionState();
+    setAuthQrRequestState(true);
+    setAuthQrStatusMessage('Gerando QR Code...', 'is-loading');
+    try {
+      const payload = await requestAuthJson('/api/auth/qr/start', {
+        method: 'POST',
+      });
+      const nextSessionGuid = String(payload.session_guid || '').trim();
+      const nextPollToken = String(payload.poll_token || '').trim();
+      const nextApproveUrl = String(payload.approve_url || '').trim();
+      const nextQrImageDataUrl = String(payload.qr_image_data_url || '').trim();
+      const nextExpiresAtUtc = String(payload.expires_at_utc || '').trim();
+      if (!nextSessionGuid || !nextPollToken || !nextApproveUrl || !nextQrImageDataUrl) {
+        throw new Error('Falha ao gerar QR Code de autenticacao.');
+      }
+
+      authQrSessionGuid = nextSessionGuid;
+      authQrPollToken = nextPollToken;
+      authQrApproveUrl = nextApproveUrl;
+      authQrExpiresAtUtc = nextExpiresAtUtc;
+      if (authQrImage) {
+        authQrImage.src = buildAuthQrImageUrl(nextQrImageDataUrl);
+      }
+      setAuthQrStatusMessage('Escaneie o QR Code com o celular para autorizar.', 'is-loading');
+      setAuthQrRequestState(false);
+      void pollAuthQrStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao iniciar login por QR Code.';
+      setAuthQrStatusMessage(message, 'is-error');
+      setAuthQrRequestState(false);
+    }
+  };
+
   const normalizeAuthMode = (mode = 'login') => {
     const safeMode = String(mode || '').trim().toLowerCase();
     if (safeMode === 'register') return 'register';
@@ -6612,8 +6885,15 @@
 
   const syncAuthFormMode = (mode = 'login') => {
     const normalizedMode = normalizeAuthMode(mode);
+    const isLoginMode = normalizedMode === 'login';
     const isRegisterMode = normalizedMode === 'register';
     const isAccountMode = normalizedMode === 'account';
+    if (!isLoginMode && authQrPanelOpen) {
+      authQrPanelOpen = false;
+      resetAuthQrSessionState();
+    }
+    const showQrPanel = isLoginMode && authQrPanelOpen;
+    const showAuthCredentialFields = !showQrPanel;
     const showNameField = isRegisterMode || isAccountMode;
 
     if (authNameField) {
@@ -6631,8 +6911,42 @@
         authNameInput.value = '';
       }
     }
+    if (authQrOptionField) {
+      authQrOptionField.hidden = !isLoginMode;
+      authQrOptionField.setAttribute('aria-hidden', isLoginMode ? 'false' : 'true');
+      if (isLoginMode) {
+        authQrOptionField.style.removeProperty('display');
+      } else {
+        authQrOptionField.style.display = 'none';
+      }
+    }
+    if (authQrPanel) {
+      authQrPanel.hidden = !showQrPanel;
+      authQrPanel.setAttribute('aria-hidden', showQrPanel ? 'false' : 'true');
+    }
+    if (authEmailField) {
+      authEmailField.hidden = !showAuthCredentialFields;
+      authEmailField.setAttribute('aria-hidden', showAuthCredentialFields ? 'false' : 'true');
+      if (showAuthCredentialFields) {
+        authEmailField.style.removeProperty('display');
+      } else {
+        authEmailField.style.display = 'none';
+      }
+    }
+    if (authPasswordField) {
+      authPasswordField.hidden = !showAuthCredentialFields;
+      authPasswordField.setAttribute('aria-hidden', showAuthCredentialFields ? 'false' : 'true');
+      if (showAuthCredentialFields) {
+        authPasswordField.style.removeProperty('display');
+      } else {
+        authPasswordField.style.display = 'none';
+      }
+    }
+    if (authEmailInput) {
+      authEmailInput.required = showAuthCredentialFields;
+    }
     if (authPasswordInput) {
-      authPasswordInput.required = true;
+      authPasswordInput.required = showAuthCredentialFields;
       authPasswordInput.setAttribute(
         'autocomplete',
         isRegisterMode || isAccountMode ? 'new-password' : 'current-password'
@@ -6643,6 +6957,15 @@
         authPasswordInput.placeholder = 'Minimo de 6 caracteres';
       } else {
         authPasswordInput.placeholder = '';
+      }
+    }
+    if (authSubmitBtn) {
+      authSubmitBtn.hidden = showQrPanel;
+      authSubmitBtn.setAttribute('aria-hidden', showQrPanel ? 'true' : 'false');
+      if (showQrPanel) {
+        authSubmitBtn.style.display = 'none';
+      } else {
+        authSubmitBtn.style.removeProperty('display');
       }
     }
     if (authDeleteBtn) {
@@ -6705,11 +7028,15 @@
     if (authPasswordInput) authPasswordInput.disabled = authRequestPending;
     if (authPasswordToggle) authPasswordToggle.disabled = authRequestPending;
     if (authNameInput) authNameInput.disabled = authRequestPending || normalizeAuthMode(authMode) === 'login';
+    setAuthQrRequestState(authQrRequestPending);
   };
 
   const closeAuthModal = (options = {}) => {
     if (!authModal) return;
     const { restoreFocus = true } = options;
+    authQrPanelOpen = false;
+    resetAuthQrSessionState();
+    syncAuthFormMode(authMode);
     authModal.classList.remove('open');
     authModal.setAttribute('aria-hidden', 'true');
     setAuthFormFeedback('');
@@ -6730,6 +7057,8 @@
     }
 
     authMode = finalMode;
+    authQrPanelOpen = false;
+    resetAuthQrSessionState();
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     lastFocusedAuthTrigger = trigger || activeElement || authMenuTrigger || null;
 
@@ -6918,8 +7247,18 @@
     }
   };
 
+  pendingAuthQrApproval = readAuthQrApprovalFromUrl();
   restoreAuthState();
-  runDeferredTask(syncAuthSession, 180);
+  if (pendingAuthQrApproval && !isAuthLoggedIn()) {
+    showSongToast('Faça login no celular para autorizar o QR Code.', 'is-warning');
+    runDeferredTask(() => {
+      openAuthModal('login', authMenuTrigger);
+    }, 80);
+  }
+  runDeferredTask(async () => {
+    await syncAuthSession();
+    await maybeHandlePendingAuthQrApproval(authMenuTrigger);
+  }, 180);
 
   if (authActionButtons.length) {
     authActionButtons.forEach((button) => {
@@ -6958,12 +7297,42 @@
     });
   }
 
+  if (authQrOpenBtn) {
+    authQrOpenBtn.addEventListener('click', () => {
+      if (normalizeAuthMode(authMode) !== 'login') return;
+      authQrPanelOpen = true;
+      syncAuthFormMode(authMode);
+      void startAuthQrLogin();
+    });
+  }
+
+  if (authQrRefreshBtn) {
+    authQrRefreshBtn.addEventListener('click', () => {
+      if (!authQrPanelOpen || normalizeAuthMode(authMode) !== 'login') return;
+      void startAuthQrLogin();
+    });
+  }
+
+  if (authQrCloseBtn) {
+    authQrCloseBtn.addEventListener('click', () => {
+      authQrPanelOpen = false;
+      resetAuthQrSessionState();
+      syncAuthFormMode(authMode);
+      if (authEmailInput instanceof HTMLElement) {
+        window.requestAnimationFrame(() => {
+          focusWithoutScrollingPage(authEmailInput);
+        });
+      }
+    });
+  }
+
   if (authForm && authEmailInput && authPasswordInput) {
     authForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (authRequestPending) return;
 
       const safeMode = normalizeAuthMode(authMode);
+      if (safeMode === 'login' && authQrPanelOpen) return;
       const safeName = String(authNameInput?.value || '').trim();
       const safeEmail = String(authEmailInput.value || '').trim().toLowerCase();
       const safePassword = String(authPasswordInput.value || '');
@@ -7062,6 +7431,11 @@
             : (safeMode === 'account' ? 'Conta atualizada com sucesso.' : 'Login realizado com sucesso.'),
           'is-success'
         );
+        if (safeMode !== 'account') {
+          runDeferredTask(() => {
+            void maybeHandlePendingAuthQrApproval(authSubmitBtn);
+          }, 80);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Falha ao autenticar.';
         setAuthFormFeedback(message);

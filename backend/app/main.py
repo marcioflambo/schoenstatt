@@ -1,21 +1,32 @@
 from __future__ import annotations
 
+import base64
 from hmac import compare_digest
+from io import BytesIO
 from pathlib import Path
 import unicodedata
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import qrcode
+from qrcode.image.svg import SvgPathImage
 
 from .auth import (
     AuthAccountUpdateRequest,
     AuthLoginRequest,
+    AuthQrApproveRequest,
+    AuthQrCompleteRequest,
     AuthRegisterRequest,
+    approve_qr_login_session,
+    complete_qr_login_session,
+    create_qr_login_session,
     delete_authenticated_user,
     get_authenticated_user,
+    get_qr_login_session_status,
     login_user,
     logout_user,
     register_user,
@@ -199,6 +210,50 @@ def _is_song_identity_match(left_identity: dict[str, str], right_identity: dict[
 
 def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
+
+
+def _build_auth_qr_approve_url(request: Request, session_guid: str, approve_token: str) -> str:
+    safe_session_guid = _normalize_spaces(session_guid)
+    safe_approve_token = _normalize_spaces(approve_token)
+    if not safe_session_guid or not safe_approve_token:
+        return ''
+
+    base_url = _normalize_spaces(str(request.base_url or ''))
+    safe_base_url = base_url.rstrip('/') if base_url else ''
+    if not safe_base_url:
+        forwarded_proto = _normalize_spaces(request.headers.get('x-forwarded-proto', ''))
+        forwarded_host = _normalize_spaces(request.headers.get('x-forwarded-host', ''))
+        host = (forwarded_host.split(',')[0] if forwarded_host else _normalize_spaces(request.headers.get('host', ''))).strip()
+        scheme = (forwarded_proto.split(',')[0] if forwarded_proto else _normalize_spaces(request.url.scheme)).strip() or 'https'
+        safe_base_url = f'{scheme}://{host}' if host else ''
+
+    query = urlencode({
+        'auth_qr_session': safe_session_guid,
+        'auth_qr_token': safe_approve_token,
+    })
+    return f'{safe_base_url}/?{query}' if safe_base_url else f'/?{query}'
+
+
+def _build_auth_qr_svg_data_url(content: str) -> str:
+    safe_content = _normalize_spaces(content)
+    if not safe_content:
+        return ''
+
+    qr_code = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
+    )
+    qr_code.add_data(safe_content)
+    qr_code.make(fit=True)
+    image = qr_code.make_image(image_factory=SvgPathImage)
+    buffer = BytesIO()
+    image.save(buffer)
+    svg_payload = buffer.getvalue()
+    if not svg_payload:
+        return ''
+    encoded = base64.b64encode(svg_payload).decode('ascii')
+    return f'data:image/svg+xml;base64,{encoded}'
 
 
 def _coerce_int(value: object, default: int = 0) -> int:
@@ -997,6 +1052,120 @@ def api_auth_register(payload: AuthRegisterRequest, request: Request) -> dict[st
 def api_auth_login(payload: AuthLoginRequest, request: Request) -> dict[str, object]:
     try:
         auth_payload = login_user(
+            settings.database_url,
+            payload,
+            session_days=settings.auth_session_days,
+            user_agent=request.headers.get('user-agent', ''),
+            forwarded_for=request.headers.get('x-forwarded-for', ''),
+            client_ip=request.client.host if request.client else '',
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **auth_payload,
+    }
+
+
+@app.post('/api/auth/qr/start')
+def api_auth_qr_start(request: Request) -> dict[str, object]:
+    try:
+        qr_payload = create_qr_login_session(
+            settings.database_url,
+            user_agent=request.headers.get('user-agent', ''),
+            forwarded_for=request.headers.get('x-forwarded-for', ''),
+            client_ip=request.client.host if request.client else '',
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    session_guid = _normalize_spaces(str(qr_payload.get('session_guid') or ''))
+    approve_token = _normalize_spaces(str(qr_payload.get('approve_token') or ''))
+    poll_token = _normalize_spaces(str(qr_payload.get('poll_token') or ''))
+    expires_at_utc = _normalize_spaces(str(qr_payload.get('expires_at_utc') or ''))
+    expires_in_seconds = _coerce_int(qr_payload.get('expires_in_seconds'), 0)
+    approve_url = _build_auth_qr_approve_url(request, session_guid, approve_token)
+    qr_image_data_url = _build_auth_qr_svg_data_url(approve_url)
+
+    if not session_guid or not poll_token or not approve_url or not qr_image_data_url:
+        raise HTTPException(
+            status_code=503,
+            detail={'message': 'Falha ao gerar QR Code de autenticacao.'},
+        )
+
+    return {
+        'ok': True,
+        'session_guid': session_guid,
+        'poll_token': poll_token,
+        'approve_url': approve_url,
+        'qr_image_data_url': qr_image_data_url,
+        'expires_at_utc': expires_at_utc,
+        'expires_in_seconds': expires_in_seconds,
+    }
+
+
+@app.get('/api/auth/qr/status')
+def api_auth_qr_status(
+    session_guid: str = Query(..., min_length=1),
+    poll_token: str = Query(..., min_length=1),
+) -> dict[str, object]:
+    try:
+        status_payload = get_qr_login_session_status(
+            settings.database_url,
+            session_guid,
+            poll_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **status_payload,
+    }
+
+
+@app.post('/api/auth/qr/approve')
+def api_auth_qr_approve(
+    payload: AuthQrApproveRequest,
+    request: Request,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    token = _extract_bearer_token(authorization)
+    try:
+        approval_payload = approve_qr_login_session(
+            settings.database_url,
+            payload,
+            token,
+            user_agent=request.headers.get('user-agent', ''),
+            forwarded_for=request.headers.get('x-forwarded-for', ''),
+            client_ip=request.client.host if request.client else '',
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail={'message': str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **approval_payload,
+    }
+
+
+@app.post('/api/auth/qr/complete')
+def api_auth_qr_complete(payload: AuthQrCompleteRequest, request: Request) -> dict[str, object]:
+    try:
+        auth_payload = complete_qr_login_session(
             settings.database_url,
             payload,
             session_days=settings.auth_session_days,

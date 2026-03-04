@@ -57,6 +57,7 @@
           <button type="button" class="auth-menu-option" data-auth-action="login" role="menuitem">Login</button>
           <button type="button" class="auth-menu-option" data-auth-action="register" role="menuitem">Registro</button>
           <button type="button" class="auth-menu-option" data-auth-action="account" role="menuitem" hidden>Conta</button>
+          <button type="button" class="auth-menu-option" data-auth-action="sessions" role="menuitem" hidden>Sessoes</button>
           <button type="button" class="auth-menu-option" data-auth-action="logout" role="menuitem" hidden>Sair</button>
         </div>
       </div>
@@ -901,7 +902,23 @@
           <span>Nome</span>
           <input id="auth-name-input" class="auth-input" type="text" maxlength="150" autocomplete="name" />
         </label>
-        <label class="auth-field" for="auth-email-input">
+        <div id="auth-qr-option-field" class="auth-qr-option-field">
+          <button type="button" id="auth-qr-open-btn" class="auth-qr-open-btn">
+            Entrar por QR Code
+          </button>
+        </div>
+        <section id="auth-qr-panel" class="auth-qr-panel" hidden>
+          <p class="auth-qr-copy">Escaneie com o celular logado para autorizar o login neste PC.</p>
+          <div class="auth-qr-image-wrap">
+            <img id="auth-qr-image" class="auth-qr-image" alt="QR Code para autorizar login" />
+          </div>
+          <p id="auth-qr-status" class="auth-qr-status"></p>
+          <div class="auth-qr-actions">
+            <button type="button" id="auth-qr-refresh-btn" class="btn btn-outline">Gerar novo QR</button>
+            <button type="button" id="auth-qr-close-btn" class="btn btn-ghost">Usar email e senha</button>
+          </div>
+        </section>
+        <label id="auth-email-field" class="auth-field" for="auth-email-input">
           <span>Email</span>
           <div class="auth-input-wrap auth-email-wrap">
             <input id="auth-email-input" class="auth-input" type="email" maxlength="255" autocomplete="email" required />
@@ -913,7 +930,7 @@
             </span>
           </div>
         </label>
-        <label class="auth-field" for="auth-password-input">
+        <label id="auth-password-field" class="auth-field" for="auth-password-input">
           <span>Senha</span>
           <div class="auth-password-wrap">
             <input id="auth-password-input" class="auth-input" type="password" maxlength="128" autocomplete="current-password" required />
@@ -954,6 +971,26 @@
           <button type="submit" id="auth-submit-btn" class="btn btn-primary">Entrar</button>
         </footer>
       </form>
+    </article>
+  </div>
+
+  <div id="auth-sessions-modal" class="auth-sessions-modal" aria-hidden="true">
+    <div class="auth-sessions-backdrop" data-auth-sessions-close></div>
+    <article class="auth-sessions-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-sessions-title">
+      <header class="auth-sessions-header">
+        <h3 id="auth-sessions-title">Sessoes ativas</h3>
+        <button
+          type="button"
+          id="auth-sessions-close"
+          class="auth-sessions-close"
+          data-auth-sessions-close
+          aria-label="Fechar sessoes"
+        >
+          &times;
+        </button>
+      </header>
+      <p id="auth-sessions-feedback" class="auth-sessions-feedback" hidden></p>
+      <ul id="auth-sessions-list" class="auth-sessions-list"></ul>
     </article>
   </div>
 

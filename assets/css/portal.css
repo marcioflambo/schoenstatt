@@ -2283,6 +2283,109 @@ body.theme-dark .favorite-confirm-password-error {
   font-weight: 700;
 }
 
+.auth-qr-option-field {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 0;
+}
+
+.auth-qr-option-field[hidden] {
+  display: none !important;
+}
+
+.auth-qr-open-btn {
+  border: 1px solid rgba(33, 79, 139, 0.34);
+  background: rgba(33, 79, 139, 0.08);
+  color: var(--primary-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 11px;
+  cursor: pointer;
+}
+
+.auth-qr-open-btn:hover,
+.auth-qr-open-btn:focus-visible {
+  background: rgba(33, 79, 139, 0.16);
+  border-color: rgba(33, 79, 139, 0.48);
+  outline: none;
+}
+
+.auth-qr-open-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.auth-qr-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(33, 79, 139, 0.24);
+  background: rgba(33, 79, 139, 0.05);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.auth-qr-panel[hidden] {
+  display: none !important;
+}
+
+.auth-qr-copy {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+.auth-qr-image-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-qr-image {
+  width: min(220px, calc(100vw - 96px));
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(33, 79, 139, 0.2);
+  background: #fff;
+}
+
+.auth-qr-status {
+  margin: 0;
+  min-height: 16px;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.auth-qr-status.is-warning {
+  color: #9d2d12;
+}
+
+.auth-qr-status.is-success {
+  color: #1f6f45;
+}
+
+.auth-qr-status.is-error {
+  color: #b3261e;
+}
+
+.auth-qr-status.is-loading {
+  color: #245288;
+}
+
+.auth-qr-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .auth-input {
   width: 100%;
   min-height: 36px;
@@ -2466,6 +2569,44 @@ body.theme-dark .auth-modal-dialog {
 
 body.theme-dark .auth-field span {
   color: #d6e2f4;
+}
+
+body.theme-dark .auth-qr-open-btn {
+  border-color: rgba(121, 170, 233, 0.42);
+  background: rgba(121, 170, 233, 0.14);
+  color: #dceafe;
+}
+
+body.theme-dark .auth-qr-open-btn:hover,
+body.theme-dark .auth-qr-open-btn:focus-visible {
+  background: rgba(121, 170, 233, 0.22);
+  border-color: rgba(121, 170, 233, 0.58);
+}
+
+body.theme-dark .auth-qr-panel {
+  border-color: rgba(121, 170, 233, 0.36);
+  background: rgba(121, 170, 233, 0.12);
+}
+
+body.theme-dark .auth-qr-copy,
+body.theme-dark .auth-qr-status {
+  color: #d6e2f4;
+}
+
+body.theme-dark .auth-qr-status.is-warning {
+  color: #ffc26c;
+}
+
+body.theme-dark .auth-qr-status.is-success {
+  color: #86dcae;
+}
+
+body.theme-dark .auth-qr-status.is-error {
+  color: #ffb8b1;
+}
+
+body.theme-dark .auth-qr-status.is-loading {
+  color: #b8d5ff;
 }
 
 body.theme-dark .auth-input {

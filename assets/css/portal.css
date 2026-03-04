@@ -17,6 +17,10 @@
   --toast-bg: linear-gradient(160deg, rgba(250, 253, 255, 0.96), rgba(236, 244, 255, 0.94));
   --toast-text: #174279;
   --toast-accent: linear-gradient(90deg, rgba(33, 79, 139, 0.95), rgba(79, 139, 219, 0.95));
+  --page-background:
+    radial-gradient(circle at 8% 10%, rgba(195, 154, 61, 0.14), transparent 34%),
+    radial-gradient(circle at 85% 5%, rgba(33, 79, 139, 0.12), transparent 36%),
+    linear-gradient(180deg, #fffdf8 0%, #f6f1e6 60%, #f1ead9 100%);
   --vh: 1vh;
   --mobile-header-height: 70px;
   --header-height: 78px;
@@ -35,10 +39,7 @@ body {
   margin: 0;
   font-family: "Nunito Sans", sans-serif;
   color: var(--ink);
-  background:
-    radial-gradient(circle at 8% 10%, rgba(195, 154, 61, 0.14), transparent 34%),
-    radial-gradient(circle at 85% 5%, rgba(33, 79, 139, 0.12), transparent 36%),
-    linear-gradient(180deg, #fffdf8 0%, #f6f1e6 60%, #f1ead9 100%);
+  background: var(--page-background);
   line-height: 1.65;
   min-height: 100vh;
   min-height: calc(var(--vh, 1vh) * 100);
@@ -61,7 +62,7 @@ body.theme-dark {
   --toast-bg: linear-gradient(160deg, rgba(248, 252, 255, 0.98), rgba(236, 245, 255, 0.97));
   --toast-text: #183f73;
   --toast-accent: linear-gradient(90deg, rgba(67, 122, 197, 0.96), rgba(112, 162, 232, 0.95));
-  background:
+  --page-background:
     radial-gradient(circle at 8% 10%, rgba(212, 174, 97, 0.18), transparent 36%),
     radial-gradient(circle at 85% 5%, rgba(121, 170, 233, 0.2), transparent 40%),
     linear-gradient(180deg, #0d1623 0%, #101b2b 60%, #0d1724 100%);
@@ -1883,6 +1884,8 @@ body.has-modal-open {
   left: 0;
   right: 0;
   width: 100%;
+  background: var(--page-background);
+  background-attachment: fixed;
 }
 
 .song-toast {
@@ -3199,7 +3202,9 @@ body.theme-dark .song-save-location-picker-item-arrow {
 .song-location-create-dialog {
   position: relative;
   z-index: 1;
-  width: min(420px, calc(100vw - 16px));
+  width: max-content;
+  min-width: min(420px, calc(100vw - 16px));
+  max-width: min(92vw, 860px);
   margin: clamp(10px, 8vh, 62px) auto 0;
   border: 1px solid rgba(215, 202, 166, 0.72);
   border-radius: 14px;
@@ -3212,6 +3217,7 @@ body.theme-dark .song-save-location-picker-item-arrow {
   padding: 11px 12px 12px;
   display: grid;
   gap: 8px;
+  overflow: visible;
 }
 
 .song-location-create-dialog h3 {
@@ -3230,17 +3236,16 @@ body.theme-dark .song-save-location-picker-item-arrow {
 
 .song-location-create-parent {
   width: 100%;
-  min-height: 134px;
-  max-height: min(40vh, 280px);
+  min-height: 35px;
   border: 1px solid rgba(33, 79, 139, 0.32);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.93);
   color: var(--primary-strong);
   font: inherit;
-  font-size: 0.78rem;
-  line-height: 1.28;
-  padding: 5px 6px;
-  overflow: auto;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  padding: 7px 10px;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
 }
 
 .song-location-create-parent:focus-visible {
@@ -3250,9 +3255,179 @@ body.theme-dark .song-save-location-picker-item-arrow {
   outline: none;
 }
 
-.song-location-create-parent option {
-  padding: 4px 6px;
-  border-radius: 6px;
+.song-location-create-parent::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+.song-location-create-parent-picker {
+  width: max-content;
+  min-width: 100%;
+  max-width: min(84vw, 780px);
+  border: 1px solid rgba(33, 79, 139, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  padding: 6px 7px;
+}
+
+.song-location-create-parent-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.song-location-create-parent-tree ul {
+  margin: 6px 0 0;
+  padding-left: 13px;
+  list-style: none;
+  border-left: 1px dashed rgba(33, 79, 139, 0.26);
+}
+
+.song-location-create-parent-tree > ul {
+  margin-top: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.song-location-create-parent-tree {
+  min-width: 100%;
+  width: max-content;
+}
+
+.song-location-create-parent-tree-item {
+  margin-top: 5px;
+}
+
+.song-location-create-parent-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.song-location-create-parent-delete {
+  min-height: 29px;
+  min-width: 29px;
+  width: 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid rgba(172, 58, 58, 0.44);
+  background: rgba(172, 58, 58, 0.12);
+  color: #9f2f2f;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.song-location-create-parent-delete:hover,
+.song-location-create-parent-delete:focus-visible {
+  background: rgba(172, 58, 58, 0.22);
+  outline: none;
+}
+
+.song-location-create-parent-delete:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.song-location-create-parent-label {
+  min-width: 0;
+  width: auto;
+  flex: 1 1 auto;
+  min-height: 29px;
+  box-sizing: border-box;
+  border: 1px solid #d5e1f0;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #f9fbff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.79rem;
+  line-height: 1.24;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.song-location-create-parent-label.song-location-create-parent-toggle {
+  appearance: none;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.song-location-create-parent-label.song-location-create-parent-toggle:hover,
+.song-location-create-parent-label.song-location-create-parent-toggle:focus-visible {
+  background: #eef5ff;
+  border-color: #b8cce5;
+  outline: none;
+}
+
+.song-location-create-parent-label-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.song-location-create-parent-caret {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-left: 1px;
+  border-right: 2px solid #5f7594;
+  border-bottom: 2px solid #5f7594;
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease;
+}
+
+.song-location-create-parent-toggle[aria-expanded="true"] .song-location-create-parent-caret {
+  transform: rotate(45deg);
+}
+
+.song-location-create-parent-meta {
+  flex: 0 0 auto;
+  color: #6e819b;
+  font-size: 0.72rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.song-location-create-parent-select {
+  min-height: 29px;
+  min-width: 29px;
+  width: 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid #b9d4f2;
+  background: #e8f3ff;
+  color: #15406d;
+  cursor: pointer;
+}
+
+.song-location-create-parent-select:hover,
+.song-location-create-parent-select:focus-visible {
+  background: #dcedff;
+  outline: none;
+}
+
+.song-location-create-parent-tree-item.is-selected > .song-location-create-parent-tree-row .song-location-create-parent-label {
+  border-color: rgba(42, 125, 86, 0.46);
+  background: rgba(42, 125, 86, 0.15);
 }
 
 .song-location-create-input {
@@ -3317,6 +3492,71 @@ body.theme-dark .song-location-create-parent {
   border-color: rgba(121, 170, 233, 0.42);
   background: rgba(10, 21, 35, 0.86);
   color: #d8e7ff;
+}
+
+body.theme-dark .song-location-create-parent::placeholder {
+  color: rgba(188, 210, 241, 0.78);
+}
+
+body.theme-dark .song-location-create-parent-picker {
+  border-color: rgba(121, 170, 233, 0.36);
+  background: rgba(8, 18, 30, 0.92);
+}
+
+body.theme-dark .song-location-create-parent-empty {
+  color: rgba(188, 210, 241, 0.78);
+}
+
+body.theme-dark .song-location-create-parent-tree ul {
+  border-left-color: rgba(121, 170, 233, 0.32);
+}
+
+body.theme-dark .song-location-create-parent-label {
+  border-color: rgba(121, 170, 233, 0.34);
+  background: rgba(16, 29, 46, 0.92);
+  color: #d8e7ff;
+}
+
+body.theme-dark .song-location-create-parent-delete {
+  border-color: rgba(225, 115, 115, 0.46);
+  background: rgba(89, 34, 34, 0.7);
+  color: #ffd8d8;
+}
+
+body.theme-dark .song-location-create-parent-delete:hover,
+body.theme-dark .song-location-create-parent-delete:focus-visible {
+  background: rgba(161, 62, 62, 0.72);
+}
+
+body.theme-dark .song-location-create-parent-label.song-location-create-parent-toggle:hover,
+body.theme-dark .song-location-create-parent-label.song-location-create-parent-toggle:focus-visible {
+  background: rgba(38, 62, 91, 0.92);
+  border-color: rgba(141, 182, 236, 0.54);
+}
+
+body.theme-dark .song-location-create-parent-caret {
+  border-right-color: #9db8de;
+  border-bottom-color: #9db8de;
+}
+
+body.theme-dark .song-location-create-parent-meta {
+  color: rgba(188, 210, 241, 0.76);
+}
+
+body.theme-dark .song-location-create-parent-select {
+  border-color: rgba(121, 170, 233, 0.48);
+  background: rgba(25, 47, 73, 0.9);
+  color: #d8e7ff;
+}
+
+body.theme-dark .song-location-create-parent-select:hover,
+body.theme-dark .song-location-create-parent-select:focus-visible {
+  background: rgba(39, 67, 98, 0.95);
+}
+
+body.theme-dark .song-location-create-parent-tree-item.is-selected > .song-location-create-parent-tree-row .song-location-create-parent-label {
+  border-color: rgba(63, 173, 117, 0.58);
+  background: rgba(25, 71, 61, 0.8);
 }
 
 body.theme-dark .song-location-create-parent:focus-visible {

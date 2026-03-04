@@ -689,6 +689,16 @@
       'title',
       readMysteryMessage('assignCategoryAddPromptRoot')
     );
+    setNodeAttr(
+      '#song-location-create-parent',
+      'placeholder',
+      readMysteryMessage('assignSearchPlaceholder')
+    );
+    setNodeAttr(
+      '#song-location-create-parent',
+      'aria-label',
+      readMysteryMessage('assignCategoryAddTargetField')
+    );
 
     setNodeText('#oracoes .section-header .section-kicker', content.oracoes?.header?.kicker);
     setNodeText('#oracoes .section-header h2', content.oracoes?.header?.title);
@@ -1795,7 +1805,11 @@
   const songLocationCreateModal = document.getElementById('song-location-create-modal');
   const songLocationCreateTitle = document.getElementById('song-location-create-title');
   const songLocationCreateTargetHint = document.getElementById('song-location-create-target-hint');
-  const songLocationCreateParentSelect = document.getElementById('song-location-create-parent');
+  const songLocationCreateParentInput = document.getElementById('song-location-create-parent');
+  const songLocationCreateParentPicker = document.getElementById('song-location-create-parent-picker');
+  const songLocationCreateParentEmpty = document.getElementById('song-location-create-parent-empty');
+  const songLocationCreateParentTree = document.getElementById('song-location-create-parent-tree');
+  const songLocationCreateParentIdInput = document.getElementById('song-location-create-parent-id');
   const songLocationCreateHint = document.getElementById('song-location-create-hint');
   const songLocationCreateInput = document.getElementById('song-location-create-input');
   const songLocationCreateCancelBtn = document.getElementById('song-location-create-cancel');
@@ -1814,6 +1828,8 @@
   let songSaveLocationPickerSearchQuery = '';
   let songLocationCreateModalParentId = '';
   let songLocationCreateModalParentLabel = '';
+  let songLocationCreateParentEntries = [];
+  let songLocationCreateParentNodes = [];
   let songLocationCreateModalFocusTarget = null;
   let songLocationCreateModalSubmitting = false;
   let lastFocusedRosaryTrigger = null;
@@ -2513,6 +2529,38 @@
     return normalizeSongLocationNodePayload(responsePayload.node);
   };
 
+  const deleteSongLocationUserNodeOnServer = async (nodeId) => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para remover listas da sua árvore.',
+      notify: true,
+      openLoginModal: true,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
+    const safeNodeId = String(nodeId || '').trim();
+    if (!safeNodeId) {
+      throw new Error(readMysteryMessage('assignCategoryDeleteUserError'));
+    }
+    const response = await fetch(`/api/song-locations/user-nodes/${encodeURIComponent(safeNodeId)}`, {
+      method: 'DELETE',
+      headers: buildUserScopedApiHeaders(),
+    });
+    const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
+    if (!response.ok || !responsePayload.ok) {
+      throw new Error(
+        responsePayload?.detail?.message
+        || responsePayload?.message
+        || readMysteryMessage('assignCategoryDeleteUserError')
+      );
+    }
+    return responsePayload;
+  };
+
   const deactivateSongLocationNodeOnServer = async (nodeId, password = '') => {
     const safeNodeId = String(nodeId || '').trim();
     const safePassword = String(password || '');
@@ -2877,10 +2925,361 @@
     && songLocationCreateModal.classList.contains('open')
   );
 
+  const normalizeSongLocationCreateParentLookup = (value) => (
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+  );
+
+  const openSongLocationCreateParentPicker = () => {
+    if (!songLocationCreateParentPicker) return;
+    songLocationCreateParentPicker.hidden = false;
+  };
+
+  const closeSongLocationCreateParentPicker = () => {
+    if (!songLocationCreateParentPicker) return;
+    songLocationCreateParentPicker.hidden = true;
+  };
+
+  const isSongLocationCreateParentPickerOpen = () => Boolean(
+    songLocationCreateParentPicker
+    && !songLocationCreateParentPicker.hidden
+  );
+
+  const buildSongLocationCreateParentNodes = () => {
+    const roots = buildSongSaveLocationPickerTree();
+
+    const visitNode = (rawNode, parentPathLabels = []) => {
+      const node = asObject(rawNode);
+      if (String(node.nodeType || '').trim() !== 'location-node') return null;
+
+      const locationId = String(node.locationId || '').trim()
+        || String(node.id || '').trim().replace(/^location:/i, '').trim();
+      const label = String(node.label || node.locationLabel || '').trim();
+      if (!locationId || !label) return null;
+
+      const locationPath = Array.isArray(node.locationPath)
+        ? node.locationPath.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+      const pathLabels = locationPath.length
+        ? locationPath
+        : [...parentPathLabels, label];
+      const pathLabel = pathLabels.join(' / ');
+      const children = (Array.isArray(node.children) ? node.children : [])
+        .map((child) => visitNode(child, pathLabels))
+        .filter(Boolean);
+
+      return {
+        id: locationId,
+        label,
+        pathLabels,
+        pathLabel,
+        lookupKey: normalizeSongLocationCreateParentLookup(pathLabel || label),
+        labelLookupKey: normalizeSongLocationCreateParentLookup(label),
+        canDelete: Boolean(node.canDelete),
+        children,
+      };
+    };
+
+    return (Array.isArray(roots) ? roots : [])
+      .map((node) => visitNode(node, []))
+      .filter(Boolean);
+  };
+
+  const flattenSongLocationCreateParentNodes = (nodes, result = []) => {
+    if (!Array.isArray(nodes)) return result;
+    nodes.forEach((node) => {
+      const safeNode = asObject(node);
+      const id = String(safeNode.id || '').trim();
+      const label = String(safeNode.label || '').trim();
+      const pathLabel = String(safeNode.pathLabel || '').trim();
+      if (id && label) {
+        result.push({
+          id,
+          label,
+          pathLabel: pathLabel || label,
+          lookupKey: normalizeSongLocationCreateParentLookup(pathLabel || label),
+          labelLookupKey: normalizeSongLocationCreateParentLookup(label),
+          canDelete: Boolean(safeNode.canDelete),
+        });
+      }
+      flattenSongLocationCreateParentNodes(
+        Array.isArray(safeNode.children) ? safeNode.children : [],
+        result
+      );
+    });
+    return result;
+  };
+
+  const filterSongLocationCreateParentNodes = (nodes, rawQuery) => {
+    const query = normalizeSongLocationCreateParentLookup(rawQuery);
+    if (!query) return Array.isArray(nodes) ? nodes : [];
+    const filtered = [];
+    (Array.isArray(nodes) ? nodes : []).forEach((rawNode) => {
+      const node = asObject(rawNode);
+      const nodeLookup = normalizeSongLocationCreateParentLookup(
+        String(node.pathLabel || node.label || '').trim()
+      );
+      const labelLookup = normalizeSongLocationCreateParentLookup(String(node.label || '').trim());
+      const filteredChildren = filterSongLocationCreateParentNodes(node.children, query);
+      const isMatch = nodeLookup.includes(query) || labelLookup.includes(query);
+      if (!isMatch && !filteredChildren.length) return;
+      filtered.push({
+        ...node,
+        children: filteredChildren,
+      });
+    });
+    return filtered;
+  };
+
+  const selectSongLocationCreateParentNode = (nodePayload) => {
+    const node = asObject(nodePayload);
+    const selectedId = String(node.id || '').trim();
+    const selectedLabel = String(node.pathLabel || node.label || '').trim();
+    if (!selectedId || !selectedLabel) return;
+    songLocationCreateModalParentId = selectedId;
+    songLocationCreateModalParentLabel = selectedLabel;
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.value = selectedLabel;
+    }
+    if (songLocationCreateParentIdInput) {
+      songLocationCreateParentIdInput.value = selectedId;
+    }
+    syncSongLocationCreateModalTargetState();
+    renderSongLocationCreateParentPickerTree();
+    closeSongLocationCreateParentPicker();
+  };
+
+  const deleteSongLocationCreateParentNode = async (nodePayload, triggerElement = null) => {
+    const node = asObject(nodePayload);
+    const nodeId = String(node.id || '').trim();
+    const nodePathLabel = String(node.pathLabel || node.label || '').trim();
+    if (!nodeId || !Boolean(node.canDelete)) {
+      showSongToast(
+        readMysteryMessage('assignCategoryDeleteUserNotAllowed'),
+        'is-warning'
+      );
+      return false;
+    }
+
+    const shouldDelete = await openFavoriteConfirmModal({
+      triggerElement,
+      title: readMysteryMessage('assignCategoryDeleteUserConfirmTitle'),
+      message: readMysteryMessage('assignCategoryDeleteUserConfirmMessage',
+        { title: nodePathLabel || nodeId }
+      ),
+      cancelLabel: readMysteryMessage('favoriteRemoveConfirmCancel'),
+      acceptLabel: readMysteryMessage('assignCategoryDeleteUserConfirmAccept'),
+    });
+    if (!shouldDelete) return false;
+
+    try {
+      const deletePayload = asObject(await deleteSongLocationUserNodeOnServer(nodeId));
+      const removedIds = (Array.isArray(deletePayload.removed_node_ids) ? deletePayload.removed_node_ids : [])
+        .map((rawId) => String(rawId || '').trim())
+        .filter(Boolean);
+      removedIds.forEach((removedId) => {
+        removeCachedSongLocationAssignment(removedId);
+      });
+
+      if (songLocationCreateModalParentId && removedIds.includes(songLocationCreateModalParentId)) {
+        songLocationCreateModalParentId = '';
+        songLocationCreateModalParentLabel = '';
+        if (songLocationCreateParentInput) {
+          songLocationCreateParentInput.value = '';
+        }
+        if (songLocationCreateParentIdInput) {
+          songLocationCreateParentIdInput.value = '';
+        }
+      }
+
+      await Promise.allSettled([
+        fetchSongLocationTree(),
+        fetchSongLocationAssignments(),
+      ]);
+      populateSongLocationCreateParentSelect(songLocationCreateModalParentId);
+      renderSongLocationCreateParentPickerTree();
+      renderSongSaveLocationPicker();
+      renderSongFavorites();
+      positionSongSaveLocationPicker();
+      showSongToast(
+        readMysteryMessage('assignCategoryDeleteUserSuccess'),
+        'is-success'
+      );
+      return true;
+    } catch (err) {
+      showSongToast(
+        err instanceof Error ? err.message : readMysteryMessage('assignCategoryDeleteUserError'),
+        'is-error'
+      );
+      return false;
+    }
+  };
+
+  const renderSongLocationCreateParentPickerTree = () => {
+    if (!songLocationCreateParentTree) return;
+    songLocationCreateParentTree.innerHTML = '';
+    const rawQuery = String(songLocationCreateParentInput?.value || '').trim();
+    const hasSearchQuery = Boolean(rawQuery);
+    const filteredNodes = filterSongLocationCreateParentNodes(songLocationCreateParentNodes, rawQuery);
+    if (!filteredNodes.length) {
+      if (songLocationCreateParentEmpty) {
+        songLocationCreateParentEmpty.hidden = false;
+        songLocationCreateParentEmpty.textContent = rawQuery
+          ? readMysteryMessage('assignSearchEmpty', { query: rawQuery })
+          : readMysteryMessage('assignCategoryAddParentEmpty');
+      }
+      return;
+    }
+    if (songLocationCreateParentEmpty) {
+      songLocationCreateParentEmpty.hidden = true;
+      songLocationCreateParentEmpty.textContent = '';
+    }
+
+    const renderNodes = (nodes) => {
+      const list = document.createElement('ul');
+      (Array.isArray(nodes) ? nodes : []).forEach((rawNode) => {
+        const node = asObject(rawNode);
+        const nodeId = String(node.id || '').trim();
+        const nodeLabel = String(node.label || '').trim();
+        if (!nodeId || !nodeLabel) return;
+
+        const item = document.createElement('li');
+        item.className = 'song-location-create-parent-tree-item';
+        if (nodeId === String(songLocationCreateModalParentId || '').trim()) {
+          item.classList.add('is-selected');
+        }
+
+        const row = document.createElement('div');
+        row.className = 'song-location-create-parent-tree-row';
+        const childNodes = Array.isArray(node.children) ? node.children : [];
+        const hasChildren = childNodes.length > 0;
+        const childList = hasChildren ? renderNodes(childNodes) : null;
+        if (childList) {
+          childList.hidden = !hasSearchQuery;
+        }
+
+        const labelText = document.createElement('span');
+        labelText.className = 'song-location-create-parent-label-text';
+        labelText.textContent = nodeLabel;
+
+        if (Boolean(node.canDelete)) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'song-location-create-parent-delete';
+          deleteBtn.textContent = '-';
+          deleteBtn.title = readMysteryMessage('assignCategoryDeleteUserConfirmAccept');
+          deleteBtn.setAttribute('aria-label', readMysteryMessage('assignCategoryDeleteUserConfirmAccept'));
+          deleteBtn.addEventListener('click', async () => {
+            if (deleteBtn.disabled) return;
+            deleteBtn.disabled = true;
+            try {
+              await deleteSongLocationCreateParentNode(node, deleteBtn);
+            } finally {
+              deleteBtn.disabled = false;
+            }
+          });
+          row.appendChild(deleteBtn);
+        }
+
+        if (hasChildren) {
+          const toggleBtn = document.createElement('button');
+          toggleBtn.type = 'button';
+          toggleBtn.className = 'song-location-create-parent-label song-location-create-parent-toggle';
+          toggleBtn.setAttribute('aria-expanded', String(hasSearchQuery));
+
+          const caret = document.createElement('span');
+          caret.className = 'song-location-create-parent-caret';
+          caret.setAttribute('aria-hidden', 'true');
+          toggleBtn.appendChild(caret);
+          toggleBtn.appendChild(labelText);
+
+          const meta = document.createElement('span');
+          meta.className = 'song-location-create-parent-meta';
+          meta.textContent = `(${childNodes.length})`;
+          toggleBtn.appendChild(meta);
+
+          toggleBtn.addEventListener('click', () => {
+            if (!childList) return;
+            const nextExpanded = toggleBtn.getAttribute('aria-expanded') !== 'true';
+            toggleBtn.setAttribute('aria-expanded', String(nextExpanded));
+            childList.hidden = !nextExpanded;
+          });
+          row.appendChild(toggleBtn);
+        } else {
+          const labelNode = document.createElement('span');
+          labelNode.className = 'song-location-create-parent-label';
+          labelNode.appendChild(labelText);
+          row.appendChild(labelNode);
+        }
+
+        const selectBtn = document.createElement('button');
+        selectBtn.type = 'button';
+        selectBtn.className = 'song-location-create-parent-select';
+        selectBtn.textContent = '+';
+        selectBtn.title = 'Selecionar caminho';
+        selectBtn.setAttribute('aria-label', 'Selecionar caminho');
+        selectBtn.addEventListener('click', () => {
+          selectSongLocationCreateParentNode(node);
+        });
+        row.appendChild(selectBtn);
+
+        item.appendChild(row);
+        if (childList) {
+          item.appendChild(childList);
+        }
+        list.appendChild(item);
+      });
+      return list;
+    };
+
+    songLocationCreateParentTree.appendChild(renderNodes(filteredNodes));
+  };
+
+  const resolveSongLocationCreateParentChoice = (rawValue = '') => {
+    const typedValue = String(rawValue || '').trim();
+    if (!typedValue) {
+      return {
+        matched: true,
+        id: '',
+        label: '',
+        displayLabel: '',
+      };
+    }
+
+    const typedLookup = normalizeSongLocationCreateParentLookup(typedValue);
+    const matchedChoice = songLocationCreateParentEntries.find((choice) => (
+      choice.lookupKey === typedLookup
+      || choice.labelLookupKey === typedLookup
+      || String(choice.pathLabel || '').trim() === typedValue
+      || String(choice.label || '').trim() === typedValue
+    ));
+    if (!matchedChoice) {
+      return {
+        matched: false,
+        id: '',
+        label: '',
+        displayLabel: typedValue,
+      };
+    }
+
+    const matchedId = String(matchedChoice.id || '').trim();
+    const displayLabel = String(matchedChoice.pathLabel || matchedChoice.label || '').trim();
+    return {
+      matched: true,
+      id: matchedId,
+      label: displayLabel,
+      displayLabel,
+    };
+  };
+
   const setSongLocationCreateModalSubmittingState = (submitting) => {
     songLocationCreateModalSubmitting = Boolean(submitting);
-    if (songLocationCreateParentSelect) {
-      songLocationCreateParentSelect.disabled = songLocationCreateModalSubmitting;
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.disabled = songLocationCreateModalSubmitting;
     }
     if (songLocationCreateInput) {
       songLocationCreateInput.disabled = songLocationCreateModalSubmitting;
@@ -2894,16 +3293,13 @@
   };
 
   const syncSongLocationCreateModalTargetState = () => {
-    if (songLocationCreateParentSelect) {
-      const selectedOption = songLocationCreateParentSelect.selectedOptions?.[0]
-        || songLocationCreateParentSelect.options[songLocationCreateParentSelect.selectedIndex]
-        || null;
-      songLocationCreateModalParentId = String(songLocationCreateParentSelect.value || '').trim();
-      songLocationCreateModalParentLabel = String(
-        selectedOption?.dataset?.parentLabel
-        || selectedOption?.textContent
-        || ''
-      ).trim();
+    const parentSelection = resolveSongLocationCreateParentChoice(
+      songLocationCreateParentInput ? songLocationCreateParentInput.value : ''
+    );
+    songLocationCreateModalParentId = parentSelection.id;
+    songLocationCreateModalParentLabel = parentSelection.label;
+    if (songLocationCreateParentIdInput) {
+      songLocationCreateParentIdInput.value = parentSelection.id;
     }
 
     const titleText = songLocationCreateModalParentLabel
@@ -2917,57 +3313,32 @@
   };
 
   const populateSongLocationCreateParentSelect = (preferredParentId = '') => {
-    if (!songLocationCreateParentSelect) return;
-    const roots = buildSongSaveLocationPickerTree();
-    const entries = buildSongSaveLocationPickerSearchEntries(roots)
-      .filter((entry) => {
-        const node = asObject(entry.node);
-        return String(node.nodeType || '').trim() === 'location-node';
-      });
-
+    if (!songLocationCreateParentInput) return;
     const safePreferredParentId = String(preferredParentId || '').trim();
     const previousParentId = String(songLocationCreateModalParentId || '').trim();
     const selectedCandidate = safePreferredParentId || previousParentId;
-    songLocationCreateParentSelect.innerHTML = '';
+    songLocationCreateParentNodes = buildSongLocationCreateParentNodes();
+    songLocationCreateParentEntries = flattenSongLocationCreateParentNodes(songLocationCreateParentNodes, []);
 
-    const appendOption = (value, label) => {
-      const option = document.createElement('option');
-      option.value = String(value || '').trim();
-      option.textContent = String(label || '').trim();
-      option.dataset.parentLabel = option.textContent;
-      songLocationCreateParentSelect.appendChild(option);
-      return option;
-    };
-
-    const rootLabel = readMysteryMessage('assignCategoryRootOption');
-    appendOption('', rootLabel);
-
-    const seenIds = new Set();
-    entries.forEach((entry) => {
-      const safeEntry = asObject(entry);
-      const node = asObject(safeEntry.node);
-      const locationId = String(node.locationId || '').trim()
-        || String(node.id || '').trim().replace(/^location:/i, '').trim();
-      if (!locationId || seenIds.has(locationId)) return;
-      seenIds.add(locationId);
-      const resolvedLabel = Array.isArray(node.locationPath) && node.locationPath.length
-        ? node.locationPath.map((item) => String(item || '').trim()).filter(Boolean).join(' / ')
-        : (
-          String(safeEntry.pathLabel || '').trim().replace(/\s*->\s*/g, ' / ')
-          || String(node.label || '').trim()
-        );
-      appendOption(locationId, resolvedLabel);
-    });
-
-    if (
-      selectedCandidate
-      && Array.from(songLocationCreateParentSelect.options).some((option) => option.value === selectedCandidate)
-    ) {
-      songLocationCreateParentSelect.value = selectedCandidate;
-    } else {
-      songLocationCreateParentSelect.value = '';
+    const selectedChoice = selectedCandidate
+      ? songLocationCreateParentEntries.find((entry) => entry.id === selectedCandidate)
+      : null;
+    const fallbackChoice = selectedChoice || null;
+    songLocationCreateModalParentId = fallbackChoice ? String(fallbackChoice.id || '').trim() : '';
+    songLocationCreateModalParentLabel = songLocationCreateModalParentId
+      ? String(fallbackChoice?.pathLabel || fallbackChoice?.label || '').trim()
+      : '';
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.value = fallbackChoice
+        ? String(fallbackChoice.pathLabel || fallbackChoice.label || '').trim()
+        : '';
+    }
+    if (songLocationCreateParentIdInput) {
+      songLocationCreateParentIdInput.value = songLocationCreateModalParentId;
     }
 
+    renderSongLocationCreateParentPickerTree();
+    closeSongLocationCreateParentPicker();
     syncSongLocationCreateModalTargetState();
   };
 
@@ -2984,12 +3355,25 @@
       : null;
     songLocationCreateModal.classList.remove('open');
     songLocationCreateModal.setAttribute('aria-hidden', 'true');
+    closeSongLocationCreateParentPicker();
     songLocationCreateModalParentId = '';
     songLocationCreateModalParentLabel = '';
+    songLocationCreateParentEntries = [];
+    songLocationCreateParentNodes = [];
     songLocationCreateModalFocusTarget = null;
     setSongLocationCreateModalSubmittingState(false);
-    if (songLocationCreateParentSelect) {
-      songLocationCreateParentSelect.innerHTML = '';
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.value = '';
+    }
+    if (songLocationCreateParentIdInput) {
+      songLocationCreateParentIdInput.value = '';
+    }
+    if (songLocationCreateParentTree) {
+      songLocationCreateParentTree.innerHTML = '';
+    }
+    if (songLocationCreateParentEmpty) {
+      songLocationCreateParentEmpty.hidden = true;
+      songLocationCreateParentEmpty.textContent = '';
     }
     if (songLocationCreateInput) {
       songLocationCreateInput.value = '';
@@ -3016,6 +3400,13 @@
     const hintText = readMysteryMessage('assignCategoryAddPromptField');
     if (songLocationCreateHint) {
       songLocationCreateHint.textContent = hintText;
+    }
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.placeholder = readMysteryMessage('assignSearchPlaceholder');
+      songLocationCreateParentInput.setAttribute(
+        'aria-label',
+        readMysteryMessage('assignCategoryAddTargetField')
+      );
     }
     if (songLocationCreateInput) {
       songLocationCreateInput.value = '';
@@ -3052,11 +3443,40 @@
       return;
     }
 
+    const parentSelection = resolveSongLocationCreateParentChoice(
+      songLocationCreateParentInput ? songLocationCreateParentInput.value : ''
+    );
+    if (!parentSelection.matched) {
+      showSongToast(
+        readMysteryMessage('assignCategoryAddParentInvalid'),
+        'is-warning'
+      );
+      if (songLocationCreateParentInput instanceof HTMLElement) {
+        window.requestAnimationFrame(() => {
+          focusWithoutScrollingPage(songLocationCreateParentInput);
+        });
+      }
+      return;
+    }
+    songLocationCreateModalParentId = parentSelection.id;
+    songLocationCreateModalParentLabel = parentSelection.label;
+    if (songLocationCreateParentInput) {
+      songLocationCreateParentInput.value = parentSelection.displayLabel;
+    }
+    if (songLocationCreateParentIdInput) {
+      songLocationCreateParentIdInput.value = parentSelection.id;
+    }
+
     setSongLocationCreateModalSubmittingState(true);
     try {
-      const selectedParentId = songLocationCreateParentSelect
-        ? String(songLocationCreateParentSelect.value || '').trim()
-        : String(songLocationCreateModalParentId || '').trim();
+      const selectedParentId = String(songLocationCreateModalParentId || '').trim();
+      const selectedParentLabel = String(songLocationCreateModalParentLabel || '').trim();
+      const createdItemPath = [
+        selectedParentLabel || readMysteryMessage('assignCategoryRootLabel'),
+        label,
+      ]
+        .filter(Boolean)
+        .join(' / ');
       await createSongLocationNodeOnServer(label, selectedParentId);
       if (songSaveLocationPickerSearchQuery.trim()) {
         songSaveLocationPickerSearchQuery = '';
@@ -3065,11 +3485,14 @@
         }
       }
       await fetchSongLocationTree();
+      populateSongLocationCreateParentSelect(selectedParentId);
       renderSongSaveLocationPicker();
       positionSongSaveLocationPicker();
-      closeSongLocationCreateModal({ restoreFocus: false });
+      if (songLocationCreateInput) {
+        songLocationCreateInput.value = '';
+      }
       showSongToast(
-        readMysteryMessage('assignCategoryAddSuccess'),
+        `${readMysteryMessage('assignCategoryAddSuccess')} Caminho: ${createdItemPath}`,
         'is-success'
       );
     } catch (err) {
@@ -3180,6 +3603,7 @@
         const assignmentMode = String(node.assignmentMode || node.assignment_mode || 'location').trim().toLowerCase() === 'mystery'
           ? 'mystery'
           : 'location';
+        const isUserOwnedNode = /^u\d+$/i.test(nodeId);
 
         const safePathLabels = currentPathNodes
           .map((pathNode) => String(pathNode.label || '').trim())
@@ -3198,6 +3622,7 @@
           locationId: nodeId,
           locationLabel: nodeLabel,
           locationPath: safePathLabels,
+          canDelete: isUserOwnedNode,
           assignmentMode,
           leafType: hasChildren
             ? ''
@@ -4937,9 +5362,67 @@
       void submitSongLocationCreateModal();
     });
   }
-  if (songLocationCreateParentSelect) {
-    songLocationCreateParentSelect.addEventListener('change', () => {
+  if (songLocationCreateParentInput) {
+    const handleSongLocationCreateParentChange = () => {
       syncSongLocationCreateModalTargetState();
+      renderSongLocationCreateParentPickerTree();
+      if (!songLocationCreateModalSubmitting) {
+        openSongLocationCreateParentPicker();
+      }
+    };
+    songLocationCreateParentInput.addEventListener('input', handleSongLocationCreateParentChange);
+    songLocationCreateParentInput.addEventListener('change', () => {
+      syncSongLocationCreateModalTargetState();
+    });
+    songLocationCreateParentInput.addEventListener('click', () => {
+      if (songLocationCreateModalSubmitting) return;
+      if (
+        songLocationCreateParentInput.value.trim()
+        && String(songLocationCreateParentIdInput?.value || '').trim()
+      ) {
+        songLocationCreateParentInput.value = '';
+        if (songLocationCreateParentIdInput) {
+          songLocationCreateParentIdInput.value = '';
+        }
+        songLocationCreateModalParentId = '';
+        songLocationCreateModalParentLabel = '';
+        syncSongLocationCreateModalTargetState();
+      }
+      renderSongLocationCreateParentPickerTree();
+      openSongLocationCreateParentPicker();
+    });
+    songLocationCreateParentInput.addEventListener('focus', () => {
+      if (songLocationCreateModalSubmitting) return;
+      renderSongLocationCreateParentPickerTree();
+      openSongLocationCreateParentPicker();
+    });
+    songLocationCreateParentInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSongLocationCreateParentPicker();
+      }
+    });
+  }
+  document.addEventListener('mousedown', (event) => {
+    if (!isSongLocationCreateModalOpen() || !isSongLocationCreateParentPickerOpen()) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    const clickedInsideInput = Boolean(
+      songLocationCreateParentInput
+      && songLocationCreateParentInput.contains(target)
+    );
+    const clickedInsidePicker = Boolean(
+      songLocationCreateParentPicker
+      && songLocationCreateParentPicker.contains(target)
+    );
+    if (clickedInsideInput || clickedInsidePicker) return;
+    closeSongLocationCreateParentPicker();
+  });
+  if (songLocationCreateModal) {
+    songLocationCreateModal.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && isSongLocationCreateParentPickerOpen()) {
+        closeSongLocationCreateParentPicker();
+      }
     });
   }
   if (songLocationCreateInput) {

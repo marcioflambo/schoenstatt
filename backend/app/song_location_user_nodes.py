@@ -336,3 +336,84 @@ def create_song_location_user_node(
         saved_row = row
 
     return _row_to_payload(saved_row)
+
+
+def _collect_descendant_node_ids(
+    rows: list[dict[str, object]],
+    root_node_id: str,
+) -> set[str]:
+    safe_root_id = _normalize_spaces(root_node_id)
+    if not safe_root_id:
+        return set()
+
+    children_by_parent: dict[str, set[str]] = {}
+    for row in rows:
+        node_id = _normalize_spaces(str(row.get('node_id') or ''))
+        parent_id = _normalize_spaces(str(row.get('parent_id') or ''))
+        if not node_id:
+            continue
+        children_by_parent.setdefault(parent_id, set()).add(node_id)
+
+    collected: set[str] = set()
+    stack: list[str] = [safe_root_id]
+    while stack:
+        current = _normalize_spaces(stack.pop())
+        if not current or current in collected:
+            continue
+        collected.add(current)
+        for child_id in children_by_parent.get(current, set()):
+            if child_id not in collected:
+                stack.append(child_id)
+    return collected
+
+
+def delete_song_location_user_node(
+    base_file_path: Path,
+    node_id: str,
+    *,
+    database_url: str | None = None,
+    store_namespace: str | None = None,
+) -> dict[str, object]:
+    safe_node_id = _normalize_spaces(node_id)
+    if not safe_node_id:
+        raise ValueError('Informe a categoria/subcategoria.')
+    if not safe_node_id.lower().startswith('u'):
+        raise ValueError('Categoria/subcategoria nao encontrada.')
+
+    with _STORE_LOCK:
+        store = _read_store(
+            base_file_path,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
+        rows = store.get('nodes')
+        node_rows = _sort_rows(rows if isinstance(rows, list) else [])
+
+        has_target = any(
+            _normalize_spaces(str(row.get('node_id') or '')) == safe_node_id
+            for row in node_rows
+        )
+        if not has_target:
+            raise ValueError('Categoria/subcategoria nao encontrada.')
+
+        removed_ids = _collect_descendant_node_ids(node_rows, safe_node_id)
+        kept_rows = [
+            row
+            for row in node_rows
+            if _normalize_spaces(str(row.get('node_id') or '')) not in removed_ids
+        ]
+
+        store['nodes'] = _sort_rows(kept_rows)
+        _write_store(
+            base_file_path,
+            store,
+            database_url=database_url,
+            store_namespace=store_namespace,
+        )
+
+    removed_ids_list = sorted(removed_ids)
+    return {
+        'removed': bool(removed_ids_list),
+        'count': len(removed_ids_list),
+        'removed_node_ids': removed_ids_list,
+    }

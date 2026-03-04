@@ -774,8 +774,6 @@
       aria-labelledby="song-location-create-title"
     >
       <h3 id="song-location-create-title"></h3>
-      <p id="song-location-create-target-hint"></p>
-      <select id="song-location-create-parent" class="song-location-create-parent"></select>
       <p id="song-location-create-hint"></p>
       <input
         id="song-location-create-input"
@@ -784,6 +782,24 @@
         maxlength="120"
         autocomplete="off"
       />
+      <p id="song-location-create-target-hint"></p>
+      <input
+        id="song-location-create-parent"
+        class="song-location-create-parent"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        aria-autocomplete="list"
+      />
+      <div
+        id="song-location-create-parent-picker"
+        class="song-location-create-parent-picker"
+        hidden
+      >
+        <p id="song-location-create-parent-empty" class="song-location-create-parent-empty" hidden></p>
+        <div id="song-location-create-parent-tree" class="song-location-create-parent-tree"></div>
+      </div>
+      <input id="song-location-create-parent-id" type="hidden" value="" />
       <footer class="song-location-create-actions">
         <button
           type="button"

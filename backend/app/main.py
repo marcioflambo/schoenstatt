@@ -48,6 +48,7 @@ from .song_location_assignments import (
 )
 from .song_location_user_nodes import (
     create_song_location_user_node,
+    delete_song_location_user_node,
     list_song_location_user_nodes,
 )
 from .song_locations import (
@@ -756,6 +757,45 @@ def api_song_locations_create_node(
     return {
         'ok': True,
         'node': node,
+    }
+
+
+@app.delete('/api/song-locations/user-nodes/{node_id}')
+def api_song_locations_delete_user_node(
+    node_id: str,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
+    try:
+        delete_payload = delete_song_location_user_node(
+            settings.song_location_user_nodes_file,
+            node_id,
+            database_url=settings.database_url,
+            store_namespace=store_namespace,
+        )
+        removed_ids = delete_payload.get('removed_node_ids')
+        removed_node_ids = [
+            _normalize_spaces(str(raw_id))
+            for raw_id in (removed_ids if isinstance(removed_ids, list) else [])
+            if _normalize_spaces(str(raw_id))
+        ]
+        assignment_cleanup = delete_song_location_assignments_by_location_ids(
+            settings.song_location_assignments_file,
+            removed_node_ids,
+            database_url=settings.database_url,
+            store_namespace=store_namespace,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if message == 'Categoria/subcategoria nao encontrada.' else 400
+        raise HTTPException(status_code=status_code, detail={'message': message}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        **delete_payload,
+        'assignment_cleanup': assignment_cleanup,
     }
 
 

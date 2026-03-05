@@ -541,6 +541,9 @@
     setNodeAttr('#song-search-clear-cantos', 'aria-label', content.cantos?.search?.clearButtonLabel);
     setNodeAttr('#song-search-clear-cantos', 'title', content.cantos?.search?.clearButtonLabel);
     setNodeText('#song-favorites-title', content.cantos?.favorites?.title);
+    setNodeText('#song-share-import-btn', readSongMessage('shareImportButton', 'Importar'));
+    setNodeAttr('#song-share-import-btn', 'aria-label', readSongMessage('shareImportButtonAria', 'Importar lista compartilhada'));
+    setNodeAttr('#song-share-import-btn', 'title', readSongMessage('shareImportButtonAria', 'Importar lista compartilhada'));
     setNodeText('#song-favorites-description', content.cantos?.favorites?.description);
     setNodeText('#song-favorites-share-btn', readSongMessage('favoritesShareButton', 'Compartilhar'));
     setNodeAttr(
@@ -1031,7 +1034,7 @@
     window.scrollTo({ top: targetTop, behavior });
   };
 
-  const resolveHashTargetElement = () => {
+  const resolveCurrentHashId = () => {
     const rawHash = window.location.hash || '';
     if (!rawHash || rawHash.length <= 1) return null;
     const hashValue = rawHash.slice(1);
@@ -1041,7 +1044,28 @@
     } catch (err) {
       hashId = hashValue;
     }
+    return hashId || null;
+  };
+
+  const resolveHashTargetElement = () => {
+    const hashId = resolveCurrentHashId();
     return hashId ? document.getElementById(hashId) : null;
+  };
+
+  const replaceUrlHashForSection = (sectionId) => {
+    const safeSectionId = String(sectionId || '').trim();
+    if (!safeSectionId) return;
+    if (resolveCurrentHashId() === safeSectionId) return;
+
+    if (window.history.replaceState) {
+      window.history.replaceState(null, '', `#${safeSectionId}`);
+      return;
+    }
+
+    const scrollX = window.scrollX || window.pageXOffset || 0;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    window.location.hash = safeSectionId;
+    window.scrollTo(scrollX, scrollY);
   };
 
   const alignCurrentHashTarget = (options = {}) => {
@@ -1210,8 +1234,8 @@
       scrollToSectionWithHeaderOffset(targetSection, { behavior });
     }
 
-    if (updateHash && window.history.replaceState) {
-      window.history.replaceState(null, '', `#${targetSection.id}`);
+    if (updateHash) {
+      replaceUrlHashForSection(targetSection.id);
     }
   };
 
@@ -1488,6 +1512,7 @@
     const nearestSectionId = getNearestSectionId();
     if (!nearestSectionId) return;
     setActiveSectionLink(nearestSectionId);
+    replaceUrlHashForSection(nearestSectionId);
   };
 
   const scheduleSectionSync = () => {
@@ -1637,7 +1662,7 @@
   }
   window.addEventListener('touchstart', (event) => {
     if (!document.body.classList.contains('landscape-mobile')) return;
-    const hasOpenModal = Boolean(document.querySelector('.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open'));
+    const hasOpenModal = Boolean(document.querySelector('.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .song-share-modal.open, .song-share-merge-modal.open, .auth-modal.open, .auth-sessions-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open'));
     if (hasOpenModal) return;
     const touchTarget = event.target;
     if (touchTarget instanceof Element) {
@@ -5219,7 +5244,7 @@
 
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open, .auth-modal.open, .auth-sessions-modal.open, .song-share-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open, .auth-modal.open, .auth-sessions-modal.open, .song-share-modal.open, .song-share-merge-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -6082,6 +6107,7 @@
   const songFavoritesCard = document.getElementById('song-favorites-card');
   const songFavoritesList = document.getElementById('song-favorites-list');
   const songFavoritesSearchInput = document.getElementById('song-favorites-search-input');
+  const songShareImportBtn = document.getElementById('song-share-import-btn');
   const songFavoritesShareBtn = document.getElementById('song-favorites-share-btn');
   const heroShareSongsBtn = document.getElementById('hero-share-songs-btn');
   const customSongsCard = document.getElementById('custom-songs-card');
@@ -6102,6 +6128,13 @@
   const songShareFeedback = document.getElementById('song-share-feedback');
   const songShareCreateBtn = document.getElementById('song-share-create-btn');
   const songShareCopyBtn = document.getElementById('song-share-copy-btn');
+  const songShareMergeModal = document.getElementById('song-share-merge-modal');
+  const songShareMergeCloseButtons = document.querySelectorAll('[data-song-share-merge-close]');
+  const songShareMergeSummary = document.getElementById('song-share-merge-summary');
+  const songShareMergeAutoList = document.getElementById('song-share-merge-auto-list');
+  const songShareMergeConflictsList = document.getElementById('song-share-merge-conflicts-list');
+  const songShareMergeFeedback = document.getElementById('song-share-merge-feedback');
+  const songShareMergeImportBtn = document.getElementById('song-share-merge-import-btn');
   const authForm = document.getElementById('auth-form');
   const authNameField = document.getElementById('auth-name-field');
   const authNameInput = document.getElementById('auth-name-input');
@@ -6168,6 +6201,9 @@
   const FAVORITE_CONFIRM_ACTION_ACCEPT = 'accept';
   const FAVORITE_CONFIRM_ACTION_CANCEL = 'cancel';
   const FAVORITE_CONFIRM_ACTION_DISMISS = 'dismiss';
+  const SONG_SHARE_MERGE_ACTION_ACCEPT = 'accept';
+  const SONG_SHARE_MERGE_ACTION_CANCEL = 'cancel';
+  const SONG_SHARE_MERGE_ACTION_DISMISS = 'dismiss';
   const AUTH_QR_STATUS_PENDING = 'pending';
   const AUTH_QR_STATUS_APPROVED = 'approved';
   const AUTH_QR_STATUS_CONSUMED = 'consumed';
@@ -6199,10 +6235,13 @@
   let authSessionsRequestPending = false;
   let authSessionsRevokePendingGuid = '';
   let lastFocusedSongShareTrigger = null;
+  let lastFocusedSongShareMergeTrigger = null;
   let songShareRequestPending = false;
   let songShareImportPending = false;
   let songShareCurrentLink = '';
   let pendingSongShareImport = '';
+  let pendingSongShareMergeAfterLogin = false;
+  let pendingSongShareMergeResolver = null;
   let songShareViewModeLoaded = false;
   let songShareCurrentViewId = '';
   let pendingAuthRegisterPrefill = null;
@@ -6322,6 +6361,7 @@
   const songSearchFallbackImage = portalContent?.cantos?.search?.resultFallbackImage || './assets/img/logo.png';
   let songFavorites = [];
   let songFavoritesLoading = false;
+  let songFavoritesRefreshQueued = false;
   let songFavoritesReorderPending = false;
   let songFavoritesDragId = '';
   let songFavoritesDragStartOrder = [];
@@ -7197,6 +7237,7 @@
   const leaveSongShareViewModeAfterMutation = () => {
     if (!songShareViewModeLoaded) return;
     clearSongShareLocalState();
+    pendingSongShareMergeAfterLogin = false;
     const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
     if (safeShareId) {
       songShareCurrentViewId = safeShareId;
@@ -7215,6 +7256,8 @@
     const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
     if (!isAuthLoggedIn()) {
       showSongToast('Faça login e importe a lista compartilhada para poder alterar.', 'is-warning');
+      pendingSongShareMergeAfterLogin = true;
+      pendingSongShareImport = safeShareId;
       runDeferredTask(() => {
         openAuthModal('login', safeTrigger || authMenuTrigger);
       }, 80);
@@ -7224,6 +7267,7 @@
     showSongToast('Para alterar, importe a lista compartilhada para sua conta.', 'is-warning');
     if (safeShareId) {
       pendingSongShareImport = safeShareId;
+      pendingSongShareMergeAfterLogin = true;
       runDeferredTask(() => {
         void maybeHandlePendingSongShareImport(safeTrigger || authMenuTrigger);
       }, 90);
@@ -7256,6 +7300,20 @@
       } else {
         heroShareSongsBtn.style.display = 'none';
       }
+    }
+  };
+
+  const syncSongShareImportButtonState = () => {
+    if (!songShareImportBtn) return;
+    const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
+    const shouldShow = Boolean(songShareViewModeLoaded && safeShareId && !isAuthLoggedIn());
+    songShareImportBtn.hidden = !shouldShow;
+    songShareImportBtn.disabled = !shouldShow || songShareImportPending || authRequestPending;
+    songShareImportBtn.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+    if (shouldShow) {
+      songShareImportBtn.style.removeProperty('display');
+    } else {
+      songShareImportBtn.style.display = 'none';
     }
   };
 
@@ -7354,6 +7412,7 @@
     closeAuthModal({ restoreFocus: false });
     closeAuthSessionsModal({ restoreFocus: false });
     closeSongShareModal({ restoreFocus: false });
+    closeSongShareMergeModal({ action: SONG_SHARE_MERGE_ACTION_DISMISS, excludeConflictKeys: [] });
     closeAuthDropdown();
     closeMainMenu();
     if (notify) {
@@ -7476,6 +7535,13 @@
   const setAuthRegisterCtaState = (visible, prefill = null) => {
     if (!authRegisterCtaBtn) return;
     const shouldShow = Boolean(visible);
+    const safeMode = normalizeAuthMode(authMode);
+    const isRegisterMode = safeMode === 'register';
+    const ctaLabel = isRegisterMode ? 'Entrar' : 'Registrar';
+    const ctaAria = isRegisterMode ? 'Ir para login' : 'Ir para registro';
+    authRegisterCtaBtn.textContent = ctaLabel;
+    authRegisterCtaBtn.setAttribute('aria-label', ctaAria);
+    authRegisterCtaBtn.setAttribute('title', ctaAria);
     authRegisterCtaBtn.hidden = !shouldShow;
     authRegisterCtaBtn.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     const actions = authForm ? authForm.querySelector('.auth-form-actions') : null;
@@ -8095,6 +8161,10 @@
         button.disabled = songShareRequestPending;
       });
     }
+    if (songShareMergeImportBtn) {
+      songShareMergeImportBtn.disabled = songShareRequestPending;
+    }
+    syncSongShareImportButtonState();
   };
 
   const applySongShareCreatePayload = (payload) => {
@@ -8136,6 +8206,280 @@
     lastFocusedSongShareTrigger = null;
   };
 
+  const setSongShareMergeFeedback = (message = '', type = '') => {
+    if (!songShareMergeFeedback) return;
+    const safeMessage = String(message || '').trim();
+    const safeType = String(type || '').trim();
+    songShareMergeFeedback.textContent = safeMessage;
+    songShareMergeFeedback.classList.remove('is-error', 'is-loading');
+    if (safeType) songShareMergeFeedback.classList.add(safeType);
+    songShareMergeFeedback.hidden = !safeMessage;
+  };
+
+  const formatSongShareMergeSongLabel = (title = '', artist = '', songUrl = '') => {
+    const safeTitle = String(title || '').trim();
+    const safeArtist = String(artist || '').trim();
+    const safeUrl = String(songUrl || '').trim();
+    if (safeTitle && safeArtist) return `${safeTitle} - ${safeArtist}`;
+    if (safeTitle) return safeTitle;
+    if (safeUrl) return safeUrl;
+    return readSongMessage('defaultSongTitle');
+  };
+
+  const renderSongShareMergePreview = (previewPayload = {}) => {
+    const safePayload = asObject(previewPayload);
+    const safeCounts = asObject(safePayload.counts);
+    const autoCounts = asObject(safeCounts.auto_import || safeCounts.autoImport);
+    const unchangedCounts = asObject(safeCounts.unchanged);
+    const conflictCounts = asObject(safeCounts.conflicts);
+    const alwaysCandidates = asObject(safeCounts.always_candidates || safeCounts.alwaysCandidates);
+    const totals = asObject(safePayload.totals);
+
+    const parseCount = (rawValue) => Number.parseInt(String(rawValue ?? ''), 10) || 0;
+    const autoTotal = parseCount(totals.auto_import ?? totals.autoImport);
+    const unchangedTotal = parseCount(totals.unchanged);
+    const conflictTotal = parseCount(totals.conflicts);
+
+    if (songShareMergeSummary) {
+      const summaryParts = [];
+      if (autoTotal > 0) summaryParts.push(`${autoTotal} itens serao importados`);
+      if (unchangedTotal > 0) summaryParts.push(`${unchangedTotal} ja estao iguais`);
+      if (conflictTotal > 0) summaryParts.push(`${conflictTotal} conflitos para revisar`);
+      if (!summaryParts.length) summaryParts.push('Nao ha diferencas para importar.');
+      songShareMergeSummary.textContent = summaryParts.join(' | ');
+    }
+
+    if (songShareMergeAutoList) {
+      songShareMergeAutoList.innerHTML = '';
+      const autoItems = Array.isArray(safePayload.auto_import_items || safePayload.autoImportItems)
+        ? (safePayload.auto_import_items || safePayload.autoImportItems)
+        : [];
+      autoItems.forEach((rawItem) => {
+        const item = asObject(rawItem);
+        const li = document.createElement('li');
+        li.className = 'song-share-merge-item';
+
+        const slotNode = document.createElement('p');
+        slotNode.className = 'song-share-merge-item-slot';
+        slotNode.textContent = String(item.slot_label || item.slotLabel || '').trim() || 'Item';
+
+        const songNode = document.createElement('p');
+        songNode.className = 'song-share-merge-item-song';
+        songNode.textContent = formatSongShareMergeSongLabel(
+          item.incoming_song_title || item.incomingSongTitle || '',
+          item.incoming_song_artist || item.incomingSongArtist || '',
+          item.incoming_song_url || item.incomingSongUrl || ''
+        );
+
+        li.appendChild(slotNode);
+        li.appendChild(songNode);
+        songShareMergeAutoList.appendChild(li);
+      });
+
+      if (!autoItems.length) {
+        const li = document.createElement('li');
+        li.className = 'song-share-merge-conflict-empty';
+        li.textContent = 'Nenhum item novo sem conflito.';
+        songShareMergeAutoList.appendChild(li);
+      }
+
+      const alwaysSummary = [];
+      const customCandidates = parseCount(alwaysCandidates.custom_songs ?? alwaysCandidates.customSongs);
+      const locationNodeCandidates = parseCount(
+        alwaysCandidates.song_location_user_nodes ?? alwaysCandidates.songLocationUserNodes
+      );
+      if (customCandidates > 0) alwaysSummary.push(`${customCandidates} musicas personalizadas`);
+      if (locationNodeCandidates > 0) alwaysSummary.push(`${locationNodeCandidates} categorias pessoais`);
+      if (alwaysSummary.length) {
+        const li = document.createElement('li');
+        li.className = 'song-share-merge-conflict-empty';
+        li.textContent = `Itens adicionais elegiveis: ${alwaysSummary.join(' | ')}.`;
+        songShareMergeAutoList.appendChild(li);
+      }
+    }
+
+    if (songShareMergeConflictsList) {
+      songShareMergeConflictsList.innerHTML = '';
+      const conflictItems = Array.isArray(safePayload.conflicts) ? safePayload.conflicts : [];
+      conflictItems.forEach((rawItem) => {
+        const item = asObject(rawItem);
+        const conflictKey = String(item.key || '').trim();
+        if (!conflictKey) return;
+
+        const wrapper = document.createElement('label');
+        wrapper.className = 'song-share-merge-conflict-option';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.dataset.conflictKey = conflictKey;
+
+        const contentNode = document.createElement('div');
+        contentNode.className = 'song-share-merge-item';
+
+        const slotNode = document.createElement('p');
+        slotNode.className = 'song-share-merge-item-slot';
+        slotNode.textContent = String(item.slot_label || item.slotLabel || '').trim() || 'Conflito';
+
+        const incomingNode = document.createElement('p');
+        incomingNode.className = 'song-share-merge-item-song';
+        incomingNode.textContent = `Importar: ${formatSongShareMergeSongLabel(
+          item.incoming_song_title || item.incomingSongTitle || '',
+          item.incoming_song_artist || item.incomingSongArtist || '',
+          item.incoming_song_url || item.incomingSongUrl || ''
+        )}`;
+
+        const existingNode = document.createElement('p');
+        existingNode.className = 'song-share-merge-item-existing';
+        existingNode.textContent = `Atual: ${formatSongShareMergeSongLabel(
+          item.existing_song_title || item.existingSongTitle || '',
+          item.existing_song_artist || item.existingSongArtist || '',
+          item.existing_song_url || item.existingSongUrl || ''
+        )}`;
+
+        contentNode.appendChild(slotNode);
+        contentNode.appendChild(incomingNode);
+        contentNode.appendChild(existingNode);
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(contentNode);
+        songShareMergeConflictsList.appendChild(wrapper);
+      });
+
+      if (!conflictItems.length) {
+        const emptyNode = document.createElement('p');
+        emptyNode.className = 'song-share-merge-conflict-empty';
+        emptyNode.textContent = 'Nenhum conflito encontrado. Pode importar com seguranca.';
+        songShareMergeConflictsList.appendChild(emptyNode);
+      }
+
+      const conflictInfo = document.createElement('p');
+      conflictInfo.className = 'song-share-merge-conflict-empty';
+      conflictInfo.textContent = [
+        `Favoritos: ${parseCount(conflictCounts.song_favorites ?? conflictCounts.songFavorites)}`,
+        `Misterios: ${parseCount(conflictCounts.mystery_song_assignments ?? conflictCounts.mysterySongAssignments)}`,
+        `Terco: ${parseCount(conflictCounts.song_location_assignments ?? conflictCounts.songLocationAssignments)}`
+      ].join(' | ');
+      songShareMergeConflictsList.appendChild(conflictInfo);
+
+      const unchangedInfo = document.createElement('p');
+      unchangedInfo.className = 'song-share-merge-conflict-empty';
+      unchangedInfo.textContent = [
+        `Iguais em favoritos: ${parseCount(unchangedCounts.song_favorites ?? unchangedCounts.songFavorites)}`,
+        `Iguais em misterios: ${parseCount(unchangedCounts.mystery_song_assignments ?? unchangedCounts.mysterySongAssignments)}`,
+        `Iguais no terco: ${parseCount(unchangedCounts.song_location_assignments ?? unchangedCounts.songLocationAssignments)}`
+      ].join(' | ');
+      songShareMergeConflictsList.appendChild(unchangedInfo);
+
+      const autoInfo = document.createElement('p');
+      autoInfo.className = 'song-share-merge-conflict-empty';
+      autoInfo.textContent = [
+        `Novos favoritos: ${parseCount(autoCounts.song_favorites ?? autoCounts.songFavorites)}`,
+        `Novos misterios: ${parseCount(autoCounts.mystery_song_assignments ?? autoCounts.mysterySongAssignments)}`,
+        `Novos no terco: ${parseCount(autoCounts.song_location_assignments ?? autoCounts.songLocationAssignments)}`
+      ].join(' | ');
+      songShareMergeConflictsList.appendChild(autoInfo);
+    }
+  };
+
+  const resolvePendingSongShareMerge = (result = {}) => {
+    if (!pendingSongShareMergeResolver) return;
+    const resolve = pendingSongShareMergeResolver;
+    pendingSongShareMergeResolver = null;
+    resolve(asObject(result));
+  };
+
+  const closeSongShareMergeModal = (result = {}) => {
+    const safeResult = asObject(result);
+    if (!songShareMergeModal) {
+      resolvePendingSongShareMerge(safeResult);
+      return;
+    }
+    const focusTarget = lastFocusedSongShareMergeTrigger instanceof HTMLElement
+      ? lastFocusedSongShareMergeTrigger
+      : null;
+    songShareMergeModal.classList.remove('open');
+    songShareMergeModal.setAttribute('aria-hidden', 'true');
+    setSongShareMergeFeedback('');
+    syncBodyModalLock();
+    resolvePendingSongShareMerge(safeResult);
+    if (!hasAnyOpenModal() && focusTarget) {
+      window.requestAnimationFrame(() => {
+        focusWithoutScrollingPage(focusTarget);
+      });
+    }
+    lastFocusedSongShareMergeTrigger = null;
+  };
+
+  const openSongShareMergeModal = (previewPayload, triggerElement = null) => {
+    const safePayload = asObject(previewPayload);
+    if (!songShareMergeModal || !songShareMergeConflictsList || !songShareMergeImportBtn) {
+      const shouldImport = window.confirm('Importar itens compartilhados para sua conta?');
+      if (!shouldImport) {
+        return Promise.resolve({
+          action: SONG_SHARE_MERGE_ACTION_CANCEL,
+          excludeConflictKeys: [],
+        });
+      }
+      return Promise.resolve({
+        action: SONG_SHARE_MERGE_ACTION_ACCEPT,
+        excludeConflictKeys: [],
+      });
+    }
+
+    if (pendingSongShareMergeResolver) {
+      resolvePendingSongShareMerge({
+        action: SONG_SHARE_MERGE_ACTION_DISMISS,
+        excludeConflictKeys: [],
+      });
+    }
+
+    renderSongShareMergePreview(safePayload);
+    setSongShareMergeFeedback('');
+    const fallbackFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedSongShareMergeTrigger = (
+      triggerElement instanceof HTMLElement
+        ? triggerElement
+        : fallbackFocus
+    );
+    songShareMergeModal.classList.add('open');
+    songShareMergeModal.setAttribute('aria-hidden', 'false');
+    syncBodyModalLock();
+    window.requestAnimationFrame(() => {
+      focusWithoutScrollingPage(songShareMergeImportBtn);
+    });
+
+    return new Promise((resolve) => {
+      pendingSongShareMergeResolver = resolve;
+    });
+  };
+
+  const requestSongShareMergePreview = async (shareId) => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) {
+      throw new Error('Codigo de compartilhamento invalido.');
+    }
+    const query = new URLSearchParams({ share_id: safeShareId }).toString();
+    const response = await fetch(`/api/songs/share/merge-preview?${query}`, {
+      method: 'GET',
+      headers: buildUserScopedApiHeaders(),
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = null;
+    }
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+    if (!response.ok || !payload?.ok) {
+      throw new Error(extractApiErrorMessage(payload, 'Falha ao validar importacao compartilhada.'));
+    }
+    return asObject(payload);
+  };
+
   const fetchSongSharePreview = async (shareId) => {
     const safeShareId = normalizeSongShareId(shareId);
     if (!safeShareId) {
@@ -8158,17 +8502,26 @@
     return asObject(payload);
   };
 
-  const requestSongShareImport = async (shareId) => {
+  const requestSongShareImport = async (shareId, options = {}) => {
     const safeShareId = normalizeSongShareId(shareId);
     if (!safeShareId) {
       throw new Error('Codigo de compartilhamento invalido.');
     }
+    const safeOptions = asObject(options);
+    const excludeConflictKeys = Array.isArray(safeOptions.excludeConflictKeys)
+      ? safeOptions.excludeConflictKeys
+        .map((item) => String(item || '').trim().toLowerCase())
+        .filter(Boolean)
+      : [];
     const response = await fetch('/api/songs/share/import', {
       method: 'POST',
       headers: buildUserScopedApiHeaders({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify({ share_id: safeShareId }),
+      body: JSON.stringify({
+        share_id: safeShareId,
+        exclude_conflict_keys: excludeConflictKeys,
+      }),
     });
     let payload = null;
     try {
@@ -8379,6 +8732,7 @@
     renderSongSaveLocationPicker();
     updateRosaryModalSongToggleState();
     setSongShareRequestState(false);
+    syncSongShareImportButtonState();
   };
 
   const buildSongShareImportToastMessage = (summaryPayload) => {
@@ -8402,6 +8756,49 @@
     return `Importacao concluida: ${parts.join(', ')}.`;
   };
 
+  const runSongShareMergeImportFlow = async (shareId, triggerElement = null) => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) {
+      throw new Error('Codigo de compartilhamento invalido.');
+    }
+
+    if (!isAuthLoggedIn()) {
+      pendingSongShareImport = safeShareId;
+      pendingSongShareMergeAfterLogin = true;
+      showSongToast('Faça login para importar e escolher como resolver conflitos.', 'is-warning');
+      runDeferredTask(() => {
+        openAuthModal('login', triggerElement instanceof HTMLElement ? triggerElement : authMenuTrigger);
+      }, 80);
+      return false;
+    }
+
+    const previewPayload = await requestSongShareMergePreview(safeShareId);
+    const decisionPayload = await openSongShareMergeModal(
+      previewPayload,
+      triggerElement instanceof HTMLElement ? triggerElement : null
+    );
+    const decision = asObject(decisionPayload);
+    if (String(decision.action || SONG_SHARE_MERGE_ACTION_DISMISS) !== SONG_SHARE_MERGE_ACTION_ACCEPT) {
+      setSongShareMergeFeedback('');
+      pendingSongShareMergeAfterLogin = false;
+      pendingSongShareImport = '';
+      return false;
+    }
+
+    const excludeConflictKeys = Array.isArray(decision.excludeConflictKeys)
+      ? decision.excludeConflictKeys.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    const importPayload = await requestSongShareImport(safeShareId, { excludeConflictKeys });
+    pendingSongShareImport = '';
+    pendingSongShareMergeAfterLogin = false;
+    persistLastSongShareViewId('');
+    clearSongShareLocalState();
+    clearSongShareFromUrl();
+    refreshUserScopedSongData(0, { forceSongLists: true });
+    showSongToast(buildSongShareImportToastMessage(importPayload.summary), 'is-success');
+    return true;
+  };
+
   const maybeHandlePendingSongShareImport = async (triggerElement = null) => {
     const safeShareId = normalizeSongShareId(pendingSongShareImport);
     if (!safeShareId || songShareImportPending) return false;
@@ -8409,6 +8806,10 @@
     songShareImportPending = true;
     setSongShareRequestState(songShareRequestPending);
     try {
+      if (pendingSongShareMergeAfterLogin && isAuthLoggedIn()) {
+        return await runSongShareMergeImportFlow(safeShareId, triggerElement);
+      }
+
       const autoOpenView = Boolean(
         !isAuthLoggedIn()
         && shouldAutoOpenSongShareView(safeShareId)
@@ -8417,6 +8818,7 @@
         const viewPayload = await requestSongShareView(safeShareId);
         applySongShareViewPayload(viewPayload);
         pendingSongShareImport = '';
+        pendingSongShareMergeAfterLogin = false;
         return true;
       }
 
@@ -8445,6 +8847,7 @@
 
       if (selectedAction === FAVORITE_CONFIRM_ACTION_DISMISS) {
         pendingSongShareImport = '';
+        pendingSongShareMergeAfterLogin = false;
         persistLastSongShareViewId('');
         clearSongShareLocalState();
         clearSongShareFromUrl();
@@ -8455,6 +8858,7 @@
         const viewPayload = await requestSongShareView(safeShareId);
         applySongShareViewPayload(viewPayload);
         pendingSongShareImport = '';
+        pendingSongShareMergeAfterLogin = false;
         persistLastSongShareViewId(safeShareId);
         showSongToast('Lista compartilhada carregada. Voce pode usar sem conta neste navegador.', 'is-success');
         return true;
@@ -8462,25 +8866,21 @@
 
       if (!isAuthLoggedIn()) {
         showSongToast('Faça login para importar no seu usuario, ou escolha Ver para usar sem conta.', 'is-warning');
+        pendingSongShareMergeAfterLogin = true;
         runDeferredTask(() => {
           openAuthModal('login', triggerElement instanceof HTMLElement ? triggerElement : authMenuTrigger);
         }, 80);
         return false;
       }
 
-      const importPayload = await requestSongShareImport(safeShareId);
-      pendingSongShareImport = '';
-      persistLastSongShareViewId('');
-      clearSongShareLocalState();
-      clearSongShareFromUrl();
-      refreshUserScopedSongData(0);
-      showSongToast(buildSongShareImportToastMessage(importPayload.summary), 'is-success');
-      return true;
+      pendingSongShareMergeAfterLogin = true;
+      return await runSongShareMergeImportFlow(safeShareId, triggerElement);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Falha ao importar compartilhamento.';
       showSongToast(message, 'is-error');
       if (isSongShareNotFoundMessage(message)) {
         pendingSongShareImport = '';
+        pendingSongShareMergeAfterLogin = false;
         persistLastSongShareViewId('');
         clearSongShareLocalState();
         clearSongShareFromUrl();
@@ -8704,7 +9104,7 @@
       actions.classList.toggle('is-account-mode', isAccountMode);
     }
     setAuthRegisterCtaState(
-      isLoginMode && !showQrPanel,
+      (isLoginMode || isRegisterMode) && !showQrPanel,
       {
         name: String(authNameInput?.value || '').trim(),
         email: String(authEmailInput?.value || '').trim().toLowerCase(),
@@ -8732,6 +9132,7 @@
       button.hidden = loggedIn ? !visibleWhenLoggedIn : !visibleWhenLoggedOut;
     });
     syncHeroShareSongsButtonState();
+    syncSongShareImportButtonState();
   };
 
   const setAuthSubmitState = (pending) => {
@@ -8833,8 +9234,17 @@
       if (authPasswordInput && prefill.password) {
         authPasswordInput.value = prefill.password;
       }
-    } else if (authEmailInput && isAuthLoggedIn()) {
-      authEmailInput.value = safeUser?.email || '';
+    } else {
+      if (authEmailInput) {
+        if (isAuthLoggedIn()) {
+          authEmailInput.value = safeUser?.email || '';
+        } else if (prefill.email) {
+          authEmailInput.value = prefill.email;
+        }
+      }
+      if (authPasswordInput && !isAuthLoggedIn() && prefill.password) {
+        authPasswordInput.value = prefill.password;
+      }
     }
 
     setAuthFormFeedback('');
@@ -8928,6 +9338,7 @@
     closeAuthModal({ restoreFocus: false });
     closeAuthSessionsModal({ restoreFocus: false });
     closeSongShareModal({ restoreFocus: false });
+    closeSongShareMergeModal({ action: SONG_SHARE_MERGE_ACTION_DISMISS, excludeConflictKeys: [] });
     closeAuthDropdown();
     closeMainMenu();
 
@@ -9081,6 +9492,40 @@
     });
   }
 
+  if (songShareMergeCloseButtons.length) {
+    songShareMergeCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        closeSongShareMergeModal({
+          action: SONG_SHARE_MERGE_ACTION_CANCEL,
+          excludeConflictKeys: [],
+        });
+      });
+    });
+  }
+
+  if (songShareMergeImportBtn) {
+    songShareMergeImportBtn.addEventListener('click', () => {
+      if (!songShareMergeConflictsList) {
+        closeSongShareMergeModal({
+          action: SONG_SHARE_MERGE_ACTION_ACCEPT,
+          excludeConflictKeys: [],
+        });
+        return;
+      }
+
+      const excludeConflictKeys = Array.from(
+        songShareMergeConflictsList.querySelectorAll('input[type="checkbox"][data-conflict-key]')
+      )
+        .filter((node) => node instanceof HTMLInputElement && !node.checked)
+        .map((node) => String(node.dataset.conflictKey || '').trim())
+        .filter(Boolean);
+      closeSongShareMergeModal({
+        action: SONG_SHARE_MERGE_ACTION_ACCEPT,
+        excludeConflictKeys,
+      });
+    });
+  }
+
   if (songShareCreateBtn) {
     songShareCreateBtn.addEventListener('click', () => {
       void createSongShareSnapshot();
@@ -9103,6 +9548,23 @@
   if (songFavoritesShareBtn) {
     songFavoritesShareBtn.addEventListener('click', () => {
       openSongShareModal(songFavoritesShareBtn);
+    });
+  }
+
+  if (songShareImportBtn) {
+    songShareImportBtn.addEventListener('click', () => {
+      const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
+      if (!safeShareId) {
+        showSongToast('Nenhum compartilhamento ativo para importar.', 'is-warning');
+        return;
+      }
+      pendingSongShareImport = safeShareId;
+      pendingSongShareMergeAfterLogin = true;
+      if (!isAuthLoggedIn()) {
+        openAuthModal('login', songShareImportBtn);
+        return;
+      }
+      void maybeHandlePendingSongShareImport(songShareImportBtn);
     });
   }
 
@@ -9132,9 +9594,13 @@
 
   if (authRegisterCtaBtn) {
     authRegisterCtaBtn.addEventListener('click', () => {
-      openAuthModal('register', authRegisterCtaBtn, {
-        prefill: pendingAuthRegisterPrefill || buildAuthLoginPrefillFromInputs(),
-      });
+      const safeMode = normalizeAuthMode(authMode);
+      const prefill = pendingAuthRegisterPrefill || buildAuthLoginPrefillFromInputs();
+      if (safeMode === 'register') {
+        openAuthModal('login', authRegisterCtaBtn, { prefill });
+        return;
+      }
+      openAuthModal('register', authRegisterCtaBtn, { prefill });
     });
   }
 
@@ -10067,10 +10533,7 @@
     });
     const hasCachedSongData = Boolean(
       cachedFavorite
-      && (
-        String(cachedFavorite.chordsText || '').trim()
-        || String(cachedFavorite.lyricsText || '').trim()
-      )
+      && String(cachedFavorite.chordsText || '').trim()
     );
     if (hasCachedSongData) {
       openSongFavoriteCached(cachedFavorite, 'chords', triggerButton, { allowExternalFallback: false });
@@ -10319,10 +10782,9 @@
     const safeOptions = asObject(options);
     const allowExternalFallback = safeOptions.allowExternalFallback !== false;
     const requestedLyricsMode = mode === 'lyrics';
-    let resolvedMode = requestedLyricsMode ? 'lyrics' : 'chords';
+    const resolvedMode = requestedLyricsMode ? 'lyrics' : 'chords';
     let content = String(requestedLyricsMode ? (safeFavorite.lyricsText || '') : (safeFavorite.chordsText || ''));
     let usedLyricsFromChordsFallback = false;
-    let usedLyricsOnlyFallback = false;
 
     if (!content.trim()) {
       if (requestedLyricsMode) {
@@ -10330,13 +10792,6 @@
         if (derivedLyrics.trim()) {
           content = derivedLyrics;
           usedLyricsFromChordsFallback = true;
-        }
-      } else {
-        const lyricsFallback = String(safeFavorite.lyricsText || '');
-        if (lyricsFallback.trim()) {
-          content = lyricsFallback;
-          resolvedMode = 'lyrics';
-          usedLyricsOnlyFallback = true;
         }
       }
     }
@@ -10419,13 +10874,11 @@
         const successMessage = (
           usedLyricsFromChordsFallback
             ? readSongMessage('favoriteCachedLyricsDerived')
-            : usedLyricsOnlyFallback
-              ? readSongMessage('favoriteCachedLyricsFallback')
-              : (
-                isLyricsMode
-                  ? readSongMessage('favoriteCachedLyricsLoaded')
-                  : readSongMessage('favoriteCachedChordsLoaded')
-              )
+            : (
+              isLyricsMode
+                ? readSongMessage('favoriteCachedLyricsLoaded')
+                : readSongMessage('favoriteCachedChordsLoaded')
+            )
         );
         setSongFeedback(
           successMessage,
@@ -11055,16 +11508,28 @@
     }
   };
 
-  const fetchSongFavorites = async () => {
+  const fetchSongFavorites = async (options = {}) => {
+    const safeOptions = asObject(options);
+    const forceRefresh = safeOptions.forceRefresh === true;
+
     if (songShareViewModeLoaded) {
+      songFavoritesRefreshQueued = false;
       songFavoritesLoading = false;
       renderSongFavorites();
       return false;
     }
 
     if (!isAuthLoggedIn()) {
+      songFavoritesRefreshQueued = false;
       songFavoritesLoading = false;
       applySongFavorites([]);
+      return false;
+    }
+
+    if (songFavoritesLoading) {
+      if (forceRefresh) {
+        songFavoritesRefreshQueued = true;
+      }
       return false;
     }
 
@@ -11080,7 +11545,6 @@
       const payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
         handleUserScopedApiUnauthorized();
-        songFavoritesLoading = false;
         applySongFavorites([]);
         return false;
       }
@@ -11092,13 +11556,23 @@
         );
       }
 
-      songFavoritesLoading = false;
       applySongFavorites(Array.isArray(payload.favorites) ? payload.favorites : []);
+      return true;
     } catch (err) {
-      songFavoritesLoading = false;
       songFavorites = [];
       rebuildSongFavoritesIndex();
       renderSongFavorites();
+      return false;
+    } finally {
+      songFavoritesLoading = false;
+      if (
+        songFavoritesRefreshQueued
+        && isAuthLoggedIn()
+        && !songShareViewModeLoaded
+      ) {
+        songFavoritesRefreshQueued = false;
+        runDeferredTask(fetchSongFavorites, 140);
+      }
     }
   };
 
@@ -11178,6 +11652,8 @@
   const CUSTOM_SONG_TAB_CHORDS = 'chords';
   const CUSTOM_SONG_EDIT_DRAFT_PREFIX = 'draft-edit-';
   let customSongs = [];
+  let customSongsLoading = false;
+  let customSongsRefreshQueued = false;
   let customSongEditingId = '';
   let customSongDraftTimerId = null;
   let customSongActiveTab = CUSTOM_SONG_TAB_LYRICS;
@@ -11293,14 +11769,26 @@
     || fallbackMessage
   );
 
-  const fetchCustomSongs = async () => {
+  const fetchCustomSongs = async (options = {}) => {
+    const safeOptions = asObject(options);
+    const forceRefresh = safeOptions.forceRefresh === true;
+
     if (!isAuthLoggedIn()) {
+      customSongsRefreshQueued = false;
+      customSongsLoading = false;
       setPersistedCustomSongs([]);
       syncStoredCustomDraftToSongList();
       renderCustomSongs();
       return false;
     }
 
+    if (customSongsLoading) {
+      if (forceRefresh) {
+        customSongsRefreshQueued = true;
+      }
+      return false;
+    }
+    customSongsLoading = true;
     try {
       const response = await fetch('/api/songs/custom', {
         headers: buildUserScopedApiHeaders(),
@@ -11330,6 +11818,12 @@
       syncStoredCustomDraftToSongList();
       renderCustomSongs();
       return false;
+    } finally {
+      customSongsLoading = false;
+      if (customSongsRefreshQueued && isAuthLoggedIn()) {
+        customSongsRefreshQueued = false;
+        runDeferredTask(fetchCustomSongs, 160);
+      }
     }
   };
 
@@ -11605,6 +12099,7 @@
   const clearUserScopedSongData = () => {
     songShareViewModeLoaded = false;
     songShareCurrentViewId = '';
+    pendingSongShareMergeAfterLogin = false;
     songFavoritesLoading = false;
     applySongFavorites([]);
     songLocationTreeLoading = false;
@@ -11619,21 +12114,29 @@
     updateMysteryModalSongToggleState();
     renderSongFavorites();
     renderSongSaveLocationPicker();
+    syncSongShareImportButtonState();
     runDeferredTask(fetchSongLocationTree, 40);
   };
 
-  const refreshUserScopedSongData = (baseDelay = 0) => {
+  const refreshUserScopedSongData = (baseDelay = 0, options = {}) => {
     if (!isAuthLoggedIn()) {
       clearUserScopedSongData();
       return;
     }
     songShareViewModeLoaded = false;
+    const safeOptions = asObject(options);
+    const includeAssignments = safeOptions.includeAssignments !== false;
+    const forceSongLists = safeOptions.forceSongLists === true;
     const safeDelay = Number.isFinite(baseDelay) ? Math.max(0, Math.trunc(baseDelay)) : 0;
-    runDeferredTask(fetchSongFavorites, safeDelay + 40);
-    runDeferredTask(fetchMysterySongAssignments, safeDelay + 80);
+    runDeferredTask(() => fetchSongFavorites({ forceRefresh: forceSongLists }), safeDelay + 40);
+    if (includeAssignments) {
+      runDeferredTask(fetchMysterySongAssignments, safeDelay + 80);
+    }
     runDeferredTask(fetchSongLocationTree, safeDelay + 120);
-    runDeferredTask(fetchSongLocationAssignments, safeDelay + 160);
-    runDeferredTask(fetchCustomSongs, safeDelay + 200);
+    if (includeAssignments) {
+      runDeferredTask(fetchSongLocationAssignments, safeDelay + 160);
+    }
+    runDeferredTask(() => fetchCustomSongs({ forceRefresh: forceSongLists }), safeDelay + 200);
   };
 
   const setCustomSongTab = (tabName) => {
@@ -13303,6 +13806,14 @@
         )
       );
       if (clickedInsideSongShareModalPre) return;
+      const clickedInsideSongShareMergeModalPre = Boolean(
+        songShareMergeModal
+        && (
+          (targetElement && targetElement.closest('#song-share-merge-modal'))
+          || eventPathIncludes(songShareMergeModal)
+        )
+      );
+      if (clickedInsideSongShareMergeModalPre) return;
       const clickedInsideSongModalPre = Boolean(
         songModal
         && (
@@ -13442,6 +13953,17 @@
         && songShareModal.classList.contains('open')
       );
       if (songShareModalIsOpen) return;
+      const clickedInsideSongShareMergeModal = Boolean(
+        targetElement
+        && songShareMergeModal
+        && targetElement.closest('#song-share-merge-modal')
+      );
+      if (clickedInsideSongShareMergeModal) return;
+      const songShareMergeModalIsOpen = Boolean(
+        songShareMergeModal
+        && songShareMergeModal.classList.contains('open')
+      );
+      if (songShareMergeModalIsOpen) return;
 
       const clickedInsideSongSearch = songSearchWidgets.some((widget) => (
         (widget.form && widget.form.contains(target))
@@ -13488,6 +14010,11 @@
             songShareModal
             && songShareModal.classList.contains('open')
             && targetElement.closest('.song-share-dialog')
+          )
+          || (
+            songShareMergeModal
+            && songShareMergeModal.classList.contains('open')
+            && targetElement.closest('.song-share-merge-dialog')
           )
           || (
             songLocationCreateModal
@@ -13595,6 +14122,15 @@
         fallbackZIndex: 146,
         isOpen: () => isModalElementOpen(favoriteConfirmModal),
         close: () => closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS),
+      },
+      {
+        element: songShareMergeModal,
+        fallbackZIndex: 145,
+        isOpen: () => isModalElementOpen(songShareMergeModal),
+        close: () => closeSongShareMergeModal({
+          action: SONG_SHARE_MERGE_ACTION_DISMISS,
+          excludeConflictKeys: [],
+        }),
       },
       {
         element: songShareModal,

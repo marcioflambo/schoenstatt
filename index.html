@@ -426,6 +426,14 @@
             <div class="song-favorites-header-row">
               <div class="song-favorites-title-row">
                 <h3 id="song-favorites-title"></h3>
+                <button
+                  type="button"
+                  id="song-share-import-btn"
+                  class="btn btn-outline song-share-import-btn"
+                  hidden
+                >
+                  Importar
+                </button>
               </div>
               <div class="song-favorites-search-wrap">
                 <input
@@ -1177,6 +1185,43 @@
       <footer class="song-share-actions">
         <button type="button" id="song-share-create-btn" class="btn btn-outline">Gerar novo link</button>
         <button type="button" id="song-share-copy-btn" class="btn btn-primary">Copiar link</button>
+      </footer>
+    </article>
+  </div>
+
+  <div id="song-share-merge-modal" class="song-share-merge-modal" aria-hidden="true">
+    <div class="song-share-merge-backdrop" data-song-share-merge-close></div>
+    <article
+      class="song-share-merge-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="song-share-merge-title"
+    >
+      <header class="song-share-merge-header">
+        <h3 id="song-share-merge-title">Importar lista compartilhada</h3>
+        <button
+          type="button"
+          id="song-share-merge-close"
+          class="song-share-merge-close"
+          data-song-share-merge-close
+          aria-label="Fechar importacao"
+        >
+          &times;
+        </button>
+      </header>
+      <p id="song-share-merge-summary" class="song-share-merge-summary"></p>
+      <p class="song-share-merge-subtitle">Serao importados sem conflito</p>
+      <ul id="song-share-merge-auto-list" class="song-share-merge-list"></ul>
+      <p class="song-share-merge-subtitle">Conflitos (desmarque para nao sobrescrever)</p>
+      <div id="song-share-merge-conflicts-list" class="song-share-merge-conflicts-list"></div>
+      <p id="song-share-merge-feedback" class="song-share-merge-feedback" hidden></p>
+      <footer class="song-share-merge-actions">
+        <button type="button" id="song-share-merge-cancel-btn" class="btn btn-ghost" data-song-share-merge-close>
+          Cancelar
+        </button>
+        <button type="button" id="song-share-merge-import-btn" class="btn btn-primary">
+          Importar selecionados
+        </button>
       </footer>
     </article>
   </div>

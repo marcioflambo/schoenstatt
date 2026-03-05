@@ -139,6 +139,7 @@ _RATE_LIMIT_LOCK = Lock()
 
 class SongShareImportRequest(BaseModel):
     share_id: str
+    exclude_conflict_keys: list[str] = []
 
 
 def _extract_bearer_token(authorization_header: str | None) -> str:
@@ -793,6 +794,456 @@ def _build_song_share_view_data(snapshot_payload: dict[str, object]) -> dict[str
     }
 
 
+def _normalize_song_share_conflict_token(value: str | None) -> str:
+    normalized = _normalize_song_match_token(value)
+    if not normalized:
+        return ''
+    return re.sub(r'[^a-z0-9]+', '-', normalized).strip('-')
+
+
+def _normalize_song_share_conflict_key(value: object) -> str:
+    return _normalize_spaces(str(value or '')).lower()
+
+
+def _normalize_song_share_conflict_keys(values: object) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    normalized: set[str] = set()
+    for raw_value in values:
+        key = _normalize_song_share_conflict_key(raw_value)
+        if key:
+            normalized.add(key)
+    return normalized
+
+
+def _read_song_row_value(raw_row: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = _normalize_spaces(str(raw_row.get(key) or ''))
+        if value:
+            return value
+    return ''
+
+
+def _read_song_location_path(raw_row: dict[str, object]) -> list[str]:
+    raw_path = raw_row.get('location_path')
+    if not isinstance(raw_path, list):
+        raw_path = raw_row.get('locationPath')
+    if not isinstance(raw_path, list):
+        return []
+    return [
+        _normalize_spaces(str(item))
+        for item in raw_path
+        if _normalize_spaces(str(item))
+    ]
+
+
+def _read_song_identity_from_row(
+    raw_row: dict[str, object],
+    *,
+    title_keys: tuple[str, ...],
+    artist_keys: tuple[str, ...],
+    url_keys: tuple[str, ...],
+) -> tuple[dict[str, str], str, str, str]:
+    title = _read_song_row_value(raw_row, *title_keys)
+    artist = _read_song_row_value(raw_row, *artist_keys)
+    song_url = _read_song_row_value(raw_row, *url_keys)
+    identity = _build_song_identity(song_url, title, artist)
+    return identity, title, artist, song_url
+
+
+def _normalize_share_mystery_title(value: str | None) -> str:
+    title = _normalize_spaces(value)
+    if not title:
+        return ''
+    return re.sub(r'^\d+\s*[^0-9A-Za-z]?\s*', '', title, flags=re.IGNORECASE).strip()
+
+
+def _canonical_share_mystery_group_token(value: str | None) -> str:
+    group = _normalize_song_match_token(value)
+    if not group:
+        return ''
+    group = re.sub(r'\bmisterios?\b', '', group).strip()
+    return _normalize_song_share_conflict_token(group)
+
+
+def _build_share_mystery_conflict_key(raw_row: dict[str, object]) -> str:
+    group_title = _read_song_row_value(raw_row, 'group_title', 'groupTitle')
+    mystery_title = _normalize_share_mystery_title(
+        _read_song_row_value(raw_row, 'mystery_title', 'mysteryTitle')
+    )
+    if not group_title or not mystery_title:
+        return ''
+    group_token = _canonical_share_mystery_group_token(group_title)
+    mystery_token = _normalize_song_share_conflict_token(mystery_title)
+    if not group_token or not mystery_token:
+        return ''
+    return f'mystery:{group_token}|{mystery_token}'
+
+
+def _build_share_location_slot_token(raw_row: dict[str, object]) -> str:
+    location_path = _read_song_location_path(raw_row)
+    if location_path:
+        path_tokens = [
+            _normalize_song_share_conflict_token(item)
+            for item in location_path
+            if _normalize_song_share_conflict_token(item)
+        ]
+        if path_tokens:
+            return f'path:{"|".join(path_tokens)}'
+
+    location_label = _read_song_row_value(raw_row, 'location_label', 'locationLabel')
+    if location_label:
+        label_token = _normalize_song_share_conflict_token(location_label)
+        if label_token:
+            return f'label:{label_token}'
+
+    location_id = _read_song_row_value(raw_row, 'location_id', 'locationId')
+    if location_id:
+        location_id_token = _normalize_song_share_conflict_token(location_id)
+        if location_id_token:
+            return f'id:{location_id_token}'
+    return ''
+
+
+def _build_share_location_id_lookup_token(raw_row: dict[str, object]) -> str:
+    location_id = _read_song_row_value(raw_row, 'location_id', 'locationId')
+    if not location_id:
+        return ''
+    location_id_token = _normalize_song_share_conflict_token(location_id)
+    if not location_id_token:
+        return ''
+    return f'id:{location_id_token}'
+
+
+def _build_share_location_conflict_key(raw_row: dict[str, object]) -> str:
+    slot_token = _build_share_location_slot_token(raw_row)
+    if not slot_token:
+        return ''
+    return f'location:{slot_token}'
+
+
+def _build_share_favorite_conflict_key(raw_row: dict[str, object]) -> str:
+    song_url = _read_song_row_value(raw_row, 'url', 'song_url', 'songUrl')
+    song_url_key = _normalize_song_url_key(song_url)
+    if song_url_key:
+        url_token = _normalize_song_share_conflict_token(song_url_key)
+        if url_token:
+            return f'favorite:url:{url_token}'
+
+    title = _read_song_row_value(raw_row, 'title', 'song_title', 'songTitle')
+    artist = _read_song_row_value(raw_row, 'artist', 'song_artist', 'songArtist')
+    title_artist_key = _normalize_song_title_artist_key(title, artist)
+    if not title_artist_key:
+        return ''
+    title_artist_token = _normalize_song_share_conflict_token(title_artist_key)
+    if not title_artist_token:
+        return ''
+    return f'favorite:title:{title_artist_token}'
+
+
+def _build_song_share_slot_label(raw_row: dict[str, object], item_type: str) -> str:
+    if item_type == 'mystery_song_assignments':
+        group_title = _read_song_row_value(raw_row, 'group_title', 'groupTitle')
+        mystery_title = _normalize_share_mystery_title(
+            _read_song_row_value(raw_row, 'mystery_title', 'mysteryTitle')
+        )
+        if group_title and mystery_title:
+            return f'Misterios > {group_title} > {mystery_title}'
+        return f'Misterios > {group_title or mystery_title or "Sem local"}'
+
+    if item_type == 'song_location_assignments':
+        location_path = _read_song_location_path(raw_row)
+        if location_path:
+            return f'Terco > {" > ".join(location_path)}'
+        location_label = _read_song_row_value(raw_row, 'location_label', 'locationLabel')
+        if location_label:
+            return f'Terco > {location_label}'
+        location_id = _read_song_row_value(raw_row, 'location_id', 'locationId')
+        return f'Terco > {location_id or "Sem local"}'
+
+    title = _read_song_row_value(raw_row, 'title', 'song_title', 'songTitle')
+    if title:
+        return f'Favoritos > {title}'
+    song_url = _read_song_row_value(raw_row, 'url', 'song_url', 'songUrl')
+    return f'Favoritos > {song_url or "Musica"}'
+
+
+def _build_song_share_merge_item(
+    *,
+    key: str,
+    item_type: str,
+    slot_label: str,
+    incoming_title: str,
+    incoming_artist: str,
+    incoming_url: str,
+    existing_title: str = '',
+    existing_artist: str = '',
+    existing_url: str = '',
+) -> dict[str, str]:
+    return {
+        'key': key,
+        'type': item_type,
+        'slot_label': slot_label,
+        'incoming_song_title': incoming_title,
+        'incoming_song_artist': incoming_artist,
+        'incoming_song_url': incoming_url,
+        'existing_song_title': existing_title,
+        'existing_song_artist': existing_artist,
+        'existing_song_url': existing_url,
+    }
+
+
+def _build_song_share_merge_plan(
+    share_snapshot: dict[str, object],
+    target_namespace: str,
+) -> dict[str, object]:
+    share_data = share_snapshot.get('data') if isinstance(share_snapshot.get('data'), dict) else {}
+    custom_rows = _truncate_song_share_rows(share_data.get('custom_songs'))
+    mystery_rows = _truncate_song_share_rows(share_data.get('mystery_song_assignments'))
+    location_assignment_rows = _truncate_song_share_rows(share_data.get('song_location_assignments'))
+    location_user_node_rows = _truncate_song_share_rows(share_data.get('song_location_user_nodes'))
+    favorite_rows = _truncate_song_share_rows(share_data.get('song_favorites'))
+
+    existing_favorites = list_song_favorites(
+        settings.song_favorites_file,
+        database_url=settings.database_url,
+        store_namespace=target_namespace,
+    )
+    existing_mystery_rows = list_mystery_song_assignments(
+        settings.mystery_song_assignments_file,
+        database_url=settings.database_url,
+        store_namespace=target_namespace,
+    )
+    existing_location_rows = list_song_location_assignments(
+        settings.song_location_assignments_file,
+        database_url=settings.database_url,
+        store_namespace=target_namespace,
+    )
+
+    existing_favorites_by_key: dict[str, dict[str, object]] = {}
+    for raw_row in existing_favorites:
+        if not isinstance(raw_row, dict):
+            continue
+        key = _build_share_favorite_conflict_key(raw_row)
+        if key and key not in existing_favorites_by_key:
+            existing_favorites_by_key[key] = raw_row
+
+    existing_mystery_by_key: dict[str, dict[str, object]] = {}
+    for raw_row in existing_mystery_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        key = _build_share_mystery_conflict_key(raw_row)
+        if key and key not in existing_mystery_by_key:
+            existing_mystery_by_key[key] = raw_row
+
+    existing_location_by_slot: dict[str, dict[str, object]] = {}
+    existing_location_by_id: dict[str, dict[str, object]] = {}
+    for raw_row in existing_location_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        slot_token = _build_share_location_slot_token(raw_row)
+        if slot_token and slot_token not in existing_location_by_slot:
+            existing_location_by_slot[slot_token] = raw_row
+        id_token = _build_share_location_id_lookup_token(raw_row)
+        if id_token and id_token not in existing_location_by_id:
+            existing_location_by_id[id_token] = raw_row
+
+    counts = {
+        'auto_import': {
+            'song_favorites': 0,
+            'mystery_song_assignments': 0,
+            'song_location_assignments': 0,
+        },
+        'unchanged': {
+            'song_favorites': 0,
+            'mystery_song_assignments': 0,
+            'song_location_assignments': 0,
+        },
+        'conflicts': {
+            'song_favorites': 0,
+            'mystery_song_assignments': 0,
+            'song_location_assignments': 0,
+        },
+        'always_candidates': {
+            'custom_songs': len(custom_rows),
+            'song_location_user_nodes': len(location_user_node_rows),
+        },
+    }
+    conflicts: list[dict[str, str]] = []
+    auto_import_items: list[dict[str, str]] = []
+
+    for raw_row in favorite_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        key = _build_share_favorite_conflict_key(raw_row)
+        if not key:
+            continue
+        incoming_identity, incoming_title, incoming_artist, incoming_url = _read_song_identity_from_row(
+            raw_row,
+            title_keys=('title', 'song_title', 'songTitle'),
+            artist_keys=('artist', 'song_artist', 'songArtist'),
+            url_keys=('url', 'song_url', 'songUrl'),
+        )
+        if not (incoming_identity.get('url_key') or incoming_identity.get('title_key')):
+            continue
+
+        existing_row = existing_favorites_by_key.get(key)
+        if not isinstance(existing_row, dict):
+            counts['auto_import']['song_favorites'] += 1
+            auto_import_items.append(_build_song_share_merge_item(
+                key=key,
+                item_type='song_favorites',
+                slot_label=_build_song_share_slot_label(raw_row, 'song_favorites'),
+                incoming_title=incoming_title,
+                incoming_artist=incoming_artist,
+                incoming_url=incoming_url,
+            ))
+            continue
+
+        existing_identity, existing_title, existing_artist, existing_url = _read_song_identity_from_row(
+            existing_row,
+            title_keys=('title', 'song_title', 'songTitle'),
+            artist_keys=('artist', 'song_artist', 'songArtist'),
+            url_keys=('url', 'song_url', 'songUrl'),
+        )
+        if _is_song_identity_match(incoming_identity, existing_identity):
+            counts['unchanged']['song_favorites'] += 1
+            continue
+
+        counts['conflicts']['song_favorites'] += 1
+        conflicts.append(_build_song_share_merge_item(
+            key=key,
+            item_type='song_favorites',
+            slot_label=_build_song_share_slot_label(raw_row, 'song_favorites'),
+            incoming_title=incoming_title,
+            incoming_artist=incoming_artist,
+            incoming_url=incoming_url,
+            existing_title=existing_title,
+            existing_artist=existing_artist,
+            existing_url=existing_url,
+        ))
+
+    for raw_row in mystery_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        key = _build_share_mystery_conflict_key(raw_row)
+        if not key:
+            continue
+        incoming_identity, incoming_title, incoming_artist, incoming_url = _read_song_identity_from_row(
+            raw_row,
+            title_keys=('song_title', 'songTitle', 'title'),
+            artist_keys=('song_artist', 'songArtist', 'artist'),
+            url_keys=('song_url', 'songUrl', 'url'),
+        )
+        if not (incoming_identity.get('url_key') or incoming_identity.get('title_key')):
+            continue
+
+        existing_row = existing_mystery_by_key.get(key)
+        if not isinstance(existing_row, dict):
+            counts['auto_import']['mystery_song_assignments'] += 1
+            auto_import_items.append(_build_song_share_merge_item(
+                key=key,
+                item_type='mystery_song_assignments',
+                slot_label=_build_song_share_slot_label(raw_row, 'mystery_song_assignments'),
+                incoming_title=incoming_title,
+                incoming_artist=incoming_artist,
+                incoming_url=incoming_url,
+            ))
+            continue
+
+        existing_identity, existing_title, existing_artist, existing_url = _read_song_identity_from_row(
+            existing_row,
+            title_keys=('song_title', 'songTitle', 'title'),
+            artist_keys=('song_artist', 'songArtist', 'artist'),
+            url_keys=('song_url', 'songUrl', 'url'),
+        )
+        if _is_song_identity_match(incoming_identity, existing_identity):
+            counts['unchanged']['mystery_song_assignments'] += 1
+            continue
+
+        counts['conflicts']['mystery_song_assignments'] += 1
+        conflicts.append(_build_song_share_merge_item(
+            key=key,
+            item_type='mystery_song_assignments',
+            slot_label=_build_song_share_slot_label(raw_row, 'mystery_song_assignments'),
+            incoming_title=incoming_title,
+            incoming_artist=incoming_artist,
+            incoming_url=incoming_url,
+            existing_title=existing_title,
+            existing_artist=existing_artist,
+            existing_url=existing_url,
+        ))
+
+    for raw_row in location_assignment_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        conflict_key = _build_share_location_conflict_key(raw_row)
+        slot_token = _build_share_location_slot_token(raw_row)
+        if not conflict_key or not slot_token:
+            continue
+        incoming_identity, incoming_title, incoming_artist, incoming_url = _read_song_identity_from_row(
+            raw_row,
+            title_keys=('song_title', 'songTitle', 'title'),
+            artist_keys=('song_artist', 'songArtist', 'artist'),
+            url_keys=('song_url', 'songUrl', 'url'),
+        )
+        if not (incoming_identity.get('url_key') or incoming_identity.get('title_key')):
+            continue
+
+        existing_row = existing_location_by_slot.get(slot_token)
+        if not isinstance(existing_row, dict):
+            id_token = _build_share_location_id_lookup_token(raw_row)
+            if id_token:
+                existing_row = existing_location_by_id.get(id_token)
+        if not isinstance(existing_row, dict):
+            counts['auto_import']['song_location_assignments'] += 1
+            auto_import_items.append(_build_song_share_merge_item(
+                key=conflict_key,
+                item_type='song_location_assignments',
+                slot_label=_build_song_share_slot_label(raw_row, 'song_location_assignments'),
+                incoming_title=incoming_title,
+                incoming_artist=incoming_artist,
+                incoming_url=incoming_url,
+            ))
+            continue
+
+        existing_identity, existing_title, existing_artist, existing_url = _read_song_identity_from_row(
+            existing_row,
+            title_keys=('song_title', 'songTitle', 'title'),
+            artist_keys=('song_artist', 'songArtist', 'artist'),
+            url_keys=('song_url', 'songUrl', 'url'),
+        )
+        if _is_song_identity_match(incoming_identity, existing_identity):
+            counts['unchanged']['song_location_assignments'] += 1
+            continue
+
+        counts['conflicts']['song_location_assignments'] += 1
+        conflicts.append(_build_song_share_merge_item(
+            key=conflict_key,
+            item_type='song_location_assignments',
+            slot_label=_build_song_share_slot_label(raw_row, 'song_location_assignments'),
+            incoming_title=incoming_title,
+            incoming_artist=incoming_artist,
+            incoming_url=incoming_url,
+            existing_title=existing_title,
+            existing_artist=existing_artist,
+            existing_url=existing_url,
+        ))
+
+    totals = {
+        'auto_import': sum(counts['auto_import'].values()) + counts['always_candidates']['custom_songs'],
+        'unchanged': sum(counts['unchanged'].values()),
+        'conflicts': sum(counts['conflicts'].values()),
+    }
+
+    return {
+        'counts': counts,
+        'totals': totals,
+        'auto_import_items': auto_import_items,
+        'conflicts': conflicts,
+    }
+
+
 def _build_custom_song_signature(
     *,
     title: str,
@@ -808,10 +1259,20 @@ def _build_custom_song_signature(
     )
 
 
-def _create_song_share_snapshot(store_namespace: str, source_user: dict[str, str]) -> dict[str, object]:
+def _create_song_share_control(source_user: dict[str, str]) -> dict[str, object]:
     created_at = _now_utc()
     expires_at = created_at + timedelta(hours=max(1, settings.song_share_ttl_hours))
+    return {
+        'created_at_utc': _to_utc_iso(created_at),
+        'expires_at_utc': _to_utc_iso(expires_at),
+        'source': {
+            'user_guid': _normalize_spaces(str(source_user.get('guid') or '')),
+            'name': _normalize_spaces(str(source_user.get('name') or '')),
+        },
+    }
 
+
+def _build_song_share_live_data(store_namespace: str) -> dict[str, list[dict[str, object]]]:
     custom_songs = list_custom_songs(
         settings.custom_songs_file,
         include_inactive=False,
@@ -841,77 +1302,59 @@ def _create_song_share_snapshot(store_namespace: str, source_user: dict[str, str
     )
 
     return {
-        'version': 1,
-        'created_at_utc': _to_utc_iso(created_at),
-        'expires_at_utc': _to_utc_iso(expires_at),
-        'source': {
-            'user_guid': _normalize_spaces(str(source_user.get('guid') or '')),
-            'name': _normalize_spaces(str(source_user.get('name') or '')),
-        },
-        'data': {
-            'custom_songs': _truncate_song_share_rows(custom_songs),
-            'mystery_song_assignments': _truncate_song_share_rows(mystery_song_assignments),
-            'song_location_assignments': _truncate_song_share_rows(song_location_assignments),
-            'song_location_user_nodes': _truncate_song_share_rows(song_location_user_nodes),
-            'song_favorites': _truncate_song_share_rows(song_favorites),
-        },
+        'custom_songs': _truncate_song_share_rows(custom_songs),
+        'mystery_song_assignments': _truncate_song_share_rows(mystery_song_assignments),
+        'song_location_assignments': _truncate_song_share_rows(song_location_assignments),
+        'song_location_user_nodes': _truncate_song_share_rows(song_location_user_nodes),
+        'song_favorites': _truncate_song_share_rows(song_favorites),
     }
 
 
-def _load_song_share_snapshot(share_id: str) -> dict[str, object] | None:
+def _load_song_share_control(share_id: str) -> dict[str, object] | None:
     if not settings.database_url:
         return None
     payload = load_store(settings.database_url, _build_song_share_store_key(share_id))
     if not isinstance(payload, dict):
         return None
-    if not isinstance(payload.get('data'), dict):
+    source_payload = payload.get('source') if isinstance(payload.get('source'), dict) else {}
+    source_guid = _normalize_spaces(str(source_payload.get('user_guid') or source_payload.get('guid') or ''))
+    if not source_guid:
         return None
     if _is_song_share_snapshot_expired(payload):
         return None
-    return payload
+    return {
+        'created_at_utc': _normalize_spaces(str(payload.get('created_at_utc') or '')),
+        'expires_at_utc': _normalize_spaces(str(payload.get('expires_at_utc') or '')),
+        'source': {
+            'user_guid': source_guid,
+            'name': _normalize_spaces(str(source_payload.get('name') or '')),
+        },
+    }
 
 
-def _refresh_song_share_snapshot_from_source(share_id: str, share_snapshot: dict[str, object]) -> dict[str, object]:
-    try:
-        safe_share_id = _normalize_song_share_id(share_id)
-    except ValueError:
-        return share_snapshot
-
-    source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
+def _build_song_share_snapshot_from_control(share_control: dict[str, object]) -> dict[str, object] | None:
+    source_payload = share_control.get('source') if isinstance(share_control.get('source'), dict) else {}
     source_guid = _normalize_spaces(str(source_payload.get('user_guid') or source_payload.get('guid') or ''))
     if not source_guid:
-        return share_snapshot
+        return None
 
     source_name = _normalize_spaces(str(source_payload.get('name') or ''))
+    created_at_utc = _normalize_spaces(str(share_control.get('created_at_utc') or ''))
+    expires_at_utc = _normalize_spaces(str(share_control.get('expires_at_utc') or ''))
     try:
-        refreshed_snapshot = _create_song_share_snapshot(
-            source_guid,
-            {
-                'guid': source_guid,
-                'name': source_name,
-            },
-        )
+        live_data = _build_song_share_live_data(source_guid)
     except Exception:
-        return share_snapshot
+        return None
 
-    original_created_at = _normalize_spaces(str(share_snapshot.get('created_at_utc') or ''))
-    original_expires_at = _normalize_spaces(str(share_snapshot.get('expires_at_utc') or ''))
-    if original_created_at:
-        refreshed_snapshot['created_at_utc'] = original_created_at
-    if original_expires_at:
-        refreshed_snapshot['expires_at_utc'] = original_expires_at
-
-    if settings.database_url:
-        try:
-            save_store(
-                settings.database_url,
-                _build_song_share_store_key(safe_share_id),
-                refreshed_snapshot,
-            )
-        except Exception:
-            pass
-
-    return refreshed_snapshot
+    return {
+        'created_at_utc': created_at_utc,
+        'expires_at_utc': expires_at_utc,
+        'source': {
+            'user_guid': source_guid,
+            'name': source_name,
+        },
+        'data': live_data,
+    }
 
 
 def _import_shared_custom_songs(store_namespace: str, rows: list[dict[str, object]]) -> dict[str, int]:
@@ -1272,13 +1715,51 @@ def _import_shared_song_favorites(store_namespace: str, rows: list[dict[str, obj
     }
 
 
-def _import_song_share_snapshot(share_snapshot: dict[str, object], target_namespace: str) -> dict[str, object]:
+def _import_song_share_snapshot(
+    share_snapshot: dict[str, object],
+    target_namespace: str,
+    exclude_conflict_keys: set[str] | None = None,
+) -> dict[str, object]:
     share_data = share_snapshot.get('data') if isinstance(share_snapshot.get('data'), dict) else {}
     custom_rows = _truncate_song_share_rows(share_data.get('custom_songs'))
     mystery_rows = _truncate_song_share_rows(share_data.get('mystery_song_assignments'))
     location_assignment_rows = _truncate_song_share_rows(share_data.get('song_location_assignments'))
     location_user_node_rows = _truncate_song_share_rows(share_data.get('song_location_user_nodes'))
     favorite_rows = _truncate_song_share_rows(share_data.get('song_favorites'))
+    excluded_keys = exclude_conflict_keys if isinstance(exclude_conflict_keys, set) else set()
+    excluded_conflicts = {
+        'song_favorites': 0,
+        'mystery_song_assignments': 0,
+        'song_location_assignments': 0,
+    }
+
+    if excluded_keys:
+        filtered_mystery_rows: list[dict[str, object]] = []
+        for row in mystery_rows:
+            conflict_key = _normalize_song_share_conflict_key(_build_share_mystery_conflict_key(row))
+            if conflict_key and conflict_key in excluded_keys:
+                excluded_conflicts['mystery_song_assignments'] += 1
+                continue
+            filtered_mystery_rows.append(row)
+        mystery_rows = filtered_mystery_rows
+
+        filtered_location_rows: list[dict[str, object]] = []
+        for row in location_assignment_rows:
+            conflict_key = _normalize_song_share_conflict_key(_build_share_location_conflict_key(row))
+            if conflict_key and conflict_key in excluded_keys:
+                excluded_conflicts['song_location_assignments'] += 1
+                continue
+            filtered_location_rows.append(row)
+        location_assignment_rows = filtered_location_rows
+
+        filtered_favorite_rows: list[dict[str, object]] = []
+        for row in favorite_rows:
+            conflict_key = _normalize_song_share_conflict_key(_build_share_favorite_conflict_key(row))
+            if conflict_key and conflict_key in excluded_keys:
+                excluded_conflicts['song_favorites'] += 1
+                continue
+            filtered_favorite_rows.append(row)
+        favorite_rows = filtered_favorite_rows
 
     custom_summary = _import_shared_custom_songs(target_namespace, custom_rows)
     mystery_summary = _import_shared_mystery_song_assignments(target_namespace, mystery_rows)
@@ -1300,6 +1781,7 @@ def _import_song_share_snapshot(share_snapshot: dict[str, object], target_namesp
         },
         'song_location_assignments': location_assignments_summary,
         'song_favorites': favorites_summary,
+        'excluded_conflicts': excluded_conflicts,
     }
 
 
@@ -1331,7 +1813,10 @@ def api_song_share_create(
     }
 
     try:
-        snapshot_payload = _create_song_share_snapshot(store_namespace, source_user)
+        share_control_payload = _create_song_share_control(source_user)
+        snapshot_payload = _build_song_share_snapshot_from_control(share_control_payload)
+        if not snapshot_payload:
+            raise RuntimeError('Falha ao carregar dados da origem para compartilhamento.')
 
         share_id = ''
         for _ in range(8):
@@ -1340,7 +1825,7 @@ def api_song_share_create(
                 candidate = _normalize_song_share_id(generated)
             except ValueError:
                 continue
-            if _load_song_share_snapshot(candidate) is None:
+            if _load_song_share_control(candidate) is None:
                 share_id = candidate
                 break
         if not share_id:
@@ -1349,7 +1834,7 @@ def api_song_share_create(
         save_store(
             settings.database_url,
             _build_song_share_store_key(share_id),
-            snapshot_payload,
+            share_control_payload,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
@@ -1391,13 +1876,15 @@ def api_song_share_preview(
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
 
     try:
-        share_snapshot = _load_song_share_snapshot(normalized_share_id)
+        share_control = _load_song_share_control(normalized_share_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
-    if not share_snapshot:
+    if not share_control:
         raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
 
-    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
+    share_snapshot = _build_song_share_snapshot_from_control(share_control)
+    if not share_snapshot:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
     source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
     counts = _build_song_share_counts(share_snapshot)
     return {
@@ -1429,13 +1916,15 @@ def api_song_share_view(
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
 
     try:
-        share_snapshot = _load_song_share_snapshot(normalized_share_id)
+        share_control = _load_song_share_control(normalized_share_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
-    if not share_snapshot:
+    if not share_control:
         raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
 
-    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
+    share_snapshot = _build_song_share_snapshot_from_control(share_control)
+    if not share_snapshot:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
     counts = _build_song_share_counts(share_snapshot)
     share_url = _build_portal_url_with_query(request, {SONG_SHARE_QUERY_KEY: normalized_share_id})
     qr_image_data_url = _build_auth_qr_svg_data_url(share_url) if share_url else ''
@@ -1449,6 +1938,50 @@ def api_song_share_view(
         'data': _build_song_share_view_data(share_snapshot),
         'counts': counts,
         'total_items': sum(counts.values()),
+    }
+
+
+@app.get('/api/songs/share/merge-preview')
+def api_song_share_merge_preview(
+    request: Request,
+    share_id: str = Query(..., min_length=8, max_length=80),
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    _enforce_share_rate_limit(request)
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail={'message': 'Compartilhamento indisponivel sem PostgreSQL configurado.'})
+
+    store_namespace = _resolve_user_store_namespace_from_auth_header(authorization)
+    try:
+        normalized_share_id = _normalize_song_share_id(share_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+
+    try:
+        share_control = _load_song_share_control(normalized_share_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+    if not share_control:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nÃ£o encontrado.'})
+
+    share_snapshot = _build_song_share_snapshot_from_control(share_control)
+    if not share_snapshot:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nÃ£o encontrado.'})
+
+    source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
+    try:
+        merge_plan = _build_song_share_merge_plan(share_snapshot, store_namespace)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+
+    return {
+        'ok': True,
+        'share_id': normalized_share_id,
+        'source': {
+            'name': _normalize_spaces(str(source_payload.get('name') or '')),
+        },
+        **merge_plan,
     }
 
 
@@ -1470,16 +2003,23 @@ def api_song_share_import(
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
 
     try:
-        share_snapshot = _load_song_share_snapshot(normalized_share_id)
+        share_control = _load_song_share_control(normalized_share_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
-    if not share_snapshot:
+    if not share_control:
         raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
 
-    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
+    share_snapshot = _build_song_share_snapshot_from_control(share_control)
+    if not share_snapshot:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
     source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
+    excluded_conflict_keys = _normalize_song_share_conflict_keys(payload.exclude_conflict_keys)
     try:
-        summary = _import_song_share_snapshot(share_snapshot, store_namespace)
+        summary = _import_song_share_snapshot(
+            share_snapshot,
+            store_namespace,
+            exclude_conflict_keys=excluded_conflict_keys,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
     except RuntimeError as exc:

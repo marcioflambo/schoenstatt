@@ -2508,6 +2508,7 @@
     try {
       const response = await fetch('/api/mysteries/song-assignments', {
         headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
       });
       const payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
@@ -2688,6 +2689,7 @@
     try {
       const response = await fetch('/api/song-locations/assignments', {
         headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
       });
       const payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
@@ -2944,11 +2946,12 @@
     try {
       let response = await fetch('/api/song-locations', {
         headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
       });
       let payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
         handleUserScopedApiUnauthorized();
-        response = await fetch('/api/song-locations');
+        response = await fetch('/api/song-locations', { cache: 'no-store' });
         payload = asObject(await response.json().catch(() => ({})));
       }
       if (!response.ok || !payload.ok) {
@@ -7171,6 +7174,19 @@
     return { guid, name, email };
   };
 
+  const isSongShareOwnedByLoggedUser = (sourcePayload) => {
+    const currentGuid = String(authUser?.guid || '').trim();
+    if (!currentGuid) return false;
+    const safeSource = asObject(sourcePayload);
+    const sourceGuid = String(
+      safeSource.user_guid
+      || safeSource.userGuid
+      || safeSource.guid
+      || ''
+    ).trim();
+    return Boolean(sourceGuid && sourceGuid === currentGuid);
+  };
+
   const normalizeSongShareId = (value = '') => {
     const safeValue = String(value || '').trim();
     if (!safeValue) return '';
@@ -7299,6 +7315,18 @@
         heroShareSongsBtn.style.removeProperty('display');
       } else {
         heroShareSongsBtn.style.display = 'none';
+      }
+    }
+
+    if (customSongsAddBtn) {
+      const shouldShowCustomSongAdd = loggedIn;
+      customSongsAddBtn.hidden = !shouldShowCustomSongAdd;
+      customSongsAddBtn.disabled = !shouldShowCustomSongAdd || authRequestPending;
+      customSongsAddBtn.setAttribute('aria-hidden', shouldShowCustomSongAdd ? 'false' : 'true');
+      if (shouldShowCustomSongAdd) {
+        customSongsAddBtn.style.removeProperty('display');
+      } else {
+        customSongsAddBtn.style.display = 'none';
       }
     }
   };
@@ -8293,7 +8321,7 @@
       if (alwaysSummary.length) {
         const li = document.createElement('li');
         li.className = 'song-share-merge-conflict-empty';
-        li.textContent = `Itens adicionais elegiveis: ${alwaysSummary.join(' | ')}.`;
+        li.textContent = `Tambem serao importados da lista compartilhada: ${alwaysSummary.join(' | ')}.`;
         songShareMergeAutoList.appendChild(li);
       }
     }
@@ -8773,6 +8801,17 @@
     }
 
     const previewPayload = await requestSongShareMergePreview(safeShareId);
+    const previewSourcePayload = asObject(previewPayload.source);
+    if (isSongShareOwnedByLoggedUser(previewSourcePayload)) {
+      pendingSongShareImport = '';
+      pendingSongShareMergeAfterLogin = false;
+      persistLastSongShareViewId('');
+      clearSongShareLocalState();
+      clearSongShareFromUrl();
+      await refreshUserScopedSongDataNow({ forceSongLists: true });
+      showSongToast('Lista ja pertence a sua conta. Dados atualizados.', 'is-success');
+      return true;
+    }
     const decisionPayload = await openSongShareMergeModal(
       previewPayload,
       triggerElement instanceof HTMLElement ? triggerElement : null
@@ -8794,7 +8833,7 @@
     persistLastSongShareViewId('');
     clearSongShareLocalState();
     clearSongShareFromUrl();
-    refreshUserScopedSongData(0, { forceSongLists: true });
+    await refreshUserScopedSongDataNow({ forceSongLists: true });
     showSongToast(buildSongShareImportToastMessage(importPayload.summary), 'is-success');
     return true;
   };
@@ -8824,6 +8863,16 @@
 
       const previewPayload = await fetchSongSharePreview(safeShareId);
       const sourcePayload = asObject(previewPayload.source);
+      if (isSongShareOwnedByLoggedUser(sourcePayload)) {
+        pendingSongShareImport = '';
+        pendingSongShareMergeAfterLogin = false;
+        persistLastSongShareViewId('');
+        clearSongShareLocalState();
+        clearSongShareFromUrl();
+        await refreshUserScopedSongDataNow({ forceSongLists: true });
+        showSongToast('Lista ja pertence a sua conta. Dados atualizados.', 'is-success');
+        return true;
+      }
       const sourceLabel = String(sourcePayload.name || '').trim();
       const countsSummary = formatSongShareCountsSummary(previewPayload.counts);
       const confirmationMessageBase = sourceLabel
@@ -11541,6 +11590,7 @@
     try {
       const response = await fetch('/api/songs/favorites', {
         headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
       });
       const payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
@@ -11792,6 +11842,7 @@
     try {
       const response = await fetch('/api/songs/custom', {
         headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
       });
       const payload = asObject(await response.json().catch(() => ({})));
       if (isUserScopedApiUnauthorized(response)) {
@@ -12116,6 +12167,28 @@
     renderSongSaveLocationPicker();
     syncSongShareImportButtonState();
     runDeferredTask(fetchSongLocationTree, 40);
+  };
+
+  const refreshUserScopedSongDataNow = async (options = {}) => {
+    if (!isAuthLoggedIn()) {
+      clearUserScopedSongData();
+      return false;
+    }
+    const safeOptions = asObject(options);
+    const includeAssignments = safeOptions.includeAssignments !== false;
+    const forceSongLists = safeOptions.forceSongLists === true;
+    songShareViewModeLoaded = false;
+
+    await fetchSongFavorites({ forceRefresh: forceSongLists });
+    if (includeAssignments) {
+      await fetchMysterySongAssignments();
+    }
+    await fetchSongLocationTree();
+    if (includeAssignments) {
+      await fetchSongLocationAssignments();
+    }
+    await fetchCustomSongs({ forceRefresh: forceSongLists });
+    return true;
   };
 
   const refreshUserScopedSongData = (baseDelay = 0, options = {}) => {
@@ -12627,6 +12700,13 @@
 
   if (customSongsAddBtn) {
     customSongsAddBtn.addEventListener('click', () => {
+      if (!ensureLoggedInForUserScopedAction({
+        message: 'Faça login para adicionar musica personalizada.',
+        trigger: customSongsAddBtn,
+        notify: true,
+      })) {
+        return;
+      }
       openCustomSongModal(null, customSongsAddBtn);
     });
   }

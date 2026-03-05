@@ -1065,12 +1065,26 @@ def _build_song_share_merge_plan(
             'song_location_assignments': 0,
         },
         'always_candidates': {
-            'custom_songs': len(custom_rows),
-            'song_location_user_nodes': len(location_user_node_rows),
+            'custom_songs': 0,
+            'song_location_user_nodes': 0,
         },
     }
     conflicts: list[dict[str, str]] = []
     auto_import_items: list[dict[str, str]] = []
+
+    counts['always_candidates']['custom_songs'] = _count_shared_custom_song_candidates(
+        target_namespace,
+        custom_rows,
+    )
+    node_preview_summary = _import_shared_song_location_user_nodes(
+        target_namespace,
+        location_user_node_rows,
+        dry_run=True,
+    )
+    counts['always_candidates']['song_location_user_nodes'] = _coerce_int(
+        node_preview_summary.get('added') if isinstance(node_preview_summary, dict) else 0,
+        0,
+    )
 
     for raw_row in favorite_rows:
         if not isinstance(raw_row, dict):
@@ -1231,7 +1245,11 @@ def _build_song_share_merge_plan(
         ))
 
     totals = {
-        'auto_import': sum(counts['auto_import'].values()) + counts['always_candidates']['custom_songs'],
+        'auto_import': (
+            sum(counts['auto_import'].values())
+            + counts['always_candidates']['custom_songs']
+            + counts['always_candidates']['song_location_user_nodes']
+        ),
         'unchanged': sum(counts['unchanged'].values()),
         'conflicts': sum(counts['conflicts'].values()),
     }
@@ -1257,6 +1275,46 @@ def _build_custom_song_signature(
         _normalize_song_match_token(lyrics_text),
         _normalize_song_match_token(chords_text),
     )
+
+
+def _count_shared_custom_song_candidates(store_namespace: str, rows: list[dict[str, object]]) -> int:
+    existing_rows = list_custom_songs(
+        settings.custom_songs_file,
+        include_inactive=False,
+        database_url=settings.database_url,
+        store_namespace=store_namespace,
+    )
+    existing_signatures = {
+        _build_custom_song_signature(
+            title=str(item.get('title') or ''),
+            key=str(item.get('key') or ''),
+            lyrics_text=str(item.get('lyrics_text') or item.get('lyricsText') or ''),
+            chords_text=str(item.get('chords_text') or item.get('chordsText') or ''),
+        )
+        for item in existing_rows
+        if isinstance(item, dict)
+    }
+
+    seen_signatures: set[tuple[str, str, str, str]] = set()
+    candidates = 0
+    for raw_row in rows:
+        title = _normalize_spaces(str(raw_row.get('title') or ''))
+        if not title:
+            continue
+        signature = _build_custom_song_signature(
+            title=title,
+            key=_normalize_spaces(str(raw_row.get('key') or '')),
+            lyrics_text=str(raw_row.get('lyrics_text') or raw_row.get('lyricsText') or ''),
+            chords_text=str(raw_row.get('chords_text') or raw_row.get('chordsText') or ''),
+        )
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        if signature in existing_signatures:
+            continue
+        candidates += 1
+        existing_signatures.add(signature)
+    return candidates
 
 
 def _create_song_share_control(source_user: dict[str, str]) -> dict[str, object]:
@@ -1461,7 +1519,12 @@ def _import_shared_mystery_song_assignments(store_namespace: str, rows: list[dic
     }
 
 
-def _import_shared_song_location_user_nodes(store_namespace: str, rows: list[dict[str, object]]) -> dict[str, object]:
+def _import_shared_song_location_user_nodes(
+    store_namespace: str,
+    rows: list[dict[str, object]],
+    *,
+    dry_run: bool = False,
+) -> dict[str, object]:
     imported_rows = [
         _normalize_song_location_node_row(raw_row)
         for raw_row in rows
@@ -1563,21 +1626,24 @@ def _import_shared_song_location_user_nodes(store_namespace: str, rows: list[dic
                 progressed = True
                 continue
 
-            created = create_song_location_user_node(
-                settings.song_location_user_nodes_file,
-                SongLocationNodeCreateRequest(
-                    parent_id=resolved_parent_id,
-                    label=label,
-                ),
-                valid_parent_ids=valid_parent_ids,
-                database_url=settings.database_url,
-                store_namespace=store_namespace,
-            )
-            created_node_id = _normalize_spaces(str(created.get('node_id') or created.get('nodeId') or ''))
-            if not created_node_id:
-                skipped += 1
-                progressed = True
-                continue
+            if dry_run:
+                created_node_id = f'preview-node-{len(mapped_node_ids) + 1}'
+            else:
+                created = create_song_location_user_node(
+                    settings.song_location_user_nodes_file,
+                    SongLocationNodeCreateRequest(
+                        parent_id=resolved_parent_id,
+                        label=label,
+                    ),
+                    valid_parent_ids=valid_parent_ids,
+                    database_url=settings.database_url,
+                    store_namespace=store_namespace,
+                )
+                created_node_id = _normalize_spaces(str(created.get('node_id') or created.get('nodeId') or ''))
+                if not created_node_id:
+                    skipped += 1
+                    progressed = True
+                    continue
             mapped_node_ids[old_node_id] = created_node_id
             existing_key_to_id[dedupe_key] = created_node_id
             valid_parent_ids.add(created_node_id)
@@ -1893,6 +1959,7 @@ def api_song_share_preview(
         'created_at_utc': _normalize_spaces(str(share_snapshot.get('created_at_utc') or '')),
         'expires_at_utc': _normalize_spaces(str(share_snapshot.get('expires_at_utc') or '')),
         'source': {
+            'user_guid': _normalize_spaces(str(source_payload.get('user_guid') or source_payload.get('guid') or '')),
             'name': _normalize_spaces(str(source_payload.get('name') or '')),
         },
         'counts': counts,
@@ -1963,11 +2030,11 @@ def api_song_share_merge_preview(
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
     if not share_control:
-        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nÃ£o encontrado.'})
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nao encontrado.'})
 
     share_snapshot = _build_song_share_snapshot_from_control(share_control)
     if not share_snapshot:
-        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nÃ£o encontrado.'})
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento nao encontrado.'})
 
     source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
     try:
@@ -1979,6 +2046,7 @@ def api_song_share_merge_preview(
         'ok': True,
         'share_id': normalized_share_id,
         'source': {
+            'user_guid': _normalize_spaces(str(source_payload.get('user_guid') or source_payload.get('guid') or '')),
             'name': _normalize_spaces(str(source_payload.get('name') or '')),
         },
         **merge_plan,

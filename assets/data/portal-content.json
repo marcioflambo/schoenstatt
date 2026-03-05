@@ -49,17 +49,8 @@
             "href": "#sementes"
           },
           {
-            "label": "Santuários em Portugal",
-            "href": "#santuarios"
-          },
-          {
             "label": "Site Sementes",
             "href": "https://sementesdosantuario.pt",
-            "target": "_blank"
-          },
-          {
-            "label": "Santuários de Schoenstatt",
-            "href": "https://www.schoenstatt.pt/santuarios",
             "target": "_blank"
           },
           {
@@ -552,33 +543,11 @@
   },
   "santuarios": {
     "header": {
-      "kicker": "Santuários",
-      "title": "Santuários de Schoenstatt em Portugal",
-      "description": "Seção preparada para inserir os santuários citados no capítulo V do livreto."
+      "kicker": "",
+      "title": "",
+      "description": ""
     },
-    "items": [
-      {
-        "name": "Base do capítulo V",
-        "city": "Portugal",
-        "description": "Adicionar nomes dos santuários e respetivas cidades após validação final do OCR/PDF.",
-        "url": "https://www.schoenstatt.pt/santuarios",
-        "linkLabel": "Abrir referência"
-      },
-      {
-        "name": "Santuários e contatos locais",
-        "city": "A preencher",
-        "description": "Espaço reservado para endereço, horários e equipa de acolhimento.",
-        "url": "",
-        "linkLabel": "Pendente"
-      },
-      {
-        "name": "Rota de peregrinação",
-        "city": "A preencher",
-        "description": "Espaço para organizar roteiro entre os santuários em Portugal.",
-        "url": "",
-        "linkLabel": "Pendente"
-      }
-    ]
+    "items": []
   },
   "sementes": {
     "header": {
@@ -597,10 +566,6 @@
         "href": "https://sementesdosantuario.pt"
       },
       {
-        "label": "Santuários de Schoenstatt",
-        "href": "https://www.schoenstatt.pt/santuarios"
-      },
-      {
         "label": "Portal Schoenstatt",
         "href": "https://schoenstatt.com/pt-pt/"
       }
@@ -608,28 +573,11 @@
   },
   "recursos": {
     "header": {
-      "kicker": "Outras frentes do portal",
-      "title": "Recursos para comunidade e ministério",
-      "description": "Blocos preparados para crescer para além do layout inicial."
+      "kicker": "",
+      "title": "",
+      "description": ""
     },
-    "items": [
-      {
-        "title": "Pedidos de oração",
-        "text": "Formulário para intenções semanais da comunidade."
-      },
-      {
-        "title": "Escala de música",
-        "text": "Organização de vozes, violão e repertório por encontro."
-      },
-      {
-        "title": "Materiais para impressão",
-        "text": "Folhetos em PDF com terço, orações e letras."
-      },
-      {
-        "title": "Agenda de encontros",
-        "text": "Calendário mensal com tema e família responsável."
-      }
-    ]
+    "items": []
   },
   "footer": {
     "text": "Mãe, Rainha e Vencedora Três Vezes Admirável de Schoenstatt",

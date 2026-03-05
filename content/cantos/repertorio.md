@@ -1,4 +1,4 @@
-﻿# Repertorio de Cantos
+﻿# Repertório de Cantos
 
 ## Canto 1
 - Tom:

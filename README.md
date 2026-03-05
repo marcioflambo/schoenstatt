@@ -1,28 +1,28 @@
 ﻿# schoenstatt
 
-Portal do Terco da Mae Rainha de Schoenstatt.
+Portal do Terço da Mãe Rainha de Schoenstatt.
 
 ## Estrutura
 
-- `index.html`: pagina principal.
+- `index.html`: página principal.
 - `assets/css/portal.css`: estilo principal.
 - `assets/css/vendor/`: estilos de terceiros/legado.
-- `assets/js/portal.js`: interacoes da pagina.
+- `assets/js/portal.js`: interações da página.
 - `assets/img/`: imagens do portal.
-- `content/historia/`: textos da historia.
-- `content/oracoes/`: textos de oracoes.
-- `content/cantos/`: repertorio com letra/cifra.
-- `content/misterios/`: meditacoes dos misterios.
-- `docs/`: documentacao do projeto.
-- `tmp/`: arquivos temporarios (ignorados no Git).
+- `content/historia/`: textos da história.
+- `content/oracoes/`: textos de orações.
+- `content/cantos/`: repertório com letra/cifra.
+- `content/misterios/`: meditações dos mistérios.
+- `docs/`: documentação do projeto.
+- `tmp/`: arquivos temporários (ignorados no Git).
 - `data/`: dados persistentes locais (ignorados no Git).
 
 ## Backend (conectividade preparada)
 
 - `backend/app/main.py`: API FastAPI com endpoints de health e ping do banco.
 - `backend/app/config.py`: leitura de `DATABASE_URL`/`POSTGRES_*`.
-- `backend/app/db.py`: validacao da conexao PostgreSQL.
-- `backend/.env.example`: modelo de variaveis locais.
+- `backend/app/db.py`: validação da conexão PostgreSQL.
+- `backend/.env.example`: modelo de variáveis locais.
 
 ### Como testar
 
@@ -40,20 +40,19 @@ Endpoints:
 - `PUT /api/auth/me` (header `Authorization: Bearer <token>`; campos: `name`, `email`, `password`)
 - `DELETE /api/auth/me` (header `Authorization: Bearer <token>`)
 - `POST /api/auth/logout` (header `Authorization: Bearer <token>`)
-- `POST /api/songs/search` (busca por nome da musica em Cifra Club e Cifras)
+- `POST /api/songs/search` (busca por nome da música em Cifra Club e Cifras)
 - `POST /api/songs/fetch` (carrega a cifra pela URL escolhida)
-- `GET /api/songs/favorites` (lista musicas favoritadas com cache de letra/cifra)
+- `GET /api/songs/favorites` (lista músicas favoritadas com cache de letra/cifra)
 - `POST /api/songs/favorites` (salva/atualiza favorito em PostgreSQL ou JSON fallback)
-- `DELETE /api/songs/favorites?url=...` (remove favorito pelo link da musica)
-- `GET /api/songs/custom` (lista musicas manuais em PostgreSQL ou JSON fallback)
-- `POST /api/songs/custom` (cria musica manual em PostgreSQL ou JSON fallback)
-- `PUT /api/songs/custom/{id}` (atualiza musica manual)
-- `DELETE /api/songs/custom/{id}` (inativa musica manual)
-- `PUT /api/songs/custom/{id}/restore` (reativa musica manual inativada)
+- `DELETE /api/songs/favorites?url=...` (remove favorito pelo link da música)
+- `GET /api/songs/custom` (lista músicas manuais em PostgreSQL ou JSON fallback)
+- `POST /api/songs/custom` (cria música manual em PostgreSQL ou JSON fallback)
+- `PUT /api/songs/custom/{id}` (atualiza música manual)
+- `DELETE /api/songs/custom/{id}` (exclui música manual)
 
 ## Docker (local)
 
-Subir o portal (site + API) com proxy HTTPS (Caddy + certificado valido):
+Subir o portal (site + API) com proxy HTTPS (Caddy + certificado válido):
 
 ```powershell
 docker compose up --build -d
@@ -65,7 +64,7 @@ Acessos:
 - `https://localhost/api/health`
 - `https://localhost/api/db/ping`
 
-Para usar certificado publico (sem aviso de "inseguro"), defina o dominio:
+Para usar certificado público (sem aviso de "inseguro"), defina o domínio:
 
 ```powershell
 $env:SITE_DOMAIN="maerainhavencedora.com.br"
@@ -80,11 +79,11 @@ $env:PORT_HTTPS_ALT=443
 docker compose up --build -d
 ```
 
-Requisitos para certificado valido do Let's Encrypt:
+Requisitos para certificado válido do Let's Encrypt:
 - o DNS de `SITE_DOMAIN` deve apontar para este servidor;
-- portas `80` e `443` precisam estar abertas/publicas no host.
+- portas `80` e `443` precisam estar abertas/públicas no host.
 
-Comportamento de atualizacao sem reiniciar:
+Comportamento de atualização sem reiniciar:
 - Altere arquivos em `index.html`, `assets/*`, `content/*` ou `backend/*`.
 - O container reflete automaticamente:
   - frontend: atualize o navegador;
@@ -107,15 +106,15 @@ Copy-Item .env.hostinger.example .env.hostinger
 ```
 
 1. No hPanel: `VPS -> Docker Manager -> Create project -> Compose`.
-2. Em `Project URL`, informe o repositorio: `https://github.com/marcioflambo/schoenstatt.git`.
+2. Em `Project URL`, informe o repositório: `https://github.com/marcioflambo/schoenstatt.git`.
 3. Em `Docker compose file`, use `docker-compose.hostinger.yml`.
-4. Na aba `Ambiente`, adicione as variaveis de `.env.hostinger`.
+4. Na aba `Ambiente`, adicione as variáveis de `.env.hostinger`.
 5. Clique em `Deploy`.
 
-Validacao apos deploy:
+Validação após deploy:
 - `http://IP_DA_VPS:8000/api/health`
 - `http://IP_DA_VPS:8000/api/db/ping`
-- confirme em `/api/health` que `songs_storage_backend` esta como `postgresql`
+- confirme em `/api/health` que `songs_storage_backend` está como `postgresql`
 - opcional: confirme `song_key_api_configured: true` em `/api/health` quando configurar Spotify
 
-Para dominio `maerainhavencedora.com.br` com HTTPS, configure o proxy reverso da Hostinger apontando para a porta `8000` do container.
+Para domínio `maerainhavencedora.com.br` com HTTPS, configure o proxy reverso da Hostinger apontando para a porta `8000` do container.

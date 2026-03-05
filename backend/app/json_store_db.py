@@ -16,6 +16,13 @@ CREATE TABLE IF NOT EXISTS app_json_store (
 """
 
 _LOGGER = logging.getLogger("uvicorn.error")
+_PRUNABLE_LIST_KEYS_BY_STORE = {
+    'song_favorites': 'favorites',
+    'custom_songs': 'songs',
+    'mystery_song_assignments': 'assignments',
+    'song_location_assignments': 'assignments',
+    'song_location_user_nodes': 'nodes',
+}
 
 
 def _estimate_items(payload: dict[str, object]) -> int:
@@ -24,6 +31,23 @@ def _estimate_items(payload: dict[str, object]) -> int:
         if isinstance(value, list):
             return len(value)
     return 0
+
+
+def _resolve_store_base_key(store_key: str) -> str:
+    safe_store_key = str(store_key or '').strip()
+    if not safe_store_key:
+        return ''
+    return safe_store_key.split(':', maxsplit=1)[0]
+
+
+def _should_prune_store_payload(store_key: str, payload: dict[str, object]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    list_key = _PRUNABLE_LIST_KEYS_BY_STORE.get(_resolve_store_base_key(store_key))
+    if not list_key:
+        return False
+    rows = payload.get(list_key)
+    return isinstance(rows, list) and not rows
 
 
 def _coerce_payload(raw_payload: Any) -> Any:
@@ -59,36 +83,55 @@ def load_store(database_url: str, store_key: str) -> dict[str, object] | None:
 
 
 def save_store(database_url: str, store_key: str, payload: dict[str, object]) -> None:
+    should_prune = _should_prune_store_payload(store_key, payload)
     serialized_payload = json.dumps(payload, ensure_ascii=False)
     payload_size_bytes = len(serialized_payload.encode("utf-8"))
     item_count = _estimate_items(payload)
-    _LOGGER.info(
-        "Enviando dados ao PostgreSQL (store_key=%s, items=%s, payload_bytes=%s)",
-        store_key,
-        item_count,
-        payload_size_bytes,
-    )
+    if should_prune:
+        _LOGGER.info(
+            "Removendo store vazia do PostgreSQL (store_key=%s)",
+            store_key,
+        )
+    else:
+        _LOGGER.info(
+            "Enviando dados ao PostgreSQL (store_key=%s, items=%s, payload_bytes=%s)",
+            store_key,
+            item_count,
+            payload_size_bytes,
+        )
     try:
         with connect(database_url, connect_timeout=6) as conn:
             with conn.cursor() as cur:
                 cur.execute(_TABLE_SQL)
-                cur.execute(
-                    """
-                    INSERT INTO app_json_store (store_key, payload, updated_at)
-                    VALUES (%s, %s::jsonb, NOW())
-                    ON CONFLICT (store_key)
-                    DO UPDATE SET
-                        payload = EXCLUDED.payload,
-                        updated_at = NOW();
-                    """,
-                    (store_key, serialized_payload),
-                )
+                if should_prune:
+                    cur.execute(
+                        "DELETE FROM app_json_store WHERE store_key = %s;",
+                        (store_key,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO app_json_store (store_key, payload, updated_at)
+                        VALUES (%s, %s::jsonb, NOW())
+                        ON CONFLICT (store_key)
+                        DO UPDATE SET
+                            payload = EXCLUDED.payload,
+                            updated_at = NOW();
+                        """,
+                        (store_key, serialized_payload),
+                    )
             conn.commit()
-        _LOGGER.info(
-            "Dados persistidos no PostgreSQL (store_key=%s, items=%s)",
-            store_key,
-            item_count,
-        )
+        if should_prune:
+            _LOGGER.info(
+                "Store removida do PostgreSQL por estar vazia (store_key=%s)",
+                store_key,
+            )
+        else:
+            _LOGGER.info(
+                "Dados persistidos no PostgreSQL (store_key=%s, items=%s)",
+                store_key,
+                item_count,
+            )
     except OperationalError as exc:
         raise RuntimeError(f"Falha ao conectar no PostgreSQL para store '{store_key}': {exc}") from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -117,6 +160,19 @@ def mutate_store(
                     raise RuntimeError(
                         f"Mutator da store '{store_key}' retornou payload invalido."
                     )
+
+                if _should_prune_store_payload(store_key, next_payload):
+                    if row:
+                        _LOGGER.info(
+                            "Removendo store vazia do PostgreSQL (store_key=%s)",
+                            store_key,
+                        )
+                        cur.execute(
+                            "DELETE FROM app_json_store WHERE store_key = %s;",
+                            (store_key,),
+                        )
+                    conn.commit()
+                    return next_payload
 
                 if current_payload == next_payload:
                     conn.commit()

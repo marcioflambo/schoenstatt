@@ -542,6 +542,17 @@
     setNodeAttr('#song-search-clear-cantos', 'title', content.cantos?.search?.clearButtonLabel);
     setNodeText('#song-favorites-title', content.cantos?.favorites?.title);
     setNodeText('#song-favorites-description', content.cantos?.favorites?.description);
+    setNodeText('#song-favorites-share-btn', readSongMessage('favoritesShareButton', 'Compartilhar'));
+    setNodeAttr(
+      '#song-favorites-share-btn',
+      'aria-label',
+      readSongMessage('favoritesShareButtonAria', 'Compartilhar suas musicas por link e QR Code')
+    );
+    setNodeAttr(
+      '#song-favorites-share-btn',
+      'title',
+      readSongMessage('favoritesShareButtonAria', 'Compartilhar suas musicas por link e QR Code')
+    );
     setNodeAttr(
       '#song-favorites-search-input',
       'placeholder',
@@ -887,6 +898,16 @@
       '.rosary-modal-close',
       'title',
       readRosaryMessage('closeAria')
+    );
+    setNodeAttr(
+      '#rosary-modal-song-close',
+      'aria-label',
+      readRosaryMessage('closeSongPanelAria', readMysteryMessage('closeSongPanelAria'))
+    );
+    setNodeAttr(
+      '#rosary-modal-song-close',
+      'title',
+      readRosaryMessage('closeSongPanelAria', readMysteryMessage('closeSongPanelAria'))
     );
     setNodeAttr(
       '#rosary-modal-dots',
@@ -1785,6 +1806,15 @@
   const rosaryModalGroup = document.getElementById('rosary-modal-group');
   const rosaryModalStepText = document.getElementById('rosary-modal-step-text');
   const rosaryModalDots = document.getElementById('rosary-modal-dots');
+  const rosaryModalSongToggle = document.getElementById('rosary-modal-song-toggle');
+  const rosaryModalSongPanel = document.getElementById('rosary-modal-song-panel');
+  const rosaryModalSongTitle = document.getElementById('rosary-modal-song-title');
+  const rosaryModalSongMeta = document.getElementById('rosary-modal-song-meta');
+  const rosaryModalSongExternalActions = document.getElementById('rosary-modal-song-external-actions');
+  const rosaryModalSongSpotifyLink = document.getElementById('rosary-modal-song-spotify-link');
+  const rosaryModalSongYoutubeLink = document.getElementById('rosary-modal-song-youtube-link');
+  const rosaryModalSongClose = document.getElementById('rosary-modal-song-close');
+  const rosaryModalSongLyrics = document.getElementById('rosary-modal-song-lyrics');
   const rosaryModalStepCounter = document.getElementById('rosary-modal-step-counter');
   const rosaryModalPrevBtn = document.getElementById('rosary-modal-prev');
   const rosaryModalNextBtn = document.getElementById('rosary-modal-next');
@@ -1834,6 +1864,7 @@
   let songLocationCreateModalSubmitting = false;
   let lastFocusedRosaryTrigger = null;
   let rosaryModalStepIndex = 0;
+  let rosaryModalSongLoading = false;
   const songSaveLocationPickerTextMeasureContext = (() => {
     const canvas = document.createElement('canvas');
     return canvas.getContext('2d');
@@ -1887,6 +1918,12 @@
     const salveRainhaText = readPrayerTextByTitle(salveRainhaPrayerTitle);
     return [thanksgivingText, salveRainhaText].filter(Boolean).join('\n\n');
   };
+  const buildRosarySongLocationPath = (groupLabel) => {
+    const rootLabel = readRosaryMessage('songCategoryLabel', 'Terço');
+    const safeRootLabel = String(rootLabel || '').trim();
+    const safeGroupLabel = String(groupLabel || '').trim();
+    return [safeRootLabel, safeGroupLabel].filter(Boolean);
+  };
   const rosaryFlowSteps = [
     {
       group: readRosaryMessage('stepStartGroup'),
@@ -1894,6 +1931,7 @@
       text: readRosaryMessage('stepStartText', buildRosaryStartStepFallbackText()),
       dotNumber: readRosaryMessage('dotStartNumber'),
       dotLabel: readRosaryMessage('dotStart'),
+      songLocationPath: buildRosarySongLocationPath(readRosaryMessage('stepStartGroup')),
     },
     {
       group: readRosaryMessage('stepInitialBeadsGroup'),
@@ -1902,6 +1940,7 @@
       text: readRosaryMessage('stepInitialBlockText'),
       dotNumber: readRosaryMessage('dotInitialBlockNumber'),
       dotLabel: readRosaryMessage('dotInitialBlock'),
+      songLocationPath: buildRosarySongLocationPath(readRosaryMessage('stepInitialBeadsGroup')),
     },
     {
       group: readRosaryMessage('stepMysteriesGroup'),
@@ -1918,6 +1957,7 @@
       text: readRosaryMessage('stepFinalText', buildRosaryFinalStepFallbackText()),
       dotNumber: readRosaryMessage('dotFinalNumber'),
       dotLabel: readRosaryMessage('dotFinal'),
+      songLocationPath: buildRosarySongLocationPath(readRosaryMessage('stepFinalGroup')),
     },
   ];
   const resolveTodayMysterySlot = () => {
@@ -2147,12 +2187,49 @@
       .filter(Boolean);
     return segments.join(' > ');
   };
+
+  const normalizeUsageLabelForDisplay = (value) => {
+    const segments = String(value || '')
+      .split('>')
+      .map((segment) => String(segment || '').trim())
+      .filter(Boolean);
+    if (!segments.length) return '';
+
+    const rootLabel = String(readMysteryMessage('assignCategoryMystery') || '').trim();
+    if (!rootLabel || segments.length < 2) {
+      return segments.join(' > ');
+    }
+
+    const rootToken = normalizeKeyToken(rootLabel);
+    const firstToken = normalizeKeyToken(segments[0]);
+    if (!firstToken || firstToken === rootToken) {
+      return segments.join(' > ');
+    }
+
+    const knownMysteryGroupTokens = new Set();
+    mysterySongGroupsCatalog.forEach((group) => {
+      const groupKey = canonicalMysteryGroupKey(group.title || '');
+      if (!groupKey) return;
+      knownMysteryGroupTokens.add(groupKey);
+      const simplifiedKey = groupKey.replace(/^misterios?\s+/i, '').trim();
+      if (simplifiedKey) {
+        knownMysteryGroupTokens.add(simplifiedKey);
+      }
+    });
+
+    if (!knownMysteryGroupTokens.has(firstToken)) {
+      return segments.join(' > ');
+    }
+
+    return [rootLabel, ...segments].join(' > ');
+  };
+
   const dedupeUsageLabels = (values) => {
     const labels = [];
     const seen = new Set();
     const rows = Array.isArray(values) ? values : [];
     rows.forEach((rawValue) => {
-      const label = String(rawValue || '').trim();
+      const label = normalizeUsageLabelForDisplay(rawValue);
       if (!label) return;
       const dedupKey = buildUsageLabelDedupKey(label);
       if (!dedupKey || seen.has(dedupKey)) return;
@@ -2168,6 +2245,7 @@
     const assignmentRows = Object.values(asObject(mysterySongAssignments));
     if (!assignmentRows.length) return [];
 
+    const mysteryRootLabel = String(readMysteryMessage('assignCategoryMystery') || '').trim();
     const labels = [];
     assignmentRows.forEach((assignmentPayload) => {
       const assignment = asObject(assignmentPayload);
@@ -2183,7 +2261,10 @@
       if (!groupTitle || !mysteryTitle) return;
 
       const itemLabel = resolveMysteryItemLabel(groupTitle, mysteryTitle);
-      const usageLabel = itemLabel ? `${groupTitle} > ${itemLabel}` : groupTitle;
+      const groupPath = mysteryRootLabel
+        ? `${mysteryRootLabel} > ${groupTitle}`
+        : groupTitle;
+      const usageLabel = itemLabel ? `${groupPath} > ${itemLabel}` : groupPath;
       labels.push(usageLabel);
     });
 
@@ -2216,6 +2297,42 @@
     });
   };
 
+  const resolveSongLocationPathById = (rawLocationId) => {
+    const locationId = String(rawLocationId || '')
+      .trim()
+      .replace(/^location:/i, '')
+      .trim();
+    if (!locationId) return [];
+    if (!Array.isArray(songLocationTreeRoots) || !songLocationTreeRoots.length) return [];
+
+    const walkNodes = (nodes, parentPath = []) => {
+      if (!Array.isArray(nodes)) return [];
+
+      for (const rawNode of nodes) {
+        const node = asObject(rawNode);
+        const nodeId = String(node.id || node.nodeId || '')
+          .trim()
+          .replace(/^location:/i, '')
+          .trim();
+        const nodeLabel = String(node.label || node.locationLabel || '').trim();
+        const nextPath = nodeLabel ? [...parentPath, nodeLabel] : [...parentPath];
+
+        if (nodeId === locationId) {
+          return nextPath.filter(Boolean);
+        }
+
+        const foundPath = walkNodes(node.children, nextPath);
+        if (foundPath.length) {
+          return foundPath;
+        }
+      }
+
+      return [];
+    };
+
+    return walkNodes(songLocationTreeRoots, []);
+  };
+
   const resolveSongLocationUsageLabels = (songPayload) => {
     const songIdentity = readSongIdentityForMatch(songPayload);
     const assignmentRows = Object.values(asObject(songLocationAssignments));
@@ -2231,9 +2348,16 @@
       });
       if (!isSongIdentityMatch(songIdentity, assignmentIdentity)) return;
 
-      const path = Array.isArray(assignment.locationPath)
+      const locationId = String(assignment.locationId || assignment.location_id || '')
+        .trim()
+        .replace(/^location:/i, '')
+        .trim();
+      let path = Array.isArray(assignment.locationPath)
         ? assignment.locationPath.map((item) => String(item || '').trim()).filter(Boolean)
         : [];
+      if (!path.length && locationId) {
+        path = resolveSongLocationPathById(locationId);
+      }
       const locationLabel = String(assignment.locationLabel || '').trim();
       const usageLabel = path.length
         ? path.join(' > ')
@@ -2242,6 +2366,62 @@
     });
 
     return dedupeUsageLabels(labels);
+  };
+
+  const normalizeLocationPathSegments = (pathSegments) => (
+    (Array.isArray(pathSegments) ? pathSegments : [])
+      .map((segment) => String(segment || '').trim())
+      .filter(Boolean)
+  );
+
+  const resolveSongLocationNodeByPath = (pathSegments) => {
+    const normalizedPath = normalizeLocationPathSegments(pathSegments);
+    if (!normalizedPath.length || !Array.isArray(songLocationTreeRoots) || !songLocationTreeRoots.length) {
+      return null;
+    }
+
+    let nodeCursor = null;
+    let nodeLevel = songLocationTreeRoots;
+    for (const segment of normalizedPath) {
+      const targetToken = normalizeKeyToken(segment);
+      if (!targetToken) return null;
+      const matchedNode = (Array.isArray(nodeLevel) ? nodeLevel : []).find((rawNode) => {
+        const node = asObject(rawNode);
+        return normalizeKeyToken(node.label || '') === targetToken;
+      });
+      if (!matchedNode) return null;
+      nodeCursor = asObject(matchedNode);
+      nodeLevel = Array.isArray(nodeCursor.children) ? nodeCursor.children : [];
+    }
+    return nodeCursor;
+  };
+
+  const resolveRosaryStepSongTarget = (stepPayload = null) => {
+    const step = asObject(stepPayload || getRosaryFlowStep() || {});
+    const locationPath = normalizeLocationPathSegments(step.songLocationPath);
+    if (!locationPath.length) return null;
+
+    const locationNode = resolveSongLocationNodeByPath(locationPath);
+    if (!locationNode) {
+      return {
+        locationId: '',
+        locationLabel: locationPath[locationPath.length - 1] || '',
+        locationPath,
+      };
+    }
+
+    const locationId = String(locationNode.id || locationNode.nodeId || '').trim().replace(/^location:/i, '').trim();
+    return {
+      locationId,
+      locationLabel: String(locationNode.label || locationPath[locationPath.length - 1] || '').trim(),
+      locationPath,
+    };
+  };
+
+  const getRosaryStepSongAssignment = (stepPayload = null) => {
+    const target = resolveRosaryStepSongTarget(stepPayload);
+    if (!target || !target.locationId) return {};
+    return getSongLocationAssignment(target.locationId);
   };
 
   const cacheMysterySongAssignment = (payload) => {
@@ -2448,6 +2628,7 @@
       songLocationAssignments = {};
       renderSongFavorites();
       renderSongSaveLocationPicker();
+      updateRosaryModalSongToggleState();
       return false;
     }
 
@@ -2463,6 +2644,7 @@
         songLocationAssignments = {};
         renderSongFavorites();
         renderSongSaveLocationPicker();
+        updateRosaryModalSongToggleState();
         return false;
       }
       if (!response.ok || !payload.ok) {
@@ -2482,6 +2664,7 @@
       songLocationAssignments = nextAssignments;
       renderSongFavorites();
       renderSongSaveLocationPicker();
+      updateRosaryModalSongToggleState();
       return true;
     } catch (err) {
       return false;
@@ -2717,6 +2900,7 @@
       }
       songLocationTreeRoots = normalizeSongLocationTreeRoots(payload.tree);
       renderSongSaveLocationPicker();
+      updateRosaryModalSongToggleState();
       return Array.isArray(songLocationTreeRoots) && songLocationTreeRoots.length > 0;
     } catch (err) {
       return false;
@@ -3859,7 +4043,7 @@
       readMysteryMessage('assignSuccess'),
       'is-success'
     );
-    closeSongSaveLocationPicker();
+    positionSongSaveLocationPicker();
     return true;
   };
 
@@ -3955,7 +4139,7 @@
       readMysteryMessage('assignSuccess'),
       'is-success'
     );
-    closeSongSaveLocationPicker();
+    positionSongSaveLocationPicker();
     return true;
   };
 
@@ -4293,6 +4477,170 @@
       ? readMysteryMessage('songToggleShow')
       : readMysteryMessage('songToggleEmpty');
     mysteryModalSongToggle.setAttribute('aria-label', mysteryModalSongToggle.title);
+  };
+
+  const closeRosarySongPanel = () => {
+    if (rosaryModalSongPanel) {
+      rosaryModalSongPanel.hidden = true;
+    }
+    if (rosaryModalSongTitle) {
+      rosaryModalSongTitle.textContent = '';
+    }
+    if (rosaryModalSongMeta) {
+      rosaryModalSongMeta.textContent = '';
+    }
+    if (rosaryModalSongExternalActions) {
+      rosaryModalSongExternalActions.hidden = true;
+    }
+    if (rosaryModalSongLyrics) {
+      rosaryModalSongLyrics.textContent = '';
+    }
+  };
+
+  const updateRosaryModalSongToggleState = () => {
+    if (!rosaryModalSongToggle) return;
+    const currentStep = getRosaryFlowStep();
+    const target = resolveRosaryStepSongTarget(currentStep);
+    const supportsSong = Boolean(target && Array.isArray(target.locationPath) && target.locationPath.length);
+    if (!supportsSong) {
+      rosaryModalSongToggle.hidden = true;
+      rosaryModalSongToggle.disabled = true;
+      rosaryModalSongToggle.classList.remove('is-active', 'is-empty', 'is-loading');
+      rosaryModalSongToggle.removeAttribute('aria-label');
+      rosaryModalSongToggle.removeAttribute('title');
+      closeRosarySongPanel();
+      return;
+    }
+
+    const assignment = getRosaryStepSongAssignment(currentStep);
+    const hasAssignedSong = Boolean(assignment.songTitle || assignment.songUrl);
+    const isPanelVisible = rosaryModalSongPanel ? !rosaryModalSongPanel.hidden : false;
+    rosaryModalSongToggle.hidden = false;
+    rosaryModalSongToggle.innerHTML = MYSTERY_MUSIC_NOTE_ICON;
+    rosaryModalSongToggle.classList.toggle('is-active', isPanelVisible);
+    rosaryModalSongToggle.classList.toggle('is-loading', rosaryModalSongLoading);
+    rosaryModalSongToggle.classList.toggle('is-empty', !hasAssignedSong);
+    rosaryModalSongToggle.disabled = rosaryModalSongLoading;
+    rosaryModalSongToggle.title = hasAssignedSong
+      ? readRosaryMessage('songToggleShow', readMysteryMessage('songToggleShow'))
+      : readRosaryMessage('songToggleEmpty', readMysteryMessage('songToggleEmpty'));
+    rosaryModalSongToggle.setAttribute('aria-label', rosaryModalSongToggle.title);
+  };
+
+  const toggleRosaryModalSongPanel = async () => {
+    if (!rosaryModalSongPanel || !rosaryModalSongTitle || !rosaryModalSongLyrics) return;
+    const currentStep = getRosaryFlowStep();
+    const target = resolveRosaryStepSongTarget(currentStep);
+    const supportsSong = Boolean(target && Array.isArray(target.locationPath) && target.locationPath.length);
+    if (!supportsSong) return;
+
+    const assignment = getRosaryStepSongAssignment(currentStep);
+    if (!assignment.songTitle && !assignment.songUrl) {
+      showSongToast(
+        readRosaryMessage('songToggleEmpty', readMysteryMessage('songToggleEmpty')),
+        'is-warning'
+      );
+      return;
+    }
+
+    const isOpen = !rosaryModalSongPanel.hidden;
+    if (isOpen) {
+      closeRosarySongPanel();
+      updateRosaryModalSongToggleState();
+      return;
+    }
+
+    rosaryModalSongLoading = true;
+    updateRosaryModalSongToggleState();
+    try {
+      const resolvedAssignment = await resolveMysterySongLyrics(assignment);
+      let persistedAssignment = resolvedAssignment;
+      if (target.locationId) {
+        try {
+          persistedAssignment = await saveSongLocationAssignmentOnServer(target, resolvedAssignment);
+        } catch (saveErr) {
+          persistedAssignment = cacheSongLocationAssignment({
+            ...resolvedAssignment,
+            locationId: target.locationId,
+            locationLabel: target.locationLabel,
+            locationPath: target.locationPath,
+          }) || resolvedAssignment;
+        }
+      }
+      rosaryModalSongTitle.textContent = persistedAssignment.songArtist
+        ? `${persistedAssignment.songTitle} - ${persistedAssignment.songArtist}`
+        : persistedAssignment.songTitle || readSongMessage('defaultSongTitle');
+      const resolvedSource = String(
+        persistedAssignment.lyricsSource
+        || persistedAssignment.source
+        || persistedAssignment.songSource
+        || ''
+      ).trim();
+      const resolvedSourceLabel = resolveSongSourceLabel(
+        resolvedSource,
+        String(
+          persistedAssignment.sourceLabel
+          || persistedAssignment.source_label
+          || ''
+        ).trim()
+      );
+      if (rosaryModalSongMeta) {
+        rosaryModalSongMeta.textContent = `${readSongMessage('sourcePrefix')} ${resolvedSourceLabel}`;
+      }
+      if (rosaryModalSongExternalActions && rosaryModalSongSpotifyLink && rosaryModalSongYoutubeLink) {
+        const externalQuery = buildExternalSongSearchQuery({
+          title: persistedAssignment.songTitle || '',
+          artist: persistedAssignment.songArtist || '',
+        });
+        const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
+        const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
+
+        const setupExternalLink = (node, href, title, ariaLabel) => {
+          if (!node) return;
+          node.title = title;
+          node.setAttribute('aria-label', ariaLabel);
+          if (href) {
+            node.href = href;
+            node.target = '_blank';
+            node.rel = 'noopener noreferrer';
+            node.classList.remove('is-disabled');
+            node.removeAttribute('aria-disabled');
+            return;
+          }
+          node.removeAttribute('href');
+          node.removeAttribute('target');
+          node.removeAttribute('rel');
+          node.classList.add('is-disabled');
+          node.setAttribute('aria-disabled', 'true');
+        };
+
+        setupExternalLink(
+          rosaryModalSongSpotifyLink,
+          spotifyUrl,
+          readSongMessage('spotifyTitle'),
+          readSongMessage('spotifyAria')
+        );
+        setupExternalLink(
+          rosaryModalSongYoutubeLink,
+          youtubeUrl,
+          readSongMessage('youtubeTitle'),
+          readSongMessage('youtubeAria')
+        );
+
+        rosaryModalSongExternalActions.hidden = false;
+      }
+      rosaryModalSongLyrics.textContent = String(persistedAssignment.lyricsText || '').trim()
+        || readRosaryMessage('songLyricsEmpty', readMysteryMessage('songLyricsEmpty'));
+      rosaryModalSongPanel.hidden = false;
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : readSongMessage('lyricsLoadError');
+      showSongToast(message, 'is-error');
+    } finally {
+      rosaryModalSongLoading = false;
+      updateRosaryModalSongToggleState();
+    }
   };
 
   const resolveMysterySongLyrics = async (assignment) => {
@@ -4808,7 +5156,7 @@
 
   let modalLockedScrollX = 0;
   let modalLockedScrollY = 0;
-  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open, .auth-modal.open';
+  const MODAL_OPEN_SELECTOR = '.mystery-modal.open, .mystery-group-modal.open, .rosary-modal.open, .song-modal.open, .favorite-confirm-modal.open, .custom-song-modal.open, .mystery-song-assign-modal.open, .song-save-location-picker.open, .song-location-create-modal.open, .auth-modal.open, .auth-sessions-modal.open, .song-share-modal.open';
 
   const runWithInstantScrollBehavior = (callback) => {
     if (typeof callback !== 'function') return;
@@ -5144,6 +5492,9 @@
         : readRosaryMessage('nextButton');
     }
 
+    closeRosarySongPanel();
+    rosaryModalSongLoading = false;
+    updateRosaryModalSongToggleState();
     renderRosaryModalDots();
   };
 
@@ -5166,6 +5517,9 @@
       : null;
     rosaryModal.classList.remove('open');
     rosaryModal.setAttribute('aria-hidden', 'true');
+    closeRosarySongPanel();
+    rosaryModalSongLoading = false;
+    updateRosaryModalSongToggleState();
     syncBodyModalLock();
     if (shouldRestoreFocus && !hasAnyOpenModal() && focusTarget) {
       window.requestAnimationFrame(() => {
@@ -5185,6 +5539,13 @@
     rosaryModal.classList.add('open');
     rosaryModal.setAttribute('aria-hidden', 'false');
     syncBodyModalLock();
+    void Promise.allSettled([
+      fetchSongLocationTree(),
+      fetchSongLocationAssignments(),
+    ]).then(() => {
+      if (!rosaryModal.classList.contains('open')) return;
+      updateRosaryModalSongToggleState();
+    });
 
     window.requestAnimationFrame(() => {
       const activeDot = rosaryModalDots?.querySelector('.rosary-modal-dot.is-active');
@@ -5290,6 +5651,18 @@
         event.preventDefault();
         openRosaryModal(trigger);
       });
+    });
+  }
+  if (rosaryModalSongToggle) {
+    rosaryModalSongToggle.addEventListener('click', () => {
+      void toggleRosaryModalSongPanel();
+    });
+    updateRosaryModalSongToggleState();
+  }
+  if (rosaryModalSongClose) {
+    rosaryModalSongClose.addEventListener('click', () => {
+      closeRosarySongPanel();
+      updateRosaryModalSongToggleState();
     });
   }
 
@@ -5399,6 +5772,7 @@
     songLocationCreateParentInput.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         closeSongLocationCreateParentPicker();
       }
     });
@@ -5421,6 +5795,8 @@
   if (songLocationCreateModal) {
     songLocationCreateModal.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && isSongLocationCreateParentPickerOpen()) {
+        event.preventDefault();
+        event.stopPropagation();
         closeSongLocationCreateParentPicker();
       }
     });
@@ -5634,6 +6010,7 @@
   const songFavoritesCard = document.getElementById('song-favorites-card');
   const songFavoritesList = document.getElementById('song-favorites-list');
   const songFavoritesSearchInput = document.getElementById('song-favorites-search-input');
+  const songFavoritesShareBtn = document.getElementById('song-favorites-share-btn');
   const customSongsCard = document.getElementById('custom-songs-card');
   const customSongsList = document.getElementById('custom-songs-list');
   const customSongsAddBtn = document.getElementById('custom-songs-add-btn');
@@ -5641,6 +6018,17 @@
   const authModal = document.getElementById('auth-modal');
   const authModalTitle = document.getElementById('auth-modal-title');
   const authModalCloseButtons = document.querySelectorAll('[data-auth-modal-close]');
+  const authSessionsModal = document.getElementById('auth-sessions-modal');
+  const authSessionsCloseButtons = document.querySelectorAll('[data-auth-sessions-close]');
+  const authSessionsFeedback = document.getElementById('auth-sessions-feedback');
+  const authSessionsList = document.getElementById('auth-sessions-list');
+  const songShareModal = document.getElementById('song-share-modal');
+  const songShareCloseButtons = document.querySelectorAll('[data-song-share-close]');
+  const songShareQrImage = document.getElementById('song-share-qr-image');
+  const songShareLinkInput = document.getElementById('song-share-link-input');
+  const songShareFeedback = document.getElementById('song-share-feedback');
+  const songShareCreateBtn = document.getElementById('song-share-create-btn');
+  const songShareCopyBtn = document.getElementById('song-share-copy-btn');
   const authForm = document.getElementById('auth-form');
   const authNameField = document.getElementById('auth-name-field');
   const authNameInput = document.getElementById('auth-name-input');
@@ -5657,6 +6045,7 @@
   const authPasswordInput = document.getElementById('auth-password-input');
   const authPasswordToggle = document.getElementById('auth-password-toggle');
   const authFormFeedback = document.getElementById('auth-form-feedback');
+  const authRegisterCtaBtn = document.getElementById('auth-register-cta-btn');
   const authSubmitBtn = document.getElementById('auth-submit-btn');
   const authDeleteBtn = document.getElementById('auth-delete-btn');
   const favoriteConfirmModal = document.getElementById('favorite-confirm-modal');
@@ -5688,6 +6077,9 @@
   const fetchedSongCard = document.getElementById('fetched-song-card');
   const fetchedSongTitle = document.getElementById('fetched-song-title');
   const fetchedSongMeta = document.getElementById('fetched-song-meta');
+  const songModalExternalActions = document.getElementById('song-modal-external-actions');
+  const songModalSpotifyLink = document.getElementById('song-modal-spotify-link');
+  const songModalYoutubeLink = document.getElementById('song-modal-youtube-link');
   const fetchedSongLyrics = document.getElementById('fetched-song-lyrics');
   const songModalToneRow = songModal ? songModal.querySelector('.song-modal-tone-row') : null;
   const songModalToneLabel = songModal ? songModal.querySelector('.song-modal-tone-label') : null;
@@ -5708,8 +6100,10 @@
   const AUTH_QR_STATUS_CONSUMED = 'consumed';
   const AUTH_QR_STATUS_EXPIRED = 'expired';
   const AUTH_QR_POLL_INTERVAL_MS = 1600;
+  const AUTH_SESSION_HEALTHCHECK_INTERVAL_MS = 12000;
   const AUTH_QR_QUERY_SESSION_KEY = 'auth_qr_session';
   const AUTH_QR_QUERY_TOKEN_KEY = 'auth_qr_token';
+  const SONG_SHARE_QUERY_KEY = 'song_share';
   let authMode = 'login';
   let authRequestPending = false;
   let authToken = '';
@@ -5726,6 +6120,17 @@
   let authQrPollInFlight = false;
   let pendingAuthQrApproval = null;
   let authQrApprovalHandling = false;
+  let lastFocusedAuthSessionsTrigger = null;
+  let authSessionsRequestPending = false;
+  let authSessionsRevokePendingGuid = '';
+  let lastFocusedSongShareTrigger = null;
+  let songShareRequestPending = false;
+  let songShareImportPending = false;
+  let songShareCurrentLink = '';
+  let pendingSongShareImport = '';
+  let pendingAuthRegisterPrefill = null;
+  let authSessionHealthcheckTimerId = null;
+  let authSessionHealthcheckInFlight = false;
   const songSearchWidgets = [
     {
       id: 'header',
@@ -5751,6 +6156,83 @@
     && widget.resultsContainer
     && widget.resultsList
   ));
+  const clearSearchInputIfEmail = (input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    const rawValue = String(input.value || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(rawValue)) return;
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const hardenSearchInputAutofill = (input, fallbackName = '') => {
+    if (!(input instanceof HTMLInputElement)) return;
+    const safeNameBase = String(input.getAttribute('name') || fallbackName || input.id || 'search_field').trim();
+    if (safeNameBase) {
+      const safeNameNonce = Math.random().toString(36).slice(2, 10);
+      input.setAttribute('name', `${safeNameBase}_${safeNameNonce}`);
+    }
+    input.setAttribute('autocomplete', 'new-password');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('data-form-type', 'other');
+    input.setAttribute('aria-autocomplete', 'none');
+
+    input.readOnly = true;
+    const unlockInput = () => {
+      input.readOnly = false;
+      input.removeEventListener('focus', unlockInput);
+      input.removeEventListener('pointerdown', unlockInput);
+      input.removeEventListener('keydown', unlockInput);
+      input.removeEventListener('touchstart', unlockInput);
+    };
+    input.addEventListener('focus', unlockInput);
+    input.addEventListener('pointerdown', unlockInput);
+    input.addEventListener('keydown', unlockInput);
+    input.addEventListener('touchstart', unlockInput, { passive: true });
+
+    clearSearchInputIfEmail(input);
+    window.requestAnimationFrame(() => {
+      clearSearchInputIfEmail(input);
+    });
+    window.setTimeout(() => {
+      clearSearchInputIfEmail(input);
+    }, 180);
+    window.setTimeout(() => {
+      clearSearchInputIfEmail(input);
+    }, 700);
+    window.setTimeout(() => {
+      clearSearchInputIfEmail(input);
+    }, 2200);
+    window.setTimeout(() => {
+      clearSearchInputIfEmail(input);
+    }, 4600);
+  };
+  const hardenSearchFormAutofill = (form) => {
+    if (!(form instanceof HTMLFormElement)) return;
+    form.setAttribute('autocomplete', 'off');
+    form.setAttribute('data-form-type', 'other');
+  };
+  hardenSearchFormAutofill(songFetchForm);
+  hardenSearchFormAutofill(songFetchFormCantos);
+  hardenSearchInputAutofill(songSearchQueryInput, 'song_search_menu');
+  hardenSearchInputAutofill(songSearchQueryInputCantos, 'song_search_cantos');
+  hardenSearchInputAutofill(songFavoritesSearchInput, 'song_favorites_search');
+  hardenSearchInputAutofill(songSaveLocationPickerSearchInput, 'song_location_picker_search');
+  const autofillProtectedInputs = [
+    songSearchQueryInput,
+    songSearchQueryInputCantos,
+    songFavoritesSearchInput,
+    songSaveLocationPickerSearchInput,
+  ].filter((input) => input instanceof HTMLInputElement);
+  const recheckAutofillProtectedInputs = () => {
+    autofillProtectedInputs.forEach((input) => {
+      clearSearchInputIfEmail(input);
+    });
+  };
+  window.addEventListener('pageshow', () => {
+    recheckAutofillProtectedInputs();
+    window.setTimeout(recheckAutofillProtectedInputs, 180);
+  });
   songSearchWidgets.forEach((widget) => {
     widget.searchState = {
       query: '',
@@ -5767,6 +6249,9 @@
   let songFavoritesDragId = '';
   let songFavoritesDragStartOrder = [];
   let songFavoritesSearchQuery = '';
+  let songFavoritesPendingScrollRestoreTop = null;
+  let songFavoritesPendingScrollRestoreId = '';
+  let songFavoritesPendingScrollRestoreAnchorOffset = null;
   const songFavoritesByUrl = new Map();
   const SONG_FAVORITES_SCROLL_MOBILE_BREAKPOINT = 680;
   const SONG_FAVORITES_SCROLL_ROWS_DESKTOP = 2;
@@ -5932,6 +6417,71 @@
       ].filter(Boolean).join(' '));
       return haystack.includes(normalizedQuery);
     });
+  };
+  const captureSongFavoritesScrollPosition = (favoriteId = '', triggerElement = null) => {
+    if (!songFavoritesList) return;
+    songFavoritesPendingScrollRestoreTop = Number(songFavoritesList.scrollTop || 0);
+    songFavoritesPendingScrollRestoreId = String(favoriteId || '').trim();
+    songFavoritesPendingScrollRestoreAnchorOffset = null;
+
+    const resolveTargetItem = () => {
+      if (triggerElement instanceof HTMLElement) {
+        const fromTrigger = triggerElement.closest('.song-favorite-item');
+        if (fromTrigger instanceof HTMLElement && songFavoritesList.contains(fromTrigger)) {
+          return fromTrigger;
+        }
+      }
+
+      if (!songFavoritesPendingScrollRestoreId) return null;
+      return Array.from(songFavoritesList.querySelectorAll('.song-favorite-item'))
+        .find((node) => (
+          node instanceof HTMLElement
+          && String(node.dataset.songFavoriteId || '').trim() === songFavoritesPendingScrollRestoreId
+        )) || null;
+    };
+
+    const targetItem = resolveTargetItem();
+    if (!(targetItem instanceof HTMLElement)) return;
+    if (!songFavoritesPendingScrollRestoreId) {
+      songFavoritesPendingScrollRestoreId = String(targetItem.dataset.songFavoriteId || '').trim();
+    }
+    songFavoritesPendingScrollRestoreAnchorOffset = Number(
+      targetItem.offsetTop - songFavoritesPendingScrollRestoreTop
+    );
+  };
+  const restoreSongFavoritesScrollPosition = () => {
+    if (!songFavoritesList) return;
+    if (!Number.isFinite(songFavoritesPendingScrollRestoreTop)) return;
+
+    const desiredTop = Math.max(0, Number(songFavoritesPendingScrollRestoreTop || 0));
+    const desiredId = String(songFavoritesPendingScrollRestoreId || '').trim();
+    const desiredAnchorOffset = Number(songFavoritesPendingScrollRestoreAnchorOffset);
+    const applyRestore = () => {
+      if (!songFavoritesList) return;
+      const maxScrollTop = Math.max(0, songFavoritesList.scrollHeight - songFavoritesList.clientHeight);
+      let nextTop = Math.max(0, Math.min(desiredTop, maxScrollTop));
+
+      if (desiredId && Number.isFinite(desiredAnchorOffset)) {
+        const targetItem = Array.from(songFavoritesList.querySelectorAll('.song-favorite-item'))
+          .find((node) => (
+            node instanceof HTMLElement
+            && String(node.dataset.songFavoriteId || '').trim() === desiredId
+          ));
+        if (targetItem instanceof HTMLElement) {
+          nextTop = targetItem.offsetTop - desiredAnchorOffset;
+          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop));
+        }
+      }
+
+      songFavoritesList.scrollTop = nextTop;
+    };
+
+    applyRestore();
+    window.requestAnimationFrame(applyRestore);
+    window.setTimeout(applyRestore, 140);
+    songFavoritesPendingScrollRestoreTop = null;
+    songFavoritesPendingScrollRestoreId = '';
+    songFavoritesPendingScrollRestoreAnchorOffset = null;
   };
 
   const resolveSongSearchWidget = (preferredWidget = null) => {
@@ -6504,6 +7054,34 @@
     return { guid, name, email };
   };
 
+  const normalizeSongShareId = (value = '') => {
+    const safeValue = String(value || '').trim();
+    if (!safeValue) return '';
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(safeValue)) return '';
+    return safeValue;
+  };
+
+  const readSongShareIdFromUrl = () => {
+    try {
+      const currentUrl = new URL(window.location.href);
+      return normalizeSongShareId(currentUrl.searchParams.get(SONG_SHARE_QUERY_KEY));
+    } catch (_err) {
+      return '';
+    }
+  };
+
+  const clearSongShareFromUrl = () => {
+    try {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete(SONG_SHARE_QUERY_KEY);
+      const nextQuery = currentUrl.searchParams.toString();
+      const nextUrl = `${currentUrl.pathname}${nextQuery ? `?${nextQuery}` : ''}${currentUrl.hash || ''}`;
+      window.history.replaceState({}, document.title, nextUrl);
+    } catch (_err) {
+      return;
+    }
+  };
+
   const isAuthLoggedIn = () => Boolean(authToken && normalizeAuthUser(authUser));
 
   const persistAuthState = () => {
@@ -6524,9 +7102,17 @@
     }
   };
 
+  const clearAuthSessionHealthcheckTimer = () => {
+    if (authSessionHealthcheckTimerId) {
+      window.clearTimeout(authSessionHealthcheckTimerId);
+      authSessionHealthcheckTimerId = null;
+    }
+  };
+
   const clearAuthState = () => {
     authToken = '';
     authUser = null;
+    clearAuthSessionHealthcheckTimer();
     persistAuthState();
   };
 
@@ -6590,11 +7176,81 @@
     clearAuthState();
     renderAuthMenu();
     clearUserScopedSongData();
+    closeAuthModal({ restoreFocus: false });
+    closeAuthSessionsModal({ restoreFocus: false });
+    closeSongShareModal({ restoreFocus: false });
+    closeAuthDropdown();
+    closeMainMenu();
     if (notify) {
       showSongToast(String(message || 'Sessao expirada. Faça login novamente.'), 'is-warning');
     }
     if (openLoginModal) {
       openAuthModal('login', trigger instanceof HTMLElement ? trigger : null);
+    }
+  };
+
+  const scheduleAuthSessionHealthcheck = (delayMs = AUTH_SESSION_HEALTHCHECK_INTERVAL_MS) => {
+    clearAuthSessionHealthcheckTimer();
+    if (!isAuthLoggedIn()) return;
+    const safeDelay = Number.isFinite(delayMs) ? Math.max(2500, Math.trunc(delayMs)) : AUTH_SESSION_HEALTHCHECK_INTERVAL_MS;
+    authSessionHealthcheckTimerId = window.setTimeout(() => {
+      authSessionHealthcheckTimerId = null;
+      void runAuthSessionHealthcheck();
+    }, safeDelay);
+  };
+
+  const runAuthSessionHealthcheck = async () => {
+    if (!isAuthLoggedIn()) {
+      clearAuthSessionHealthcheckTimer();
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      scheduleAuthSessionHealthcheck(AUTH_SESSION_HEALTHCHECK_INTERVAL_MS);
+      return;
+    }
+    if (authSessionHealthcheckInFlight) {
+      scheduleAuthSessionHealthcheck(3000);
+      return;
+    }
+
+    authSessionHealthcheckInFlight = true;
+    try {
+      const response = await fetch('/api/auth/me', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        cache: 'no-store',
+      });
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized({
+          notify: true,
+          openLoginModal: false,
+          message: 'Sessao expirada. Faça login novamente.',
+        });
+        return;
+      }
+      if (response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_err) {
+          payload = null;
+        }
+        const normalizedUser = normalizeAuthUser(payload?.user);
+        if (normalizedUser) {
+          authUser = normalizedUser;
+          persistAuthState();
+          renderAuthMenu();
+        }
+      }
+    } catch (_err) {
+      // Ignore transient network failures and retry on next cycle.
+    } finally {
+      authSessionHealthcheckInFlight = false;
+      if (isAuthLoggedIn()) {
+        scheduleAuthSessionHealthcheck(AUTH_SESSION_HEALTHCHECK_INTERVAL_MS);
+      }
     }
   };
 
@@ -6617,6 +7273,56 @@
     const safeMessage = String(message || '').trim();
     authFormFeedback.textContent = safeMessage;
     authFormFeedback.hidden = !safeMessage;
+  };
+
+  const isAuthUserNotFoundMessage = (message = '') => {
+    const safeMessage = String(message || '').trim().toLowerCase();
+    if (!safeMessage) return false;
+    return (
+      safeMessage.includes('usuario nao encontrado')
+      || safeMessage.includes('usuário não encontrado')
+      || safeMessage.includes('conta nao encontrada')
+      || safeMessage.includes('conta não encontrada')
+    );
+  };
+
+  const suggestNameFromEmail = (email = '') => {
+    const safeEmail = String(email || '').trim().toLowerCase();
+    if (!safeEmail || !safeEmail.includes('@')) return '';
+    const localPart = safeEmail.split('@')[0] || '';
+    const normalized = localPart
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized) return '';
+    const maxLen = 150;
+    if (normalized.length <= maxLen) return normalized;
+    return normalized.slice(0, maxLen).trim();
+  };
+
+  const normalizeAuthPrefill = (value = {}) => {
+    const safeValue = asObject(value);
+    const email = String(safeValue.email || '').trim().toLowerCase();
+    const password = String(safeValue.password || '');
+    const nameCandidate = String(safeValue.name || '').trim();
+    const name = nameCandidate || suggestNameFromEmail(email);
+    return { name, email, password };
+  };
+
+  const setAuthRegisterCtaState = (visible, prefill = null) => {
+    if (!authRegisterCtaBtn) return;
+    const shouldShow = Boolean(visible);
+    authRegisterCtaBtn.hidden = !shouldShow;
+    authRegisterCtaBtn.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+    const actions = authForm ? authForm.querySelector('.auth-form-actions') : null;
+    if (actions instanceof HTMLElement) {
+      actions.classList.toggle('has-register-cta', shouldShow);
+    }
+    if (shouldShow) {
+      pendingAuthRegisterPrefill = normalizeAuthPrefill(prefill);
+    } else {
+      pendingAuthRegisterPrefill = null;
+    }
   };
 
   const setAuthPasswordVisibility = (visible) => {
@@ -6876,6 +7582,621 @@
     }
   };
 
+  const isAuthSessionUnauthorizedMessage = (message = '') => {
+    const safeMessage = String(message || '').toLowerCase();
+    if (!safeMessage) return false;
+    return (
+      safeMessage.includes('sessao invalida')
+      || safeMessage.includes('sessao expirada')
+      || safeMessage.includes('autenticacao obrigatoria')
+      || safeMessage.includes('token de autenticacao')
+    );
+  };
+
+  const setAuthSessionsFeedback = (message = '', type = '') => {
+    if (!authSessionsFeedback) return;
+    const safeMessage = String(message || '').trim();
+    const safeType = String(type || '').trim();
+    authSessionsFeedback.textContent = safeMessage;
+    authSessionsFeedback.classList.remove('is-success', 'is-warning', 'is-error', 'is-loading');
+    if (safeType) authSessionsFeedback.classList.add(safeType);
+    authSessionsFeedback.hidden = !safeMessage;
+  };
+
+  const formatAuthSessionDateTime = (value) => {
+    const safeValue = String(value || '').trim();
+    if (!safeValue) return '';
+    const timestamp = Date.parse(safeValue);
+    if (!Number.isFinite(timestamp)) return '';
+    const locale = String(navigator.language || 'pt-PT').trim() || 'pt-PT';
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(timestamp));
+    } catch (_err) {
+      return new Date(timestamp).toLocaleString();
+    }
+  };
+
+  const normalizeAuthSessionEntry = (entry) => {
+    const safeEntry = entry && typeof entry === 'object' ? entry : {};
+    const sessionGuid = String(safeEntry.session_guid || safeEntry.sessionGuid || '').trim();
+    if (!sessionGuid) return null;
+    return {
+      sessionGuid,
+      userAgent: String(safeEntry.user_agent || safeEntry.userAgent || '').trim(),
+      ipAddress: String(safeEntry.ip_address || safeEntry.ipAddress || '').trim(),
+      createdAtUtc: String(safeEntry.created_at_utc || safeEntry.createdAtUtc || '').trim(),
+      expiresAtUtc: String(safeEntry.expires_at_utc || safeEntry.expiresAtUtc || '').trim(),
+      isCurrent: Boolean(safeEntry.is_current || safeEntry.isCurrent),
+    };
+  };
+
+  const normalizeAuthSessions = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((entry) => normalizeAuthSessionEntry(entry))
+      .filter((entry) => Boolean(entry));
+  };
+
+  const renderAuthSessionsList = (sessions = []) => {
+    if (!authSessionsList) return;
+    authSessionsList.innerHTML = '';
+    if (!Array.isArray(sessions) || !sessions.length) return;
+
+    const fragment = document.createDocumentFragment();
+    sessions.forEach((entry) => {
+      const session = normalizeAuthSessionEntry(entry);
+      if (!session) return;
+
+      const listItem = document.createElement('li');
+      listItem.className = 'auth-sessions-item';
+      if (session.isCurrent) {
+        listItem.classList.add('is-current');
+      }
+      listItem.dataset.sessionGuid = session.sessionGuid;
+
+      const row = document.createElement('div');
+      row.className = 'auth-sessions-item-row';
+
+      const details = document.createElement('div');
+      details.className = 'auth-sessions-item-details';
+
+      const label = document.createElement('p');
+      label.className = 'auth-sessions-item-label';
+      label.textContent = session.userAgent || 'Dispositivo nao identificado';
+      details.appendChild(label);
+
+      const metaParts = [];
+      if (session.ipAddress) metaParts.push(`IP ${session.ipAddress}`);
+      const createdLabel = formatAuthSessionDateTime(session.createdAtUtc);
+      if (createdLabel) metaParts.push(`Inicio ${createdLabel}`);
+      const expiresLabel = formatAuthSessionDateTime(session.expiresAtUtc);
+      if (expiresLabel) metaParts.push(`Expira ${expiresLabel}`);
+
+      const meta = document.createElement('p');
+      meta.className = 'auth-sessions-item-meta';
+      meta.textContent = metaParts.length ? metaParts.join(' | ') : 'Sessao ativa';
+      details.appendChild(meta);
+
+      row.appendChild(details);
+
+      const actionButton = document.createElement('button');
+      actionButton.type = 'button';
+      actionButton.className = 'btn btn-ghost auth-sessions-item-action';
+      actionButton.dataset.authSessionLogout = session.sessionGuid;
+      actionButton.textContent = session.isCurrent ? 'Sair desta sessao' : 'Encerrar';
+      row.appendChild(actionButton);
+
+      if (session.isCurrent) {
+        const badge = document.createElement('span');
+        badge.className = 'auth-sessions-item-badge';
+        badge.textContent = 'Atual';
+        details.appendChild(badge);
+      }
+
+      listItem.appendChild(row);
+      fragment.appendChild(listItem);
+    });
+
+    authSessionsList.appendChild(fragment);
+  };
+
+  const setAuthSessionsRequestState = (pending) => {
+    authSessionsRequestPending = Boolean(pending);
+
+    if (authSessionsCloseButtons.length) {
+      authSessionsCloseButtons.forEach((button) => {
+        button.disabled = authSessionsRequestPending;
+      });
+    }
+
+    if (authSessionsList) {
+      const actionButtons = authSessionsList.querySelectorAll('.auth-sessions-item-action');
+      actionButtons.forEach((button) => {
+        const isTarget = String(button.dataset.authSessionLogout || '').trim() === authSessionsRevokePendingGuid;
+        button.disabled = authSessionsRequestPending;
+        if (!authSessionsRequestPending) {
+          const row = button.closest('.auth-sessions-item');
+          const isCurrent = Boolean(row && row.classList.contains('is-current'));
+          button.textContent = isCurrent ? 'Sair desta sessao' : 'Encerrar';
+          return;
+        }
+        if (authSessionsRevokePendingGuid && isTarget) {
+          button.textContent = 'Encerrando...';
+        }
+      });
+    }
+  };
+
+  const closeAuthSessionsModal = (options = {}) => {
+    if (!authSessionsModal) return;
+    const { restoreFocus = true } = asObject(options);
+    authSessionsModal.classList.remove('open');
+    authSessionsModal.setAttribute('aria-hidden', 'true');
+    authSessionsRevokePendingGuid = '';
+    setAuthSessionsRequestState(false);
+    setAuthSessionsFeedback('');
+    renderAuthSessionsList([]);
+    syncBodyModalLock();
+    if (restoreFocus && lastFocusedAuthSessionsTrigger instanceof HTMLElement) {
+      focusWithoutScrollingPage(lastFocusedAuthSessionsTrigger);
+    }
+    lastFocusedAuthSessionsTrigger = null;
+  };
+
+  const loadAuthSessions = async () => {
+    if (!authSessionsModal || !authSessionsList) return;
+    if (!isAuthLoggedIn()) {
+      renderAuthSessionsList([]);
+      setAuthSessionsFeedback('Faça login para visualizar suas sessoes.', 'is-warning');
+      return;
+    }
+    authSessionsRevokePendingGuid = '';
+    setAuthSessionsRequestState(true);
+    setAuthSessionsFeedback('Carregando sessoes ativas...', 'is-loading');
+    try {
+      const payload = await requestAuthJson('/api/auth/sessions', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const sessions = normalizeAuthSessions(payload.sessions);
+      renderAuthSessionsList(sessions);
+      if (!sessions.length) {
+        setAuthSessionsFeedback('Nenhuma sessao ativa encontrada.', 'is-warning');
+      } else {
+        setAuthSessionsFeedback('');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao carregar sessoes.';
+      renderAuthSessionsList([]);
+      setAuthSessionsFeedback(message, 'is-error');
+      if (isAuthSessionUnauthorizedMessage(message)) {
+        closeAuthSessionsModal({ restoreFocus: false });
+        handleUserScopedApiUnauthorized({
+          notify: true,
+          openLoginModal: true,
+          trigger: lastFocusedAuthSessionsTrigger,
+        });
+      }
+    } finally {
+      authSessionsRevokePendingGuid = '';
+      setAuthSessionsRequestState(false);
+    }
+  };
+
+  const openAuthSessionsModal = (triggerElement = null) => {
+    if (!authSessionsModal) return;
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para gerenciar suas sessoes.',
+      trigger: triggerElement instanceof HTMLElement ? triggerElement : null,
+      notify: true,
+    })) {
+      return;
+    }
+
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedAuthSessionsTrigger = (
+      triggerElement instanceof HTMLElement
+        ? triggerElement
+        : (activeElement || authMenuTrigger || null)
+    );
+    authSessionsModal.classList.add('open');
+    authSessionsModal.setAttribute('aria-hidden', 'false');
+    setAuthSessionsFeedback('');
+    renderAuthSessionsList([]);
+    syncBodyModalLock();
+    void loadAuthSessions();
+  };
+
+  const handleAuthSessionLogout = async (sessionGuid, triggerButton = null) => {
+    const safeSessionGuid = String(sessionGuid || '').trim();
+    if (!safeSessionGuid || !isAuthLoggedIn()) return;
+
+    const listItem = triggerButton instanceof HTMLElement
+      ? triggerButton.closest('.auth-sessions-item')
+      : null;
+    const isCurrentSession = Boolean(listItem && listItem.classList.contains('is-current'));
+
+    const shouldLogoutSession = await openFavoriteConfirmModal({
+      triggerElement: triggerButton instanceof HTMLElement ? triggerButton : null,
+      title: isCurrentSession ? 'Sair desta sessao' : 'Encerrar sessao',
+      message: isCurrentSession
+        ? 'Deseja sair desta sessao neste dispositivo?'
+        : 'Deseja encerrar esta sessao ativa?',
+      acceptLabel: isCurrentSession ? 'Sair' : 'Encerrar',
+      cancelLabel: 'Cancelar',
+      requirePassword: false,
+    });
+    if (!shouldLogoutSession) return;
+
+    authSessionsRevokePendingGuid = safeSessionGuid;
+    setAuthSessionsFeedback('');
+    setAuthSessionsRequestState(true);
+    try {
+      const payload = await requestAuthJson(`/api/auth/sessions/${encodeURIComponent(safeSessionGuid)}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const revokedCurrentSession = Boolean(payload.current_session_revoked);
+      if (revokedCurrentSession) {
+        closeAuthSessionsModal({ restoreFocus: false });
+        await handleAuthLogout({
+          callServer: false,
+          toastMessage: 'Sessao expirada. Faça login novamente.',
+          toastType: 'is-warning',
+        });
+        return;
+      }
+
+      showSongToast('Sessao encerrada.', 'is-success');
+      await loadAuthSessions();
+      setAuthSessionsFeedback('Sessao encerrada com sucesso.', 'is-success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao encerrar sessao.';
+      setAuthSessionsFeedback(message, 'is-error');
+      if (isAuthSessionUnauthorizedMessage(message)) {
+        closeAuthSessionsModal({ restoreFocus: false });
+        handleUserScopedApiUnauthorized({
+          notify: true,
+          openLoginModal: false,
+          message: 'Sessao expirada. Faça login novamente.',
+          trigger: triggerButton instanceof HTMLElement ? triggerButton : lastFocusedAuthSessionsTrigger,
+        });
+      }
+    } finally {
+      authSessionsRevokePendingGuid = '';
+      setAuthSessionsRequestState(false);
+    }
+  };
+
+  const setSongShareFeedback = (message = '', type = '') => {
+    if (!songShareFeedback) return;
+    const safeMessage = String(message || '').trim();
+    const safeType = String(type || '').trim();
+    songShareFeedback.textContent = safeMessage;
+    songShareFeedback.classList.remove('is-warning', 'is-success', 'is-error', 'is-loading');
+    if (safeType) songShareFeedback.classList.add(safeType);
+    songShareFeedback.hidden = !safeMessage;
+  };
+
+  const formatSongShareCountsSummary = (rawCounts = {}) => {
+    const counts = asObject(rawCounts);
+    const parts = [];
+    const customSongsCount = Number.parseInt(String(counts.custom_songs ?? ''), 10) || 0;
+    const favoritesCount = Number.parseInt(String(counts.song_favorites ?? ''), 10) || 0;
+    const mysteryCount = Number.parseInt(String(counts.mystery_song_assignments ?? ''), 10) || 0;
+    const locationCount = Number.parseInt(String(counts.song_location_assignments ?? ''), 10) || 0;
+    const locationNodesCount = Number.parseInt(String(counts.song_location_user_nodes ?? ''), 10) || 0;
+
+    if (customSongsCount > 0) parts.push(`${customSongsCount} musicas personalizadas`);
+    if (favoritesCount > 0) parts.push(`${favoritesCount} favoritos`);
+    if (mysteryCount > 0) parts.push(`${mysteryCount} vinculos em misterios`);
+    if (locationCount > 0) parts.push(`${locationCount} vinculos em locais`);
+    if (locationNodesCount > 0) parts.push(`${locationNodesCount} categorias pessoais`);
+    return parts.join(' | ');
+  };
+
+  const isSongShareNotFoundMessage = (message = '') => {
+    const safeMessage = String(message || '').toLowerCase();
+    if (!safeMessage) return false;
+    return (
+      safeMessage.includes('compartilhamento nao encontrado')
+      || safeMessage.includes('codigo de compartilhamento invalido')
+      || safeMessage.includes('informe o codigo de compartilhamento')
+    );
+  };
+
+  const setSongShareRequestState = (pending) => {
+    songShareRequestPending = Boolean(pending);
+    const disableActions = songShareRequestPending || songShareImportPending;
+
+    if (songShareCreateBtn) {
+      songShareCreateBtn.disabled = disableActions;
+      songShareCreateBtn.textContent = songShareRequestPending ? 'Gerando...' : 'Gerar novo link';
+    }
+    if (songShareCopyBtn) {
+      songShareCopyBtn.disabled = disableActions || !songShareCurrentLink;
+    }
+    if (songShareCloseButtons.length) {
+      songShareCloseButtons.forEach((button) => {
+        button.disabled = songShareRequestPending;
+      });
+    }
+  };
+
+  const applySongShareCreatePayload = (payload) => {
+    const safePayload = asObject(payload);
+    const shareUrl = String(safePayload.share_url || '').trim();
+    const qrImageDataUrl = String(safePayload.qr_image_data_url || '').trim();
+    if (!shareUrl || !qrImageDataUrl) {
+      throw new Error('Resposta de compartilhamento invalida.');
+    }
+
+    songShareCurrentLink = shareUrl;
+    if (songShareLinkInput) {
+      songShareLinkInput.value = shareUrl;
+    }
+    if (songShareQrImage) {
+      songShareQrImage.src = qrImageDataUrl;
+    }
+
+    const summary = formatSongShareCountsSummary(safePayload.counts);
+    setSongShareFeedback(
+      summary ? `Link pronto. Conteudo: ${summary}.` : 'Link pronto para compartilhamento.',
+      'is-success'
+    );
+  };
+
+  const closeSongShareModal = (options = {}) => {
+    if (!songShareModal) return;
+    const { restoreFocus = true } = asObject(options);
+    songShareModal.classList.remove('open');
+    songShareModal.setAttribute('aria-hidden', 'true');
+    syncBodyModalLock();
+    if (
+      restoreFocus
+      && lastFocusedSongShareTrigger instanceof HTMLElement
+      && !hasAnyOpenModal()
+    ) {
+      focusWithoutScrollingPage(lastFocusedSongShareTrigger);
+    }
+    lastFocusedSongShareTrigger = null;
+  };
+
+  const fetchSongSharePreview = async (shareId) => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) {
+      throw new Error('Codigo de compartilhamento invalido.');
+    }
+    const query = new URLSearchParams({ share_id: safeShareId }).toString();
+    const response = await fetch(`/api/songs/share/preview?${query}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = null;
+    }
+    if (!response.ok) {
+      throw new Error(extractApiErrorMessage(payload, 'Falha ao ler compartilhamento.'));
+    }
+    return asObject(payload);
+  };
+
+  const requestSongShareImport = async (shareId) => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) {
+      throw new Error('Codigo de compartilhamento invalido.');
+    }
+    const response = await fetch('/api/songs/share/import', {
+      method: 'POST',
+      headers: buildUserScopedApiHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ share_id: safeShareId }),
+    });
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = null;
+    }
+
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessao expirada. Faça login novamente.');
+    }
+    if (!response.ok || !payload?.ok) {
+      throw new Error(extractApiErrorMessage(payload, 'Falha ao importar compartilhamento.'));
+    }
+    return asObject(payload);
+  };
+
+  const buildSongShareImportToastMessage = (summaryPayload) => {
+    const summary = asObject(summaryPayload);
+    const customSongsAdded = Number.parseInt(String(asObject(summary.custom_songs).added ?? ''), 10) || 0;
+    const mysteryApplied = Number.parseInt(String(asObject(summary.mystery_song_assignments).applied ?? ''), 10) || 0;
+    const locationNodesAdded = Number.parseInt(String(asObject(summary.song_location_user_nodes).added ?? ''), 10) || 0;
+    const locationApplied = Number.parseInt(String(asObject(summary.song_location_assignments).applied ?? ''), 10) || 0;
+    const favoritesApplied = Number.parseInt(String(asObject(summary.song_favorites).applied ?? ''), 10) || 0;
+
+    const parts = [];
+    if (customSongsAdded > 0) parts.push(`${customSongsAdded} musicas personalizadas`);
+    if (favoritesApplied > 0) parts.push(`${favoritesApplied} favoritos`);
+    if (mysteryApplied > 0) parts.push(`${mysteryApplied} vinculos em misterios`);
+    if (locationApplied > 0) parts.push(`${locationApplied} vinculos em locais`);
+    if (locationNodesAdded > 0) parts.push(`${locationNodesAdded} categorias pessoais`);
+
+    if (!parts.length) {
+      return 'Importacao concluida. Nenhum item novo para adicionar.';
+    }
+    return `Importacao concluida: ${parts.join(', ')}.`;
+  };
+
+  const maybeHandlePendingSongShareImport = async (triggerElement = null) => {
+    const safeShareId = normalizeSongShareId(pendingSongShareImport);
+    if (!safeShareId || songShareImportPending) return false;
+    if (!isAuthLoggedIn()) return false;
+
+    songShareImportPending = true;
+    setSongShareRequestState(songShareRequestPending);
+    try {
+      const previewPayload = await fetchSongSharePreview(safeShareId);
+      const sourcePayload = asObject(previewPayload.source);
+      const sourceLabel = String(sourcePayload.name || sourcePayload.email || '').trim();
+      const countsSummary = formatSongShareCountsSummary(previewPayload.counts);
+      const confirmationMessageBase = sourceLabel
+        ? `Deseja importar as musicas compartilhadas por ${sourceLabel}?`
+        : 'Deseja importar as musicas compartilhadas para sua conta?';
+      const confirmationMessage = countsSummary
+        ? `${confirmationMessageBase}\n\nConteudo: ${countsSummary}.`
+        : confirmationMessageBase;
+      const shouldImport = await openFavoriteConfirmModal({
+        triggerElement: triggerElement instanceof HTMLElement ? triggerElement : null,
+        title: 'Importar musicas compartilhadas',
+        message: confirmationMessage,
+        acceptLabel: 'Importar',
+        cancelLabel: 'Cancelar',
+        requirePassword: false,
+      });
+      if (!shouldImport) {
+        pendingSongShareImport = '';
+        clearSongShareFromUrl();
+        return false;
+      }
+
+      const importPayload = await requestSongShareImport(safeShareId);
+      pendingSongShareImport = '';
+      clearSongShareFromUrl();
+      refreshUserScopedSongData(0);
+      showSongToast(buildSongShareImportToastMessage(importPayload.summary), 'is-success');
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao importar compartilhamento.';
+      showSongToast(message, 'is-error');
+      if (isSongShareNotFoundMessage(message)) {
+        pendingSongShareImport = '';
+        clearSongShareFromUrl();
+      }
+      return false;
+    } finally {
+      songShareImportPending = false;
+      setSongShareRequestState(songShareRequestPending);
+    }
+  };
+
+  const createSongShareSnapshot = async () => {
+    if (!songShareModal) return false;
+    if (!isAuthLoggedIn()) return false;
+    if (songShareRequestPending || songShareImportPending) return false;
+
+    setSongShareFeedback('Gerando link de compartilhamento...', 'is-loading');
+    setSongShareRequestState(true);
+    try {
+      const response = await fetch('/api/songs/share/create', {
+        method: 'POST',
+        headers: buildUserScopedApiHeaders(),
+        cache: 'no-store',
+      });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_err) {
+        payload = null;
+      }
+
+      if (isUserScopedApiUnauthorized(response)) {
+        handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+        throw new Error('Sessao expirada. Faça login novamente.');
+      }
+      if (!response.ok || !payload?.ok) {
+        throw new Error(extractApiErrorMessage(payload, 'Falha ao gerar compartilhamento.'));
+      }
+
+      applySongShareCreatePayload(payload);
+      setSongShareRequestState(false);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao gerar compartilhamento.';
+      setSongShareFeedback(message, 'is-error');
+      setSongShareRequestState(false);
+      return false;
+    }
+  };
+
+  const openSongShareModal = (triggerElement = null) => {
+    if (!songShareModal) return;
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para compartilhar suas musicas.',
+      trigger: triggerElement instanceof HTMLElement ? triggerElement : null,
+      notify: true,
+    })) {
+      return;
+    }
+
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lastFocusedSongShareTrigger = (
+      triggerElement instanceof HTMLElement
+        ? triggerElement
+        : (activeElement || authMenuTrigger || null)
+    );
+    songShareModal.classList.add('open');
+    songShareModal.setAttribute('aria-hidden', 'false');
+    setSongShareFeedback('');
+    syncBodyModalLock();
+    void createSongShareSnapshot();
+  };
+
+  const copySongShareLink = async () => {
+    const safeLink = String(songShareCurrentLink || songShareLinkInput?.value || '').trim();
+    if (!safeLink) {
+      setSongShareFeedback('Gere um link antes de copiar.', 'is-warning');
+      return false;
+    }
+
+    const fallbackCopy = () => {
+      if (!(songShareLinkInput instanceof HTMLInputElement)) return false;
+      songShareLinkInput.focus();
+      songShareLinkInput.select();
+      songShareLinkInput.setSelectionRange(0, songShareLinkInput.value.length);
+      try {
+        return document.execCommand('copy');
+      } catch (_err) {
+        return false;
+      }
+    };
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(safeLink);
+      } else if (!fallbackCopy()) {
+        throw new Error('Nao foi possivel copiar o link.');
+      }
+      setSongShareFeedback('Link copiado para a area de transferencia.', 'is-success');
+      return true;
+    } catch (err) {
+      const copied = fallbackCopy();
+      if (copied) {
+        setSongShareFeedback('Link copiado para a area de transferencia.', 'is-success');
+        return true;
+      }
+      const message = err instanceof Error ? err.message : 'Nao foi possivel copiar o link.';
+      setSongShareFeedback(message, 'is-error');
+      return false;
+    }
+  };
+
   const normalizeAuthMode = (mode = 'login') => {
     const safeMode = String(mode || '').trim().toLowerCase();
     if (safeMode === 'register') return 'register';
@@ -7001,7 +8322,7 @@
     authActionButtons.forEach((button) => {
       const action = String(button.dataset.authAction || '').trim();
       const visibleWhenLoggedOut = action === 'login' || action === 'register';
-      const visibleWhenLoggedIn = action === 'account' || action === 'logout';
+      const visibleWhenLoggedIn = action === 'account' || action === 'sessions' || action === 'logout';
       button.hidden = loggedIn ? !visibleWhenLoggedIn : !visibleWhenLoggedOut;
     });
   };
@@ -7028,6 +8349,7 @@
     if (authPasswordInput) authPasswordInput.disabled = authRequestPending;
     if (authPasswordToggle) authPasswordToggle.disabled = authRequestPending;
     if (authNameInput) authNameInput.disabled = authRequestPending || normalizeAuthMode(authMode) === 'login';
+    if (authRegisterCtaBtn) authRegisterCtaBtn.disabled = authRequestPending;
     setAuthQrRequestState(authQrRequestPending);
   };
 
@@ -7040,6 +8362,7 @@
     authModal.classList.remove('open');
     authModal.setAttribute('aria-hidden', 'true');
     setAuthFormFeedback('');
+    setAuthRegisterCtaState(false);
     setAuthSubmitState(false);
     syncBodyModalLock();
     if (restoreFocus && lastFocusedAuthTrigger) {
@@ -7047,8 +8370,13 @@
     }
   };
 
-  const openAuthModal = (mode = 'login', trigger = null) => {
+  const openAuthModal = (mode = 'login', trigger = null, options = {}) => {
     if (!authModal) return;
+    if (authSessionsModal && authSessionsModal.classList.contains('open')) {
+      closeAuthSessionsModal({ restoreFocus: false });
+    }
+    const safeOptions = asObject(options);
+    const prefill = normalizeAuthPrefill(safeOptions.prefill);
     const finalMode = normalizeAuthMode(mode);
     const safeUser = normalizeAuthUser(authUser);
     if (finalMode === 'account' && !safeUser) {
@@ -7077,6 +8405,7 @@
     if (authForm) {
       authForm.reset();
     }
+    setAuthRegisterCtaState(false);
     setAuthPasswordVisibility(false);
     if (showAccount) {
       if (authNameInput) {
@@ -7087,6 +8416,16 @@
       }
       if (authPasswordInput) {
         authPasswordInput.value = '';
+      }
+    } else if (showRegister) {
+      if (authNameInput && prefill.name) {
+        authNameInput.value = prefill.name;
+      }
+      if (authEmailInput && prefill.email) {
+        authEmailInput.value = prefill.email;
+      }
+      if (authPasswordInput && prefill.password) {
+        authPasswordInput.value = prefill.password;
       }
     } else if (authEmailInput && isAuthLoggedIn()) {
       authEmailInput.value = safeUser?.email || '';
@@ -7118,6 +8457,10 @@
     persistAuthState();
     renderAuthMenu();
     refreshUserScopedSongData(0);
+    scheduleAuthSessionHealthcheck(1500);
+    runDeferredTask(() => {
+      void maybeHandlePendingSongShareImport(authMenuTrigger);
+    }, 120);
   };
 
   const restoreAuthState = () => {
@@ -7137,6 +8480,9 @@
       clearAuthState();
     }
     renderAuthMenu();
+    if (isAuthLoggedIn()) {
+      scheduleAuthSessionHealthcheck(2200);
+    }
   };
 
   const syncAuthSession = async () => {
@@ -7155,20 +8501,31 @@
       authUser = normalizedUser;
       persistAuthState();
       renderAuthMenu();
+      scheduleAuthSessionHealthcheck(2200);
     } catch (err) {
-      clearAuthState();
-      renderAuthMenu();
+      handleUserScopedApiUnauthorized({
+        notify: false,
+        openLoginModal: false,
+      });
     }
   };
 
-  const handleAuthLogout = async () => {
+  const handleAuthLogout = async (options = {}) => {
+    const safeOptions = asObject(options);
+    const shouldCallServer = safeOptions.callServer !== false;
+    const toastMessage = String(safeOptions.toastMessage || '').trim() || 'Sessao encerrada.';
+    const toastType = String(safeOptions.toastType || '').trim() || 'is-success';
     const previousToken = String(authToken || '').trim();
     clearAuthState();
     clearUserScopedSongData();
     renderAuthMenu();
     closeAuthModal({ restoreFocus: false });
+    closeAuthSessionsModal({ restoreFocus: false });
+    closeSongShareModal({ restoreFocus: false });
+    closeAuthDropdown();
+    closeMainMenu();
 
-    if (previousToken) {
+    if (shouldCallServer && previousToken) {
       try {
         await requestAuthJson('/api/auth/logout', {
           method: 'POST',
@@ -7181,7 +8538,7 @@
       }
     }
 
-    showSongToast('Sessao encerrada.', 'is-success');
+    showSongToast(toastMessage, toastType);
   };
 
   const handleAuthAccountDelete = async (triggerButton = null) => {
@@ -7212,6 +8569,7 @@
       clearUserScopedSongData();
       renderAuthMenu();
       closeAuthModal({ restoreFocus: false });
+      closeAuthSessionsModal({ restoreFocus: false });
       showSongToast('Conta removida com sucesso.', 'is-success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Falha ao remover conta.';
@@ -7242,15 +8600,33 @@
       openAuthModal('account', triggerButton);
       return;
     }
+    if (safeAction === 'sessions') {
+      openAuthSessionsModal(triggerButton);
+      return;
+    }
+    if (safeAction === 'share') {
+      openSongShareModal(triggerButton);
+      return;
+    }
     if (safeAction === 'logout') {
       await handleAuthLogout();
     }
   };
 
+  setSongShareRequestState(false);
   pendingAuthQrApproval = readAuthQrApprovalFromUrl();
+  pendingSongShareImport = readSongShareIdFromUrl();
   restoreAuthState();
-  if (pendingAuthQrApproval && !isAuthLoggedIn()) {
-    showSongToast('Faça login no celular para autorizar o QR Code.', 'is-warning');
+  const hasPendingQrApproval = Boolean(pendingAuthQrApproval);
+  const hasPendingSongShareImport = Boolean(normalizeSongShareId(pendingSongShareImport));
+  if (!isAuthLoggedIn() && (hasPendingQrApproval || hasPendingSongShareImport)) {
+    if (hasPendingQrApproval && hasPendingSongShareImport) {
+      showSongToast('Faça login para autorizar o QR Code e importar as musicas compartilhadas.', 'is-warning');
+    } else if (hasPendingQrApproval) {
+      showSongToast('Faça login no celular para autorizar o QR Code.', 'is-warning');
+    } else if (hasPendingSongShareImport) {
+      showSongToast('Faça login para importar as musicas compartilhadas.', 'is-warning');
+    }
     runDeferredTask(() => {
       openAuthModal('login', authMenuTrigger);
     }, 80);
@@ -7258,6 +8634,7 @@
   runDeferredTask(async () => {
     await syncAuthSession();
     await maybeHandlePendingAuthQrApproval(authMenuTrigger);
+    await maybeHandlePendingSongShareImport(authMenuTrigger);
   }, 180);
 
   if (authActionButtons.length) {
@@ -7274,6 +8651,85 @@
       button.addEventListener('click', () => {
         closeAuthModal();
       });
+    });
+  }
+
+  if (authSessionsCloseButtons.length) {
+    authSessionsCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        closeAuthSessionsModal();
+      });
+    });
+  }
+
+  if (songShareCloseButtons.length) {
+    songShareCloseButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        closeSongShareModal();
+      });
+    });
+  }
+
+  if (songShareCreateBtn) {
+    songShareCreateBtn.addEventListener('click', () => {
+      void createSongShareSnapshot();
+    });
+  }
+
+  if (songShareCopyBtn) {
+    songShareCopyBtn.addEventListener('click', () => {
+      void copySongShareLink();
+    });
+  }
+
+  if (songShareLinkInput) {
+    songShareLinkInput.addEventListener('focus', () => {
+      songShareLinkInput.select();
+      songShareLinkInput.setSelectionRange(0, songShareLinkInput.value.length);
+    });
+  }
+
+  if (songFavoritesShareBtn) {
+    songFavoritesShareBtn.addEventListener('click', () => {
+      openSongShareModal(songFavoritesShareBtn);
+    });
+  }
+
+  if (authSessionsList) {
+    authSessionsList.addEventListener('click', (event) => {
+      const targetButton = event.target instanceof Element
+        ? event.target.closest('[data-auth-session-logout]')
+        : null;
+      if (!(targetButton instanceof HTMLElement)) return;
+      const sessionGuid = String(targetButton.dataset.authSessionLogout || '').trim();
+      if (!sessionGuid || authSessionsRequestPending) return;
+      void handleAuthSessionLogout(sessionGuid, targetButton);
+    });
+  }
+
+  const buildAuthLoginPrefillFromInputs = () => normalizeAuthPrefill({
+    name: String(authNameInput?.value || '').trim(),
+    email: String(authEmailInput?.value || '').trim().toLowerCase(),
+    password: String(authPasswordInput?.value || ''),
+  });
+
+  if (authRegisterCtaBtn) {
+    authRegisterCtaBtn.addEventListener('click', () => {
+      openAuthModal('register', authRegisterCtaBtn, {
+        prefill: pendingAuthRegisterPrefill || buildAuthLoginPrefillFromInputs(),
+      });
+    });
+  }
+
+  if (authEmailInput) {
+    authEmailInput.addEventListener('input', () => {
+      setAuthRegisterCtaState(false);
+    });
+  }
+
+  if (authPasswordInput) {
+    authPasswordInput.addEventListener('input', () => {
+      setAuthRegisterCtaState(false);
     });
   }
 
@@ -7300,6 +8756,7 @@
   if (authQrOpenBtn) {
     authQrOpenBtn.addEventListener('click', () => {
       if (normalizeAuthMode(authMode) !== 'login') return;
+      setAuthRegisterCtaState(false);
       authQrPanelOpen = true;
       syncAuthFormMode(authMode);
       void startAuthQrLogin();
@@ -7317,6 +8774,7 @@
     authQrCloseBtn.addEventListener('click', () => {
       authQrPanelOpen = false;
       resetAuthQrSessionState();
+      setAuthRegisterCtaState(false);
       syncAuthFormMode(authMode);
       if (authEmailInput instanceof HTMLElement) {
         window.requestAnimationFrame(() => {
@@ -7330,6 +8788,7 @@
     authForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (authRequestPending) return;
+      setAuthRegisterCtaState(false);
 
       const safeMode = normalizeAuthMode(authMode);
       if (safeMode === 'login' && authQrPanelOpen) return;
@@ -7439,6 +8898,15 @@
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Falha ao autenticar.';
         setAuthFormFeedback(message);
+        if (safeMode === 'login' && isAuthUserNotFoundMessage(message)) {
+          setAuthRegisterCtaState(true, {
+            name: safeName,
+            email: safeEmail,
+            password: safePassword,
+          });
+        } else {
+          setAuthRegisterCtaState(false);
+        }
       } finally {
         setAuthSubmitState(false);
       }
@@ -7899,6 +9367,7 @@
       }
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_CANCEL);
       }
     });
@@ -7984,6 +9453,52 @@
         const originalPrefix = readSongMessage('originalKeyPrefix');
         fetchedSongMeta.textContent = `${originalPrefix} ${original} | ${sourcePrefix} ${sourceLabel}`;
       }
+    }
+
+    if (songModalExternalActions && songModalSpotifyLink && songModalYoutubeLink) {
+      const showExternalActions = songState.contentType === 'lyrics';
+      const externalQuery = [songState.title || '', songState.artist || ''].filter(Boolean).join(' ').trim();
+      const encodedExternalQuery = externalQuery ? encodeURIComponent(externalQuery) : '';
+      const spotifyUrl = encodedExternalQuery
+        ? `https://open.spotify.com/search/${encodedExternalQuery}`
+        : '';
+      const youtubeUrl = encodedExternalQuery
+        ? `https://www.youtube.com/results?search_query=${encodedExternalQuery}`
+        : '';
+
+      const setupExternalLink = (node, href, title, ariaLabel) => {
+        if (!node) return;
+        node.title = title;
+        node.setAttribute('aria-label', ariaLabel);
+        if (href) {
+          node.href = href;
+          node.target = '_blank';
+          node.rel = 'noopener noreferrer';
+          node.classList.remove('is-disabled');
+          node.removeAttribute('aria-disabled');
+          return;
+        }
+        node.removeAttribute('href');
+        node.removeAttribute('target');
+        node.removeAttribute('rel');
+        node.classList.add('is-disabled');
+        node.setAttribute('aria-disabled', 'true');
+      };
+
+      setupExternalLink(
+        songModalSpotifyLink,
+        spotifyUrl,
+        readSongMessage('spotifyTitle'),
+        readSongMessage('spotifyAria')
+      );
+      setupExternalLink(
+        songModalYoutubeLink,
+        youtubeUrl,
+        readSongMessage('youtubeTitle'),
+        readSongMessage('youtubeAria')
+      );
+
+      songModalExternalActions.hidden = !showExternalActions;
     }
 
     const canTranspose = Boolean(songState.contentType === 'chords' && songState.originalRoot);
@@ -8684,6 +10199,7 @@
       assignFromFavoriteBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        captureSongFavoritesScrollPosition(favorite.id, assignFromFavoriteBtn);
         const hasPointerPosition = (
           event instanceof MouseEvent
           && event.detail > 0
@@ -8784,6 +10300,7 @@
       assignMysteryAction.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        captureSongFavoritesScrollPosition(favorite.id, assignMysteryAction);
         const hasPointerPosition = (
           event instanceof MouseEvent
           && event.detail > 0
@@ -8821,6 +10338,7 @@
       songFavoritesList.appendChild(item);
     });
     scheduleSongFavoritesLayoutSync();
+    restoreSongFavoritesScrollPosition();
   };
 
   const applySongFavorites = (favorites) => {
@@ -8880,6 +10398,99 @@
     return true;
   };
 
+  const removeCachedSongAssignmentsByIdentity = (songPayload) => {
+    const songIdentity = readSongIdentityForMatch(songPayload);
+    if (!songIdentity.urlKey && !songIdentity.titleArtistKey && !songIdentity.titleKey) {
+      return {
+        mysteryCount: 0,
+        locationCount: 0,
+      };
+    }
+
+    let mysteryCount = 0;
+    Object.entries(asObject(mysterySongAssignments)).forEach(([, assignmentPayload]) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      if (!isSongIdentityMatch(songIdentity, assignmentIdentity)) return;
+
+      const groupTitle = String(assignment.groupTitle || assignment.group_title || '').trim();
+      const mysteryTitle = normalizeMysteryName(assignment.mysteryTitle || assignment.mystery_title || '');
+      if (removeCachedMysterySongAssignment(groupTitle, mysteryTitle)) {
+        mysteryCount += 1;
+      }
+    });
+
+    let locationCount = 0;
+    Object.entries(asObject(songLocationAssignments)).forEach(([locationId, assignmentPayload]) => {
+      const assignment = asObject(assignmentPayload);
+      const assignmentIdentity = readSongIdentityForMatch({
+        url: assignment.songUrl || assignment.song_url || '',
+        title: assignment.songTitle || assignment.song_title || '',
+        artist: assignment.songArtist || assignment.song_artist || '',
+      });
+      if (!isSongIdentityMatch(songIdentity, assignmentIdentity)) return;
+
+      if (removeCachedSongLocationAssignment(locationId)) {
+        locationCount += 1;
+      }
+    });
+
+    return {
+      mysteryCount,
+      locationCount,
+    };
+  };
+
+  const applyFavoriteAssignmentCleanup = (responsePayload, fallbackSongPayload = null) => {
+    const payload = asObject(responsePayload);
+    const cleanup = asObject(payload.assignment_cleanup || payload.assignmentCleanup);
+    const mysteryCleanup = asObject(cleanup.mystery);
+    const locationCleanup = asObject(cleanup.location);
+
+    let mysteryCount = 0;
+    const removedMysteryAssignments = Array.isArray(mysteryCleanup.removed_assignments)
+      ? mysteryCleanup.removed_assignments
+      : (Array.isArray(mysteryCleanup.removedAssignments) ? mysteryCleanup.removedAssignments : []);
+    removedMysteryAssignments.forEach((rowPayload) => {
+      const row = asObject(rowPayload);
+      const groupTitle = String(row.group_title || row.groupTitle || '').trim();
+      const mysteryTitle = normalizeMysteryName(row.mystery_title || row.mysteryTitle || '');
+      if (removeCachedMysterySongAssignment(groupTitle, mysteryTitle)) {
+        mysteryCount += 1;
+      }
+    });
+
+    let locationCount = 0;
+    const removedLocationIds = Array.isArray(locationCleanup.removed_location_ids)
+      ? locationCleanup.removed_location_ids
+      : (Array.isArray(locationCleanup.removedLocationIds) ? locationCleanup.removedLocationIds : []);
+    removedLocationIds.forEach((rawLocationId) => {
+      const locationId = String(rawLocationId || '').trim();
+      if (!locationId) return;
+      if (removeCachedSongLocationAssignment(locationId)) {
+        locationCount += 1;
+      }
+    });
+
+    if (!mysteryCount && !locationCount && fallbackSongPayload) {
+      const fallbackCleanup = removeCachedSongAssignmentsByIdentity(fallbackSongPayload);
+      mysteryCount = fallbackCleanup.mysteryCount;
+      locationCount = fallbackCleanup.locationCount;
+    }
+
+    if (mysteryCount > 0) {
+      updateMysteryModalSongToggleState();
+    }
+    if (locationCount > 0) {
+      renderSongSaveLocationPicker();
+      updateRosaryModalSongToggleState();
+    }
+  };
+
   const saveSongFavorite = async (result, triggerButton, widget = null) => {
     if (!ensureLoggedInForUserScopedAction({
       message: 'Faça login para salvar favoritos.',
@@ -8936,6 +10547,7 @@
           throw new Error(message);
         }
 
+        applyFavoriteAssignmentCleanup(payload, safeResult);
         setFavoriteButtonState(triggerButton, false, false);
         setSongFeedback(
           readSongMessage('favoriteRemoveSuccess'),
@@ -9047,6 +10659,9 @@
       return false;
     }
 
+    if (!songFavoritesLoading && !Number.isFinite(songFavoritesPendingScrollRestoreTop)) {
+      captureSongFavoritesScrollPosition();
+    }
     songFavoritesLoading = true;
     renderSongFavorites();
     try {
@@ -10394,7 +12009,10 @@
       activeWidget.resultsContainer.scrollTop = 0;
     }
 
-    const safeResults = Array.isArray(results) ? results : [];
+    const identitySeen = append
+      ? readSongSearchIdentitySeenFromRenderedList(activeWidget.resultsList)
+      : createSongSearchIdentitySeen();
+    const safeResults = dedupeSongSearchResultsByIdentity(results, identitySeen);
     if (!safeResults.length) {
       if (!append) {
         activeWidget.resultsContainer.hidden = true;
@@ -10408,8 +12026,12 @@
     }
 
     safeResults.forEach((result) => {
+      const songIdentity = readSongIdentityForMatch(result);
       const item = document.createElement('li');
       item.className = 'song-search-item';
+      item.dataset.songUrlKey = String(songIdentity.urlKey || '').trim();
+      item.dataset.songTitleArtistKey = String(songIdentity.titleArtistKey || '').trim();
+      item.dataset.songTitleKey = String(songIdentity.titleKey || '').trim();
 
       const main = document.createElement('div');
       main.className = 'song-search-main';
@@ -10624,6 +12246,76 @@
   const readSongSearchResponseHasMore = (payload, fallback = false) => {
     if (typeof payload?.has_more === 'boolean') return payload.has_more;
     return Boolean(fallback);
+  };
+  const createSongSearchIdentitySeen = () => ({
+    byUrl: new Set(),
+    byTitleArtist: new Set(),
+    byTitle: new Set()
+  });
+  const markSongSearchIdentitySeen = (seen, identityPayload) => {
+    const safeSeen = asObject(seen);
+    const identity = asObject(identityPayload);
+    if (safeSeen.byUrl instanceof Set) {
+      const urlKey = String(identity.urlKey || '').trim();
+      if (urlKey) safeSeen.byUrl.add(urlKey);
+    }
+    if (safeSeen.byTitleArtist instanceof Set) {
+      const titleArtistKey = String(identity.titleArtistKey || '').trim();
+      if (titleArtistKey) safeSeen.byTitleArtist.add(titleArtistKey);
+    }
+    if (safeSeen.byTitle instanceof Set) {
+      const titleKey = String(identity.titleKey || '').trim();
+      if (titleKey) safeSeen.byTitle.add(titleKey);
+    }
+  };
+  const isSongSearchIdentitySeen = (seen, identityPayload) => {
+    const safeSeen = asObject(seen);
+    const identity = asObject(identityPayload);
+    const urlKey = String(identity.urlKey || '').trim();
+    if (urlKey && safeSeen.byUrl instanceof Set && safeSeen.byUrl.has(urlKey)) return true;
+    const titleArtistKey = String(identity.titleArtistKey || '').trim();
+    if (titleArtistKey && safeSeen.byTitleArtist instanceof Set && safeSeen.byTitleArtist.has(titleArtistKey)) return true;
+    const titleKey = String(identity.titleKey || '').trim();
+    return Boolean(titleKey && safeSeen.byTitle instanceof Set && safeSeen.byTitle.has(titleKey));
+  };
+  const dedupeSongSearchResultsByIdentity = (results, initialSeen = null) => {
+    const safeResults = Array.isArray(results) ? results : [];
+    if (!safeResults.length) return [];
+
+    const seen = (
+      initialSeen
+      && initialSeen.byUrl instanceof Set
+      && initialSeen.byTitleArtist instanceof Set
+      && initialSeen.byTitle instanceof Set
+    )
+      ? initialSeen
+      : createSongSearchIdentitySeen();
+    const deduped = [];
+
+    safeResults.forEach((rawResult) => {
+      const result = asObject(rawResult);
+      const identity = readSongIdentityForMatch(result);
+      if (isSongSearchIdentitySeen(seen, identity)) return;
+      markSongSearchIdentitySeen(seen, identity);
+      deduped.push(result);
+    });
+
+    return deduped;
+  };
+  const readSongSearchIdentitySeenFromRenderedList = (resultsListNode) => {
+    const seen = createSongSearchIdentitySeen();
+    if (!(resultsListNode instanceof Element)) return seen;
+
+    resultsListNode.querySelectorAll('.song-search-item').forEach((itemNode) => {
+      if (!(itemNode instanceof HTMLElement)) return;
+      markSongSearchIdentitySeen(seen, {
+        urlKey: String(itemNode.dataset.songUrlKey || '').trim(),
+        titleArtistKey: String(itemNode.dataset.songTitleArtistKey || '').trim(),
+        titleKey: String(itemNode.dataset.songTitleKey || '').trim(),
+      });
+    });
+
+    return seen;
   };
   const prioritizeKnownSongResults = (results) => {
     const safeResults = Array.isArray(results) ? results : [];
@@ -11174,6 +12866,22 @@
         )
       );
       if (clickedInsideAuthModalPre) return;
+      const clickedInsideAuthSessionsModalPre = Boolean(
+        authSessionsModal
+        && (
+          (targetElement && targetElement.closest('#auth-sessions-modal'))
+          || eventPathIncludes(authSessionsModal)
+        )
+      );
+      if (clickedInsideAuthSessionsModalPre) return;
+      const clickedInsideSongShareModalPre = Boolean(
+        songShareModal
+        && (
+          (targetElement && targetElement.closest('#song-share-modal'))
+          || eventPathIncludes(songShareModal)
+        )
+      );
+      if (clickedInsideSongShareModalPre) return;
       const clickedInsideSongModalPre = Boolean(
         songModal
         && (
@@ -11291,6 +12999,28 @@
         && authModal.classList.contains('open')
       );
       if (authModalIsOpen) return;
+      const clickedInsideAuthSessionsModal = Boolean(
+        targetElement
+        && authSessionsModal
+        && targetElement.closest('#auth-sessions-modal')
+      );
+      if (clickedInsideAuthSessionsModal) return;
+      const authSessionsModalIsOpen = Boolean(
+        authSessionsModal
+        && authSessionsModal.classList.contains('open')
+      );
+      if (authSessionsModalIsOpen) return;
+      const clickedInsideSongShareModal = Boolean(
+        targetElement
+        && songShareModal
+        && targetElement.closest('#song-share-modal')
+      );
+      if (clickedInsideSongShareModal) return;
+      const songShareModalIsOpen = Boolean(
+        songShareModal
+        && songShareModal.classList.contains('open')
+      );
+      if (songShareModalIsOpen) return;
 
       const clickedInsideSongSearch = songSearchWidgets.some((widget) => (
         (widget.form && widget.form.contains(target))
@@ -11327,6 +13057,16 @@
             authModal
             && authModal.classList.contains('open')
             && targetElement.closest('.auth-modal-dialog')
+          )
+          || (
+            authSessionsModal
+            && authSessionsModal.classList.contains('open')
+            && targetElement.closest('.auth-sessions-dialog')
+          )
+          || (
+            songShareModal
+            && songShareModal.classList.contains('open')
+            && targetElement.closest('.song-share-dialog')
           )
           || (
             songLocationCreateModal
@@ -11377,6 +13117,16 @@
     });
   }
 
+  document.addEventListener('visibilitychange', () => {
+    if (!isAuthLoggedIn()) {
+      clearAuthSessionHealthcheckTimer();
+      return;
+    }
+    if (document.visibilityState === 'visible') {
+      scheduleAuthSessionHealthcheck(900);
+    }
+  });
+
   const revealItems = document.querySelectorAll('.reveal');
 
   if ('IntersectionObserver' in window) {
@@ -11400,6 +13150,122 @@
     revealItems.forEach((item) => item.classList.add('is-visible'));
   }
 
+  const isModalElementOpen = (modalElement) => Boolean(
+    modalElement
+    && modalElement.classList.contains('open')
+  );
+
+  const resolveModalZIndex = (modalElement, fallbackZIndex = 0) => {
+    if (!(modalElement instanceof HTMLElement)) return fallbackZIndex;
+    const computedZIndex = Number.parseFloat(window.getComputedStyle(modalElement).zIndex);
+    return Number.isFinite(computedZIndex) ? computedZIndex : fallbackZIndex;
+  };
+
+  const resolveTopOpenModalCloseAction = () => {
+    const modalCloseActions = [
+      {
+        element: customSongModal,
+        fallbackZIndex: 150,
+        isOpen: () => isModalElementOpen(customSongModal),
+        close: () => closeCustomSongModal({ preserveDraft: true }),
+      },
+      {
+        element: favoriteConfirmModal,
+        fallbackZIndex: 146,
+        isOpen: () => isModalElementOpen(favoriteConfirmModal),
+        close: () => closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS),
+      },
+      {
+        element: songShareModal,
+        fallbackZIndex: 144,
+        isOpen: () => isModalElementOpen(songShareModal),
+        close: () => closeSongShareModal(),
+      },
+      {
+        element: authSessionsModal,
+        fallbackZIndex: 143,
+        isOpen: () => isModalElementOpen(authSessionsModal),
+        close: () => closeAuthSessionsModal(),
+      },
+      {
+        element: authModal,
+        fallbackZIndex: 142,
+        isOpen: () => isModalElementOpen(authModal),
+        close: () => closeAuthModal(),
+      },
+      {
+        element: mysteryGroupModal,
+        fallbackZIndex: 141,
+        isOpen: () => isModalElementOpen(mysteryGroupModal),
+        close: () => closeMysteryGroupModal({ restoreFocus: true }),
+      },
+      {
+        element: songLocationCreateModal,
+        fallbackZIndex: 139,
+        isOpen: () => isSongLocationCreateModalOpen(),
+        close: () => closeSongLocationCreateModal(),
+      },
+      {
+        element: songSaveLocationPicker,
+        fallbackZIndex: 138,
+        isOpen: () => isSongSaveLocationPickerOpen(),
+        close: () => closeSongSaveLocationPicker(),
+      },
+      {
+        element: mysterySongAssignModal,
+        fallbackZIndex: 133,
+        isOpen: () => isModalElementOpen(mysterySongAssignModal),
+        close: () => closeMysterySongAssignModal(),
+      },
+      {
+        element: mysteryModal,
+        fallbackZIndex: 120,
+        isOpen: () => isModalElementOpen(mysteryModal),
+        close: () => closeMysteryModal(),
+      },
+      {
+        element: rosaryModal,
+        fallbackZIndex: 118,
+        isOpen: () => isModalElementOpen(rosaryModal),
+        close: () => closeRosaryModal(),
+      },
+      {
+        element: songModal,
+        fallbackZIndex: 91,
+        isOpen: () => isModalElementOpen(songModal),
+        close: () => {
+          void closeSongModal();
+        },
+      },
+    ];
+
+    const openModalActions = modalCloseActions
+      .map((action, order) => ({
+        ...action,
+        order,
+        zIndex: resolveModalZIndex(action.element, action.fallbackZIndex),
+      }))
+      .filter((action) => action.isOpen());
+
+    if (!openModalActions.length) return null;
+
+    openModalActions.sort((left, right) => {
+      if (left.zIndex !== right.zIndex) {
+        return right.zIndex - left.zIndex;
+      }
+      return right.order - left.order;
+    });
+
+    return openModalActions[0].close;
+  };
+
+  const closeTopOpenModal = () => {
+    const closeAction = resolveTopOpenModalCloseAction();
+    if (typeof closeAction !== 'function') return false;
+    closeAction();
+    return true;
+  };
+
   document.addEventListener('keydown', (event) => {
     if (portalModeEnabled) {
       if (event.key === 'ArrowDown' || event.key === 'PageDown') {
@@ -11415,54 +13281,9 @@
 
     if (event.key === 'Escape') {
       closeMainMenu();
-
-      if (favoriteConfirmModal && favoriteConfirmModal.classList.contains('open')) {
-        closeFavoriteConfirmModal(FAVORITE_CONFIRM_ACTION_DISMISS);
-        return;
-      }
-
-      if (authModal && authModal.classList.contains('open')) {
-        closeAuthModal();
-        return;
-      }
-
-      if (isSongLocationCreateModalOpen()) {
-        closeSongLocationCreateModal();
-        return;
-      }
-
-      if (isSongSaveLocationPickerOpen()) {
-        closeSongSaveLocationPicker();
-        return;
-      }
-
-      if (mysterySongAssignModal && mysterySongAssignModal.classList.contains('open')) {
-        closeMysterySongAssignModal();
-        return;
-      }
-
-      if (customSongModal && customSongModal.classList.contains('open')) {
-        closeCustomSongModal({ preserveDraft: true });
-        return;
-      }
-
-      if (mysteryGroupModal && mysteryGroupModal.classList.contains('open')) {
-        closeMysteryGroupModal({ restoreFocus: true });
-        return;
-      }
-
-      if (rosaryModal && rosaryModal.classList.contains('open')) {
-        closeRosaryModal();
-        return;
-      }
-
-      if (songModal && songModal.classList.contains('open')) {
-        closeSongModal();
-        return;
-      }
-
-      if (mysteryModal && mysteryModal.classList.contains('open')) {
-        closeMysteryModal();
+      if (event.defaultPrevented) return;
+      if (closeTopOpenModal()) {
+        event.preventDefault();
       }
     }
   });

@@ -38,7 +38,7 @@
         ]
       },
       {
-        "label": "Musicas",
+        "label": "Músicas",
         "href": "#cantos"
       },
       {
@@ -783,11 +783,11 @@
       "customSongUpdateSuccess": "Música manual atualizada.",
       "customSongSaveError": "Não foi possível salvar a música.",
       "customSongRemoveButton": "Remover",
-      "customSongRemoveConfirmTitle": "Inativar música",
-      "customSongRemoveConfirm": "Deseja inativar \"{title}\"?",
+      "customSongRemoveConfirmTitle": "Excluir música",
+      "customSongRemoveConfirm": "Deseja excluir \"{title}\"?",
       "customSongRemoveConfirmCancel": "Cancelar",
-      "customSongRemoveConfirmAccept": "Inativar",
-      "customSongRemoveSuccess": "Música manual inativada.",
+      "customSongRemoveConfirmAccept": "Excluir",
+      "customSongRemoveSuccess": "Música manual excluída.",
       "customSongDraftRemoveSuccess": "Rascunho removido.",
       "customSongRemoveError": "Não foi possível remover a música.",
       "customSongEditButton": "Editar",
@@ -909,6 +909,11 @@
     "rosary": {
       "closeAria": "Fechar guia do terço",
       "stepsAria": "Etapas do terço",
+      "songToggleShow": "Exibir música da etapa",
+      "songToggleEmpty": "Nenhuma música atribuída a esta etapa.",
+      "songLyricsEmpty": "A letra desta música ainda não foi encontrada.",
+      "closeSongPanelAria": "Fechar música da etapa",
+      "songCategoryLabel": "Terço",
       "prevButton": "Anterior",
       "nextButton": "Próximo",
       "finishButton": "Concluir",

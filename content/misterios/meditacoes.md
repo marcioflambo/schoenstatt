@@ -1,4 +1,4 @@
-﻿# Meditacoes dos Misterios
+﻿# Meditações dos Mistérios
 
 ## Gozosos
 ## Dolorosos

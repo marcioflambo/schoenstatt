@@ -404,7 +404,7 @@ def login_user(
                 )
                 user_row = cur.fetchone()
                 if not isinstance(user_row, dict):
-                    raise PermissionError('Email ou senha invalido.')
+                    raise PermissionError('Usuario nao encontrado.')
 
                 if not bool(user_row.get('is_active')):
                     raise PermissionError('Conta inativa.')
@@ -479,6 +479,162 @@ def get_authenticated_user(database_url: str | None, token: str | None) -> dict[
         raise RuntimeError(f'Erro ao validar sessao: {exc}') from exc
 
     return _build_user_payload(user_row)
+
+
+def list_authenticated_user_sessions(database_url: str | None, token: str | None) -> dict[str, object]:
+    safe_database_url = _require_database_url(database_url)
+    safe_token = _normalize_auth_token(token)
+    token_hash = _hash_session_token(safe_token)
+    current_session_guid = ''
+
+    try:
+        with connect(safe_database_url, connect_timeout=6) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT s.user_id, s.session_guid
+                    FROM app_user_sessions AS s
+                    INNER JOIN app_users AS u
+                        ON u.id = s.user_id
+                    WHERE s.refresh_token_hash = %s
+                        AND s.revoked_at IS NULL
+                        AND s.expires_at > NOW()
+                        AND u.is_active = TRUE
+                    ORDER BY s.id DESC
+                    LIMIT 1;
+                    """,
+                    (token_hash,),
+                )
+                current_session_row = cur.fetchone()
+                if not isinstance(current_session_row, dict):
+                    raise PermissionError('Sessao invalida ou expirada.')
+
+                current_user_id = int(current_session_row.get('user_id') or 0)
+                current_session_guid = str(current_session_row.get('session_guid') or '')
+                if current_user_id <= 0 or not current_session_guid:
+                    raise PermissionError('Sessao invalida ou expirada.')
+
+                cur.execute(
+                    """
+                    SELECT
+                        session_guid,
+                        user_agent,
+                        host(ip_address) AS ip_address,
+                        created_at,
+                        expires_at
+                    FROM app_user_sessions
+                    WHERE user_id = %s
+                        AND revoked_at IS NULL
+                        AND expires_at > NOW()
+                    ORDER BY created_at DESC, id DESC;
+                    """,
+                    (current_user_id,),
+                )
+                session_rows = cur.fetchall() or []
+    except PermissionError:
+        raise
+    except OperationalError as exc:
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para listar sessoes: {exc}') from exc
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise RuntimeError(f'Erro ao listar sessoes: {exc}') from exc
+
+    sessions: list[dict[str, object]] = []
+    for row in session_rows:
+        if not isinstance(row, dict):
+            continue
+        session_guid = str(row.get('session_guid') or '')
+        if not session_guid:
+            continue
+        created_at = row.get('created_at') if isinstance(row.get('created_at'), datetime) else None
+        expires_at = row.get('expires_at') if isinstance(row.get('expires_at'), datetime) else None
+        sessions.append(
+            {
+                'session_guid': session_guid,
+                'user_agent': _normalize_spaces(str(row.get('user_agent') or '')),
+                'ip_address': _normalize_spaces(str(row.get('ip_address') or '')),
+                'created_at_utc': _to_utc_iso_optional(created_at),
+                'expires_at_utc': _to_utc_iso_optional(expires_at),
+                'is_current': session_guid == current_session_guid,
+            }
+        )
+
+    return {
+        'current_session_guid': current_session_guid,
+        'sessions': sessions,
+    }
+
+
+def logout_authenticated_user_session(
+    database_url: str | None,
+    token: str | None,
+    session_guid: str | None,
+) -> dict[str, object]:
+    safe_database_url = _require_database_url(database_url)
+    safe_token = _normalize_auth_token(token)
+    safe_session_guid = _normalize_uuid_text(session_guid, 'a sessao')
+    token_hash = _hash_session_token(safe_token)
+    current_session_guid = ''
+
+    try:
+        with connect(safe_database_url, connect_timeout=6) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT s.user_id, s.session_guid
+                    FROM app_user_sessions AS s
+                    INNER JOIN app_users AS u
+                        ON u.id = s.user_id
+                    WHERE s.refresh_token_hash = %s
+                        AND s.revoked_at IS NULL
+                        AND s.expires_at > NOW()
+                        AND u.is_active = TRUE
+                    ORDER BY s.id DESC
+                    LIMIT 1;
+                    """,
+                    (token_hash,),
+                )
+                current_session_row = cur.fetchone()
+                if not isinstance(current_session_row, dict):
+                    raise PermissionError('Sessao invalida ou expirada.')
+
+                current_user_id = int(current_session_row.get('user_id') or 0)
+                current_session_guid = str(current_session_row.get('session_guid') or '')
+                if current_user_id <= 0 or not current_session_guid:
+                    raise PermissionError('Sessao invalida ou expirada.')
+
+                cur.execute(
+                    """
+                    UPDATE app_user_sessions
+                    SET revoked_at = NOW()
+                    WHERE user_id = %s
+                        AND session_guid = %s
+                        AND revoked_at IS NULL
+                        AND expires_at > NOW()
+                    RETURNING session_guid;
+                    """,
+                    (current_user_id, safe_session_guid),
+                )
+                revoked_row = cur.fetchone()
+            conn.commit()
+    except (PermissionError, ValueError):
+        raise
+    except OperationalError as exc:
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para encerrar sessao selecionada: {exc}') from exc
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise RuntimeError(f'Erro ao encerrar sessao selecionada: {exc}') from exc
+
+    if not isinstance(revoked_row, dict):
+        raise ValueError('Sessao nao encontrada ou ja encerrada.')
+
+    revoked_session_guid = str(revoked_row.get('session_guid') or '')
+    if not revoked_session_guid:
+        raise ValueError('Sessao nao encontrada ou ja encerrada.')
+
+    return {
+        'session_guid': revoked_session_guid,
+        'logged_out': True,
+        'current_session_revoked': revoked_session_guid == current_session_guid,
+    }
 
 
 def update_authenticated_user(

@@ -16,6 +16,9 @@ from pydantic import BaseModel
 CIFRACLUB_HOST_SUFFIXES = ('cifraclub.com.br', 'cifraclub.com')
 CIFRAS_HOST_SUFFIXES = ('cifras.com.br',)
 _CHORD_TOKEN_PATTERN = re.compile(r'\[[^\]\n]+\]')
+_TAB_BLOCK_HEADER_PATTERN = re.compile(r'(?i)^\s*(?:parte|part)\s+\d+\s*(?:de|of|/)\s*\d+\s*$')
+_TAB_LINE_ALLOWED_CHARS_PATTERN = re.compile(r'^[0-9A-Ga-g|:/\\\-~hHpPbBrRxX*().\s]+$')
+_TAB_STRING_PREFIX_PATTERN = re.compile(r'^\s*[A-Ga-g](?:\s*[\|:])')
 _SPOTIFY_KEY_NOTES_SHARP = ('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
 _SPOTIFY_TOKEN_CACHE: dict[str, object] = {
     'access_token': '',
@@ -118,22 +121,22 @@ def _parse_song_source(hostname: str) -> str | None:
 def _normalize_song_url(raw_url: str) -> tuple[str, str]:
     raw_url = (raw_url or '').strip()
     if not raw_url:
-        raise ValueError('Informe um link de musica.')
+        raise ValueError('Informe um link de música.')
 
     if '://' not in raw_url:
         raw_url = f'https://{raw_url}'
 
     parsed = urlparse(raw_url)
     if parsed.scheme not in ('http', 'https'):
-        raise ValueError('Link invalido. Use http ou https.')
+        raise ValueError('Link inválido. Use http ou https.')
 
     hostname = (parsed.hostname or '').lower()
     source = _parse_song_source(hostname)
     if source not in {'cifraclub', 'cifras'}:
-        raise ValueError('A busca automatica aceita links do Cifra Club e do Cifras.com.br.')
+        raise ValueError('A busca automática aceita links do Cifra Club e do Cifras.com.br.')
 
     if not parsed.path or parsed.path == '/':
-        raise ValueError('Link de musica invalido.')
+        raise ValueError('Link de música inválido.')
 
     clean_path = parsed.path
     if source == 'cifraclub' and not clean_path.endswith('/'):
@@ -189,7 +192,7 @@ def _download_text(url: str) -> str:
 
         return content.decode('utf-8', errors='replace')
     except Exception as exc:
-        raise RuntimeError(f'Falha ao carregar a pagina da cifra: {exc}') from exc
+        raise RuntimeError(f'Falha ao carregar a página da cifra: {exc}') from exc
 
 
 def _download_json(url: str) -> dict:
@@ -200,7 +203,7 @@ def _download_json(url: str) -> dict:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Resposta invalida do portal de busca: {exc}') from exc
+        raise RuntimeError(f'Resposta inválida do portal de busca: {exc}') from exc
 
     if not isinstance(payload, dict):
         raise RuntimeError('Resposta inesperada do portal de busca.')
@@ -241,20 +244,20 @@ def _download_json_request(
         except Exception:
             detail = ''
         detail = _normalize_spaces(detail)[:220]
-        raise RuntimeError(f'Requisicao HTTP {exc.code} falhou para servico de tom: {detail}') from exc
+        raise RuntimeError(f'Requisição HTTP {exc.code} falhou para serviço de tom: {detail}') from exc
     except URLError as exc:
-        raise RuntimeError(f'Falha de rede ao consultar servico de tom: {exc.reason}') from exc
+        raise RuntimeError(f'Falha de rede ao consultar serviço de tom: {exc.reason}') from exc
     except Exception as exc:
-        raise RuntimeError(f'Falha ao consultar servico de tom: {exc}') from exc
+        raise RuntimeError(f'Falha ao consultar serviço de tom: {exc}') from exc
 
     try:
         text = content.decode(charset, errors='replace')
         payload = json.loads(text)
     except Exception as exc:
-        raise RuntimeError(f'Resposta invalida do servico de tom: {exc}') from exc
+        raise RuntimeError(f'Resposta inválida do serviço de tom: {exc}') from exc
 
     if not isinstance(payload, dict):
-        raise RuntimeError('Resposta inesperada do servico de tom.')
+        raise RuntimeError('Resposta inesperada do serviço de tom.')
     return payload
 
 
@@ -653,14 +656,14 @@ def detect_song_key(raw_title: str, raw_artist: str = '') -> dict[str, str]:
     title = _normalize_spaces(raw_title)
     artist = _normalize_spaces(raw_artist)
     if not title and not artist:
-        raise ValueError('Informe titulo ou artista para identificar o tom.')
+        raise ValueError('Informe título ou artista para identificar o tom.')
 
     key = detect_song_key_with_api(title, artist)
     if not key:
-        raise RuntimeError('Nao foi possivel identificar o tom por API para esta musica.')
+        raise RuntimeError('Não foi possível identificar o tom por API para esta música.')
 
     return {
-        'title': title or 'Musica',
+        'title': title or 'Música',
         'artist': artist,
         'original_key': key,
         'source': 'spotify',
@@ -671,7 +674,7 @@ def detect_song_key(raw_title: str, raw_artist: str = '') -> dict[str, str]:
 def _normalize_search_query(raw_query: str) -> str:
     query = _normalize_spaces(raw_query or '')
     if len(query) < 2:
-        raise ValueError('Digite pelo menos 2 caracteres para buscar a musica.')
+        raise ValueError('Digite pelo menos 2 caracteres para buscar a música.')
     return query
 
 
@@ -792,7 +795,7 @@ def search_song_portals(
             source_batches.append(found)
 
     if not source_batches and errors:
-        raise RuntimeError('Nao foi possivel pesquisar musicas nos portais agora. Tente novamente.')
+        raise RuntimeError('Não foi possível pesquisar músicas nos portais agora. Tente novamente.')
 
     merged_results = _rank_song_search_results(
         query=query,
@@ -813,7 +816,7 @@ def search_song_portals(
 
 
 def _extract_title_and_artist_cifraclub(html: str) -> tuple[str, str]:
-    default_title = 'Musica'
+    default_title = 'Música'
     default_artist = 'Artista'
 
     title_match = re.search(r'(?is)<title>(.*?)</title>', html)
@@ -832,7 +835,7 @@ def _extract_title_and_artist_cifraclub(html: str) -> tuple[str, str]:
 
 
 def _extract_title_and_artist_cifras(html: str) -> tuple[str, str]:
-    default_title = 'Musica'
+    default_title = 'Música'
     default_artist = 'Artista'
 
     title_meta_match = re.search(r"(?is)\bNAME:\s*'([^']+)'", html)
@@ -876,7 +879,7 @@ def _extract_original_key_cifras(html: str) -> str:
 
 def _extract_chord_lyrics_from_html_block(block: str) -> str:
     if not block:
-        raise RuntimeError('Nao foi possivel identificar a cifra nesta pagina.')
+        raise RuntimeError('Não foi possível identificar a cifra nesta página.')
 
     text = block
     text = re.sub(
@@ -897,7 +900,7 @@ def _extract_chord_lyrics_from_html_block(block: str) -> str:
 
     normalized = _normalize_lyrics_text(text)
     if not normalized:
-        raise RuntimeError('A cifra foi encontrada, mas o conteudo veio vazio.')
+        raise RuntimeError('A cifra foi encontrada, mas o conteúdo veio vazio.')
 
     return normalized
 
@@ -905,7 +908,7 @@ def _extract_chord_lyrics_from_html_block(block: str) -> str:
 def _extract_chord_lyrics_cifraclub(html: str) -> str:
     pre_match = re.search(r'(?is)<pre[^>]*>(.*?)</pre>', html)
     if not pre_match:
-        raise RuntimeError('Nao foi possivel identificar a cifra nesta pagina.')
+        raise RuntimeError('Não foi possível identificar a cifra nesta página.')
     return _extract_chord_lyrics_from_html_block(pre_match.group(1))
 
 
@@ -926,12 +929,35 @@ def _extract_chord_lyrics_cifras(html: str) -> str:
     if pre_match:
         return _extract_chord_lyrics_from_html_block(pre_match.group(1))
 
-    raise RuntimeError('Nao foi possivel identificar a cifra nesta pagina.')
+    raise RuntimeError('Não foi possível identificar a cifra nesta página.')
+
+
+def _is_tablature_line(raw_line: str) -> bool:
+    line = (raw_line or '').strip()
+    if not line:
+        return False
+
+    if _TAB_BLOCK_HEADER_PATTERN.fullmatch(line):
+        return True
+
+    if '|' not in line and ':' not in line:
+        return False
+
+    if not _TAB_LINE_ALLOWED_CHARS_PATTERN.fullmatch(line):
+        return False
+
+    if _TAB_STRING_PREFIX_PATTERN.match(line):
+        return True
+
+    separator_count = line.count('|') + line.count(':')
+    dash_count = line.count('-')
+    digit_count = sum(character.isdigit() for character in line)
+    return separator_count >= 2 and (dash_count >= 3 or digit_count >= 2)
 
 
 def extract_plain_lyrics_from_chords_text(chords_text: str) -> str:
     if not (chords_text or '').strip():
-        raise RuntimeError('Nao foi possivel gerar letra a partir da cifra.')
+        raise RuntimeError('Não foi possível gerar letra a partir da cifra.')
 
     normalized_breaks = chords_text.replace('\r\n', '\n').replace('\r', '\n')
     output_lines: list[str] = []
@@ -939,6 +965,9 @@ def extract_plain_lyrics_from_chords_text(chords_text: str) -> str:
     for raw_line in normalized_breaks.split('\n'):
         if not raw_line.strip():
             output_lines.append('')
+            continue
+
+        if _is_tablature_line(raw_line):
             continue
 
         line_without_chords = _CHORD_TOKEN_PATTERN.sub('', raw_line)
@@ -962,7 +991,7 @@ def extract_plain_lyrics_from_chords_text(chords_text: str) -> str:
     normalized = _normalize_lyrics_text('\n'.join(output_lines))
     normalized = re.sub(r'\n{3,}', '\n\n', normalized)
     if not normalized:
-        raise RuntimeError('Nao foi possivel gerar letra a partir da cifra.')
+        raise RuntimeError('Não foi possível gerar letra a partir da cifra.')
 
     return normalized
 
@@ -1019,7 +1048,7 @@ def _resolve_song_url_for_lyrics(raw_title: str, raw_artist: str, raw_source_url
             if candidate_url:
                 return candidate_url
 
-    raise ValueError('Informe um link de cifra valido para gerar a letra.')
+    raise ValueError('Informe um link de cifra válido para gerar a letra.')
 
 
 def fetch_lyrics_from_chords(raw_title: str, raw_artist: str = '', raw_source_url: str = '') -> dict[str, str]:
@@ -1048,4 +1077,4 @@ def fetch_song_from_url(raw_url: str) -> dict[str, str]:
         return _fetch_song_from_cifraclub_url(url)
     if source == 'cifras':
         return _fetch_song_from_cifras_url(url)
-    raise ValueError('Portal de cifra nao suportado.')
+    raise ValueError('Portal de cifra não suportado.')

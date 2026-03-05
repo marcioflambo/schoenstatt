@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
+import unicodedata
 
 from pydantic import BaseModel
 
@@ -31,7 +32,13 @@ class SongLocationNodeReorderRequest(BaseModel):
 _STORE_LOCK = RLock()
 _ASSIGNMENT_MODE_MYSTERY = 'mystery'
 _ASSIGNMENT_MODE_LOCATION = 'location'
-_DEFAULT_MYSTERY_ROOT_LABEL = 'Misterios'
+_DEFAULT_MYSTERY_ROOT_LABEL = 'Mistérios'
+_DEFAULT_ROSARY_ROOT_LABEL = 'Terço'
+_DEFAULT_ROSARY_FIXED_LABELS = (
+    'Invocação',
+    'Preparação',
+    'Agradecimento',
+)
 
 
 def _normalize_spaces(value: str | None) -> str:
@@ -61,6 +68,12 @@ def _coerce_bool(value: object, default: bool = False) -> bool:
         if normalized in {'1', 'true', 'yes', 'sim', 'on', 'ativo', 'active'}:
             return True
     return default
+
+
+def _normalize_label_token(value: str | None) -> str:
+    normalized = unicodedata.normalize('NFD', _normalize_spaces(value))
+    ascii_folded = ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+    return _normalize_spaces(ascii_folded).casefold()
 
 
 def _normalize_assignment_mode(value: str | None) -> str:
@@ -222,6 +235,176 @@ def _read_portal_mystery_cards(portal_content_file: Path) -> list[dict[str, obje
     return normalized_cards
 
 
+def _read_portal_rosary_fixed_locations(portal_content_file: Path) -> dict[str, object]:
+    payload = _read_portal_content_payload(portal_content_file)
+    if not isinstance(payload, dict):
+        return {
+            'root_label': _DEFAULT_ROSARY_ROOT_LABEL,
+            'child_labels': list(_DEFAULT_ROSARY_FIXED_LABELS),
+        }
+
+    ui_messages = payload.get('uiMessages')
+    if not isinstance(ui_messages, dict):
+        return {
+            'root_label': _DEFAULT_ROSARY_ROOT_LABEL,
+            'child_labels': list(_DEFAULT_ROSARY_FIXED_LABELS),
+        }
+
+    rosary_messages = ui_messages.get('rosary')
+    if not isinstance(rosary_messages, dict):
+        return {
+            'root_label': _DEFAULT_ROSARY_ROOT_LABEL,
+            'child_labels': list(_DEFAULT_ROSARY_FIXED_LABELS),
+        }
+
+    root_label = _normalize_spaces(str(rosary_messages.get('songCategoryLabel') or ''))
+    if not root_label:
+        root_label = _DEFAULT_ROSARY_ROOT_LABEL
+
+    child_key_defaults = (
+        ('stepStartGroup', _DEFAULT_ROSARY_FIXED_LABELS[0]),
+        ('stepInitialBeadsGroup', _DEFAULT_ROSARY_FIXED_LABELS[1]),
+        ('stepFinalGroup', _DEFAULT_ROSARY_FIXED_LABELS[2]),
+    )
+    child_labels: list[str] = []
+    for key, fallback_label in child_key_defaults:
+        label = _normalize_spaces(str(rosary_messages.get(key) or ''))
+        child_labels.append(label or fallback_label)
+
+    deduped_child_labels: list[str] = []
+    seen_tokens: set[str] = set()
+    for label in child_labels:
+        token = _normalize_label_token(label)
+        if not token or token in seen_tokens:
+            continue
+        seen_tokens.add(token)
+        deduped_child_labels.append(label)
+
+    if not deduped_child_labels:
+        deduped_child_labels = list(_DEFAULT_ROSARY_FIXED_LABELS)
+
+    return {
+        'root_label': root_label,
+        'child_labels': deduped_child_labels,
+    }
+
+
+def _find_node_by_parent_and_label(
+    rows: list[dict[str, object]],
+    parent_id: str,
+    label: str,
+) -> dict[str, object] | None:
+    safe_parent_id = _normalize_spaces(parent_id)
+    target_token = _normalize_label_token(label)
+    if not target_token:
+        return None
+    for row in rows:
+        if str(row.get('parent_id') or '') != safe_parent_id:
+            continue
+        label_token = _normalize_label_token(str(row.get('label') or ''))
+        if label_token == target_token:
+            return row
+    return None
+
+
+def _max_row_node_id(rows: list[dict[str, object]]) -> int:
+    max_id = 0
+    for row in rows:
+        try:
+            max_id = max(max_id, int(str(row.get('node_id') or '').strip()))
+        except ValueError:
+            continue
+    return max_id
+
+
+def _ensure_rosary_fixed_nodes(
+    store: dict[str, object],
+    portal_content_file: Path | None = None,
+) -> tuple[dict[str, object], bool]:
+    if portal_content_file is None:
+        return _normalize_store(store), False
+
+    config = _read_portal_rosary_fixed_locations(portal_content_file)
+    root_label = _normalize_spaces(str(config.get('root_label') or ''))
+    raw_child_labels = config.get('child_labels')
+    child_labels = [
+        _normalize_spaces(str(item))
+        for item in raw_child_labels
+        if isinstance(raw_child_labels, list) and _normalize_spaces(str(item))
+    ] if isinstance(raw_child_labels, list) else []
+
+    if not root_label or not child_labels:
+        return _normalize_store(store), False
+
+    normalized_store = _normalize_store(store)
+    rows = _sort_rows(normalized_store.get('nodes') if isinstance(normalized_store.get('nodes'), list) else [])
+    changed = False
+    now_iso = _now_utc_iso()
+    next_id = max(_coerce_int(normalized_store.get('last_id'), 0), _max_row_node_id(rows))
+
+    def create_node(
+        *,
+        label: str,
+        parent_id: str = '',
+        order_index: int = 1,
+    ) -> dict[str, object]:
+        nonlocal next_id
+        next_id += 1
+        row = {
+            'node_id': str(next_id),
+            'parent_id': _normalize_spaces(parent_id),
+            'label': _normalize_spaces(label),
+            'order_index': max(_coerce_int(order_index, 1), 1),
+            'assignment_mode': _ASSIGNMENT_MODE_LOCATION,
+            'mystery_group_title': '',
+            'mystery_title': '',
+            'is_active': True,
+            'deleted_at_utc': '',
+            'created_at_utc': now_iso,
+            'updated_at_utc': now_iso,
+        }
+        rows.append(row)
+        return row
+
+    rosary_root_row = _find_node_by_parent_and_label(rows, '', root_label)
+    if not rosary_root_row:
+        root_order_index = len([
+            row
+            for row in rows
+            if not _normalize_spaces(str(row.get('parent_id') or ''))
+        ]) + 1
+        rosary_root_row = create_node(
+            label=root_label,
+            parent_id='',
+            order_index=root_order_index,
+        )
+        changed = True
+
+    rosary_root_id = _normalize_spaces(str(rosary_root_row.get('node_id') or ''))
+    if not rosary_root_id:
+        return normalized_store, changed
+
+    for child_order_index, child_label in enumerate(child_labels, start=1):
+        existing_child = _find_node_by_parent_and_label(rows, rosary_root_id, child_label)
+        if existing_child:
+            continue
+        create_node(
+            label=child_label,
+            parent_id=rosary_root_id,
+            order_index=child_order_index,
+        )
+        changed = True
+
+    if not changed:
+        return normalized_store, False
+
+    updated_store = {
+        'last_id': next_id,
+        'nodes': _sort_rows(rows),
+    }
+    return _normalize_store(updated_store), True
+
+
 def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[str, object]:
     now_iso = _now_utc_iso()
     next_id = max(base_last_id, 0)
@@ -284,10 +467,12 @@ def _build_default_store(base_last_id: int, portal_content_file: Path) -> dict[s
                     mystery_title=item_title,
                 )
 
-    return {
+    store = {
         'last_id': next_id,
         'nodes': rows,
     }
+    updated_store, _ = _ensure_rosary_fixed_nodes(store, portal_content_file=portal_content_file)
+    return updated_store
 
 
 def _read_store(
@@ -301,13 +486,21 @@ def _read_store(
         try:
             raw = json.loads(file_path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f'Arquivo de locais de musicas invalido: {file_path}') from exc
+            raise RuntimeError(f'Arquivo de locais de músicas inválido: {file_path}') from exc
         except OSError as exc:
-            raise RuntimeError(f'Falha ao ler arquivo de locais de musicas: {exc}') from exc
+            raise RuntimeError(f'Falha ao ler arquivo de locais de músicas: {exc}') from exc
         normalized = _normalize_store(raw)
 
     if normalized.get('nodes'):
-        return normalized
+        if portal_content_file is None:
+            return normalized
+        ensured_store, changed = _ensure_rosary_fixed_nodes(
+            normalized,
+            portal_content_file=portal_content_file,
+        )
+        if changed:
+            _write_store(file_path, ensured_store)
+        return ensured_store
 
     if portal_content_file is None:
         return normalized
@@ -330,7 +523,7 @@ def _write_store(file_path: Path, store: dict[str, object]) -> None:
         temp_path.write_text(payload, encoding='utf-8')
         temp_path.replace(file_path)
     except OSError as exc:
-        raise RuntimeError(f'Falha ao salvar arquivo de locais de musicas: {exc}') from exc
+        raise RuntimeError(f'Falha ao salvar arquivo de locais de músicas: {exc}') from exc
     finally:
         if temp_path.exists():
             try:
@@ -522,7 +715,7 @@ def create_song_location_node(
                 None,
             )
             if not parent_row or not _coerce_bool(parent_row.get('is_active'), default=True):
-                raise ValueError('Categoria pai nao encontrada.')
+                raise ValueError('Categoria pai não encontrada.')
 
         sibling_rows = [
             row
@@ -586,7 +779,7 @@ def update_song_location_node(
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
-        raise ValueError('Categoria/subcategoria invalida.')
+        raise ValueError('Categoria/subcategoria inválida.')
 
     now_iso = _now_utc_iso()
     saved_row: dict[str, object] = {}
@@ -600,7 +793,7 @@ def update_song_location_node(
         node_rows = _sort_rows(rows if isinstance(rows, list) else [])
         target_index = _find_row_index(node_rows, safe_node_id)
         if target_index < 0:
-            raise ValueError('Categoria/subcategoria nao encontrada.')
+            raise ValueError('Categoria/subcategoria não encontrada.')
 
         target_row = dict(node_rows[target_index])
         if not _coerce_bool(target_row.get('is_active'), default=True):
@@ -609,9 +802,9 @@ def update_song_location_node(
 
         requested_parent = _normalize_spaces(payload.parent_id)
         if requested_parent == safe_node_id:
-            raise ValueError('A categoria nao pode ser pai dela mesma.')
+            raise ValueError('A categoria não pode ser pai dela mesma.')
         if requested_parent and requested_parent in descendants:
-            raise ValueError('Nao e permitido mover para um descendente.')
+            raise ValueError('Não é permitido mover para um descendente.')
         if requested_parent:
             parent_exists = any(
                 str(row.get('node_id') or '') == requested_parent
@@ -619,7 +812,7 @@ def update_song_location_node(
                 for row in node_rows
             )
             if not parent_exists:
-                raise ValueError('Categoria pai nao encontrada.')
+                raise ValueError('Categoria pai não encontrada.')
 
         original_parent = str(target_row.get('parent_id') or '')
         next_parent = requested_parent or ''
@@ -698,7 +891,7 @@ def delete_song_location_node(
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
-        raise ValueError('Categoria/subcategoria invalida.')
+        raise ValueError('Categoria/subcategoria inválida.')
 
     with _STORE_LOCK:
         store = _read_store(
@@ -709,7 +902,7 @@ def delete_song_location_node(
         node_rows = _sort_rows(rows if isinstance(rows, list) else [])
         target_index = _find_row_index(node_rows, safe_node_id)
         if target_index < 0:
-            raise ValueError('Categoria/subcategoria nao encontrada.')
+            raise ValueError('Categoria/subcategoria não encontrada.')
 
         now_iso = _now_utc_iso()
         ids_to_deactivate = _collect_descendant_ids(node_rows, safe_node_id)
@@ -743,7 +936,7 @@ def hard_delete_song_location_node(
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
-        raise ValueError('Categoria/subcategoria invalida.')
+        raise ValueError('Categoria/subcategoria inválida.')
 
     with _STORE_LOCK:
         store = _read_store(
@@ -754,7 +947,7 @@ def hard_delete_song_location_node(
         node_rows = _sort_rows(rows if isinstance(rows, list) else [])
         target_index = _find_row_index(node_rows, safe_node_id)
         if target_index < 0:
-            raise ValueError('Categoria/subcategoria nao encontrada.')
+            raise ValueError('Categoria/subcategoria não encontrada.')
 
         ids_to_remove = _collect_descendant_ids(node_rows, safe_node_id)
         remaining_rows = [
@@ -803,7 +996,7 @@ def restore_song_location_node(
 ) -> dict[str, object]:
     safe_node_id = _normalize_spaces(node_id)
     if not safe_node_id:
-        raise ValueError('Categoria/subcategoria invalida.')
+        raise ValueError('Categoria/subcategoria inválida.')
 
     with _STORE_LOCK:
         store = _read_store(
@@ -814,7 +1007,7 @@ def restore_song_location_node(
         node_rows = _sort_rows(rows if isinstance(rows, list) else [])
         target_index = _find_row_index(node_rows, safe_node_id)
         if target_index < 0:
-            raise ValueError('Categoria/subcategoria nao encontrada.')
+            raise ValueError('Categoria/subcategoria não encontrada.')
 
         now_iso = _now_utc_iso()
         ids_to_restore = _collect_descendant_ids(node_rows, safe_node_id) | _collect_ancestor_ids(node_rows, safe_node_id)
@@ -851,9 +1044,9 @@ def reorder_song_location_nodes(
     for raw_id in payload.ordered_ids:
         node_id = _normalize_spaces(str(raw_id))
         if not node_id:
-            raise ValueError('Lista de ordenacao invalida.')
+            raise ValueError('Lista de ordenação inválida.')
         if node_id in seen_ids:
-            raise ValueError('Lista de ordenacao invalida.')
+            raise ValueError('Lista de ordenação inválida.')
         seen_ids.add(node_id)
         ordered_ids.append(node_id)
 
@@ -874,7 +1067,7 @@ def reorder_song_location_nodes(
         ]
         sibling_ids = [str(row.get('node_id') or '') for row in siblings]
         if any(node_id not in sibling_ids for node_id in ordered_ids):
-            raise ValueError('Categoria/subcategoria nao encontrada para reordenar.')
+            raise ValueError('Categoria/subcategoria não encontrada para reordenar.')
 
         current_order = [node_id for node_id in sibling_ids if node_id not in seen_ids]
         final_order = ordered_ids + current_order

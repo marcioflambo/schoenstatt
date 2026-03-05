@@ -98,7 +98,7 @@
       </nav>
 
       <div class="menu-song-search">
-        <form id="song-fetch-form" class="song-fetch-form">
+        <form id="song-fetch-form" class="song-fetch-form" autocomplete="off">
           <label for="song-search-query"></label>
           <div class="song-fetch-row">
             <div class="song-fetch-input-wrap">
@@ -107,6 +107,11 @@
                 class="song-fetch-input"
                 type="search"
                 inputmode="search"
+                name="song_search_menu"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
                 placeholder=""
                 required>
               <button
@@ -357,7 +362,7 @@
         </header>
 
         <article class="song-fetch-card song-fetch-card-cantos">
-          <form id="song-fetch-form-cantos" class="song-fetch-form">
+          <form id="song-fetch-form-cantos" class="song-fetch-form" autocomplete="off">
             <label for="song-search-query-cantos"></label>
             <div class="song-fetch-row">
               <div class="song-fetch-input-wrap">
@@ -366,6 +371,11 @@
                   class="song-fetch-input"
                   type="search"
                   inputmode="search"
+                  name="song_search_cantos"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
                   placeholder=""
                   required>
                 <button
@@ -406,12 +416,27 @@
         <article id="song-favorites-card" class="booklet-cantos-card song-favorites-card">
           <header class="booklet-cantos-header song-favorites-header">
             <div class="song-favorites-header-row">
-              <h3 id="song-favorites-title"></h3>
+              <div class="song-favorites-title-row">
+                <h3 id="song-favorites-title"></h3>
+                <button type="button" id="song-favorites-share-btn" class="btn btn-outline song-favorites-share-btn">
+                  Compartilhar
+                </button>
+              </div>
               <div class="song-favorites-search-wrap">
                 <input
                   type="search"
                   id="song-favorites-search-input"
                   class="song-favorites-search-input"
+                  name="song_favorites_search"
+                  autocomplete="new-password"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-form-type="other"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  readonly
                   aria-label=""
                   placeholder="">
               </div>
@@ -521,7 +546,41 @@
         <div class="song-head">
           <div>
             <h3 id="fetched-song-title"></h3>
-            <p id="fetched-song-meta"></p>
+            <div class="song-modal-meta-row">
+              <p id="fetched-song-meta"></p>
+              <div id="song-modal-external-actions" class="song-modal-external-actions" hidden>
+                <a
+                  id="song-modal-spotify-link"
+                  class="song-search-action song-search-action-external song-modal-external-action"
+                  href=""
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Abrir no Spotify"
+                  title="Abrir no Spotify"
+                >
+                  <svg class="song-search-action-icon song-search-action-icon-spotify" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" fill="#1DB954"></circle>
+                    <path d="M7.2 10.3c3.5-1 7.1-.7 10 1" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M7.9 13.1c2.8-.7 5.6-.5 8 .8" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M8.8 15.7c2-.5 4.1-.3 5.8.5" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+                <a
+                  id="song-modal-youtube-link"
+                  class="song-search-action song-search-action-external song-modal-external-action"
+                  href=""
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Abrir no YouTube"
+                  title="Abrir no YouTube"
+                >
+                  <svg class="song-search-action-icon song-search-action-icon-youtube" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#FF0000" d="M23.498 6.186a2.974 2.974 0 00-2.093-2.105C19.55 3.5 12 3.5 12 3.5s-7.55 0-9.405.581A2.974 2.974 0 00.502 6.186 31.17 31.17 0 000 12a31.17 31.17 0 00.502 5.814 2.974 2.974 0 002.093 2.105C4.45 20.5 12 20.5 12 20.5s7.55 0 9.405-.581a2.974 2.974 0 002.093-2.105A31.17 31.17 0 0024 12a31.17 31.17 0 00-.502-5.814z"></path>
+                    <path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12 9.545 15.568z"></path>
+                  </svg>
+                </a>
+              </div>
+            </div>
             <div class="song-modal-tone-row">
               <p class="song-modal-tone-label"></p>
               <div id="song-tone-grid" class="song-tone-grid" aria-label=""></div>
@@ -647,7 +706,17 @@
       <div class="mystery-modal-content rosary-modal-content">
         <div class="mystery-modal-heading-row rosary-modal-heading-row">
           <p id="rosary-modal-group" class="mystery-modal-group rosary-modal-group"></p>
-          <button type="button" class="mystery-modal-close rosary-modal-close" data-rosary-modal-close aria-label="">&times;</button>
+          <div class="rosary-modal-heading-actions">
+            <button
+              type="button"
+              id="rosary-modal-song-toggle"
+              class="mystery-modal-song-toggle rosary-modal-song-toggle"
+              aria-label=""
+              title=""
+              hidden
+            ></button>
+            <button type="button" class="mystery-modal-close rosary-modal-close" data-rosary-modal-close aria-label="">&times;</button>
+          </div>
         </div>
         <div class="mystery-modal-heading rosary-modal-heading">
           <div class="mystery-modal-title-row rosary-modal-title-row">
@@ -655,6 +724,56 @@
           </div>
         </div>
         <p id="rosary-modal-step-text" class="mystery-modal-text rosary-modal-step-text"></p>
+        <section id="rosary-modal-song-panel" class="mystery-modal-song-panel rosary-modal-song-panel" hidden>
+          <div class="mystery-modal-song-head">
+            <p id="rosary-modal-song-title" class="mystery-modal-song-title"></p>
+            <button
+              type="button"
+              id="rosary-modal-song-close"
+              class="mystery-modal-song-close mystery-jaculatory-close rosary-modal-song-close"
+              aria-label=""
+              title=""
+            >
+              &times;
+            </button>
+          </div>
+          <div class="mystery-modal-song-meta-row">
+            <p id="rosary-modal-song-meta" class="mystery-modal-song-meta"></p>
+            <div id="rosary-modal-song-external-actions" class="mystery-modal-song-external-actions" hidden>
+              <a
+                id="rosary-modal-song-spotify-link"
+                class="song-search-action song-search-action-external mystery-modal-song-external-action"
+                href=""
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Abrir no Spotify"
+                title="Abrir no Spotify"
+              >
+                <svg class="song-search-action-icon song-search-action-icon-spotify" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" fill="#1DB954"></circle>
+                  <path d="M7.2 10.3c3.5-1 7.1-.7 10 1" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <path d="M7.9 13.1c2.8-.7 5.6-.5 8 .8" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <path d="M8.8 15.7c2-.5 4.1-.3 5.8.5" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </a>
+              <a
+                id="rosary-modal-song-youtube-link"
+                class="song-search-action song-search-action-external mystery-modal-song-external-action"
+                href=""
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Abrir no YouTube"
+                title="Abrir no YouTube"
+              >
+                <svg class="song-search-action-icon song-search-action-icon-youtube" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#FF0000" d="M23.498 6.186a2.974 2.974 0 00-2.093-2.105C19.55 3.5 12 3.5 12 3.5s-7.55 0-9.405.581A2.974 2.974 0 00.502 6.186 31.17 31.17 0 000 12a31.17 31.17 0 00.502 5.814 2.974 2.974 0 002.093 2.105C4.45 20.5 12 20.5 12 20.5s7.55 0 9.405-.581a2.974 2.974 0 002.093-2.105A31.17 31.17 0 0024 12a31.17 31.17 0 00-.502-5.814z"></path>
+                  <path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12 9.545 15.568z"></path>
+                </svg>
+              </a>
+            </div>
+          </div>
+          <pre id="rosary-modal-song-lyrics" class="mystery-modal-song-lyrics rosary-modal-song-lyrics"></pre>
+        </section>
         <nav id="rosary-modal-dots" class="rosary-modal-dots" aria-label=""></nav>
       </div>
       <footer class="mystery-modal-footer rosary-modal-footer">
@@ -750,9 +869,13 @@
         type="search"
         id="song-save-location-picker-search"
         class="song-save-location-picker-search"
+        name="song_location_picker_search"
         placeholder=""
         aria-label=""
         autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
       />
       <button
         type="button"
@@ -967,6 +1090,9 @@
         </label>
         <p id="auth-form-feedback" class="auth-form-feedback" hidden></p>
         <footer class="auth-form-actions">
+          <button type="button" id="auth-register-cta-btn" class="btn btn-outline auth-register-cta" hidden>
+            Registrar
+          </button>
           <button type="button" id="auth-delete-btn" class="btn btn-ghost" hidden>Deletar conta</button>
           <button type="submit" id="auth-submit-btn" class="btn btn-primary">Entrar</button>
         </footer>
@@ -991,6 +1117,46 @@
       </header>
       <p id="auth-sessions-feedback" class="auth-sessions-feedback" hidden></p>
       <ul id="auth-sessions-list" class="auth-sessions-list"></ul>
+    </article>
+  </div>
+
+  <div id="song-share-modal" class="song-share-modal" aria-hidden="true">
+    <div class="song-share-backdrop" data-song-share-close></div>
+    <article class="song-share-dialog" role="dialog" aria-modal="true" aria-labelledby="song-share-title">
+      <header class="song-share-header">
+        <h3 id="song-share-title">Compartilhar músicas</h3>
+        <button
+          type="button"
+          id="song-share-close"
+          class="song-share-close"
+          data-song-share-close
+          aria-label="Fechar compartilhamento"
+        >
+          &times;
+        </button>
+      </header>
+      <p class="song-share-copy">
+        Gere um QR Code e um link para outra pessoa importar suas músicas, favoritos e vínculos.
+      </p>
+      <div class="song-share-qr-wrap">
+        <img id="song-share-qr-image" class="song-share-qr-image" alt="QR Code para compartilhar músicas" />
+      </div>
+      <label class="song-share-link-field" for="song-share-link-input">
+        <span>Link de compartilhamento</span>
+        <input
+          id="song-share-link-input"
+          class="song-share-link-input"
+          type="text"
+          readonly
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <p id="song-share-feedback" class="song-share-feedback" hidden></p>
+      <footer class="song-share-actions">
+        <button type="button" id="song-share-create-btn" class="btn btn-outline">Gerar novo link</button>
+        <button type="button" id="song-share-copy-btn" class="btn btn-primary">Copiar link</button>
+      </footer>
     </article>
   </div>
 

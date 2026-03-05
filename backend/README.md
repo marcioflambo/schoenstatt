@@ -25,6 +25,8 @@
    - `GET http://127.0.0.1:8000/api/auth/me`
    - `PUT http://127.0.0.1:8000/api/auth/me` (`name`, `email`, `password`)
    - `DELETE http://127.0.0.1:8000/api/auth/me`
+   - `GET http://127.0.0.1:8000/api/auth/sessions`
+   - `DELETE http://127.0.0.1:8000/api/auth/sessions/{session_guid}`
    - `POST http://127.0.0.1:8000/api/auth/logout`
 
 ## Observacoes
@@ -69,6 +71,8 @@ Validar:
 - `GET http://127.0.0.1:8000/api/auth/me`
 - `PUT http://127.0.0.1:8000/api/auth/me` (`name`, `email`, `password`)
 - `DELETE http://127.0.0.1:8000/api/auth/me`
+- `GET http://127.0.0.1:8000/api/auth/sessions`
+- `DELETE http://127.0.0.1:8000/api/auth/sessions/{session_guid}`
 - `POST http://127.0.0.1:8000/api/auth/logout`
 - `POST http://127.0.0.1:8000/api/songs/search`
 - `POST http://127.0.0.1:8000/api/songs/fetch`
@@ -79,8 +83,7 @@ Validar:
 - `GET http://127.0.0.1:8000/api/songs/custom`
 - `POST http://127.0.0.1:8000/api/songs/custom`
 - `PUT http://127.0.0.1:8000/api/songs/custom/{id}`
-- `DELETE http://127.0.0.1:8000/api/songs/custom/{id}` (inativa)
-- `PUT http://127.0.0.1:8000/api/songs/custom/{id}/restore`
+- `DELETE http://127.0.0.1:8000/api/songs/custom/{id}` (exclui)
 
 Sem reiniciar container:
 - alteracoes em `backend/*`: recarregamento automatico da API;

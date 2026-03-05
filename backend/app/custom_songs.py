@@ -142,9 +142,9 @@ def _read_store(
     try:
         raw = json.loads(file_path.read_text(encoding='utf-8'))
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Arquivo de musicas manuais invalido: {file_path}') from exc
+        raise RuntimeError(f'Arquivo de músicas manuais inválido: {file_path}') from exc
     except OSError as exc:
-        raise RuntimeError(f'Falha ao ler arquivo de musicas manuais: {exc}') from exc
+        raise RuntimeError(f'Falha ao ler arquivo de músicas manuais: {exc}') from exc
 
     return _normalize_store(raw)
 
@@ -168,7 +168,7 @@ def _write_store(
         temp_path.write_text(payload, encoding='utf-8')
         temp_path.replace(file_path)
     except OSError as exc:
-        raise RuntimeError(f'Falha ao salvar arquivo de musicas manuais: {exc}') from exc
+        raise RuntimeError(f'Falha ao salvar arquivo de músicas manuais: {exc}') from exc
     finally:
         if temp_path.exists():
             try:
@@ -238,7 +238,7 @@ def create_custom_song(
 ) -> dict[str, object]:
     title = _normalize_spaces(payload.title)
     if not title:
-        raise ValueError('Informe o titulo da musica.')
+        raise ValueError('Informe o título da música.')
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
@@ -289,11 +289,11 @@ def update_custom_song(
     store_namespace: str | None = None,
 ) -> dict[str, object]:
     if song_id <= 0:
-        raise ValueError('Musica manual nao encontrada.')
+        raise ValueError('Música manual não encontrada.')
 
     title = _normalize_spaces(payload.title)
     if not title:
-        raise ValueError('Informe o titulo da musica.')
+        raise ValueError('Informe o título da música.')
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
@@ -314,7 +314,7 @@ def update_custom_song(
             -1,
         )
         if target_index < 0:
-            raise ValueError('Musica manual nao encontrada.')
+            raise ValueError('Música manual não encontrada.')
 
         existing = _normalize_song_row(song_rows[target_index])
         row = {
@@ -348,7 +348,7 @@ def delete_custom_song(
     store_namespace: str | None = None,
 ) -> bool:
     if song_id <= 0:
-        raise ValueError('Musica manual nao encontrada.')
+        raise ValueError('Música manual não encontrada.')
 
     with _STORE_LOCK:
         store = _read_store(
@@ -369,17 +369,7 @@ def delete_custom_song(
         if target_index < 0:
             return False
 
-        existing = _normalize_song_row(song_rows[target_index])
-        if not _coerce_bool(existing.get('is_active'), default=True):
-            return False
-
-        now_iso = _now_utc_iso()
-        song_rows[target_index] = {
-            **existing,
-            'is_active': False,
-            'updated_at_utc': now_iso,
-            'deleted_at_utc': now_iso,
-        }
+        del song_rows[target_index]
         store['songs'] = song_rows
         _write_store(
             custom_songs_file,
@@ -398,7 +388,7 @@ def restore_custom_song(
     store_namespace: str | None = None,
 ) -> dict[str, object]:
     if song_id <= 0:
-        raise ValueError('Musica manual nao encontrada.')
+        raise ValueError('Música manual não encontrada.')
 
     now_iso = _now_utc_iso()
     with _STORE_LOCK:
@@ -419,7 +409,7 @@ def restore_custom_song(
             -1,
         )
         if target_index < 0:
-            raise ValueError('Musica manual nao encontrada.')
+            raise ValueError('Música manual não encontrada.')
 
         existing = _normalize_song_row(song_rows[target_index])
         row = {
@@ -451,9 +441,9 @@ def reorder_custom_songs(
     for raw_id in ordered_ids:
         song_id = _coerce_int(raw_id, 0)
         if song_id <= 0:
-            raise ValueError('Lista de ordenacao invalida.')
+            raise ValueError('Lista de ordenação inválida.')
         if song_id in seen_ids:
-            raise ValueError('Lista de ordenacao invalida.')
+            raise ValueError('Lista de ordenação inválida.')
         seen_ids.add(song_id)
         normalized_order.append(song_id)
 
@@ -492,7 +482,7 @@ def reorder_custom_songs(
         }
         missing_ids = [song_id for song_id in normalized_order if song_id not in active_by_id]
         if missing_ids:
-            raise ValueError('Musica manual nao encontrada para reordenar.')
+            raise ValueError('Música manual não encontrada para reordenar.')
 
         current_sorted_active = sorted(
             active_rows,

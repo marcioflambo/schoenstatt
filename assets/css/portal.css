@@ -2113,10 +2113,41 @@ body.theme-dark .song-toast.is-error {
   padding: 16px;
 }
 
-.favorite-confirm-dialog h3 {
+.favorite-confirm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.favorite-confirm-header h3 {
   margin: 0;
   color: var(--primary-strong);
   font-size: 1.06rem;
+}
+
+.favorite-confirm-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--primary-strong);
+  font-size: 1.34rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.favorite-confirm-close:hover,
+.favorite-confirm-close:focus-visible {
+  background: rgba(33, 79, 139, 0.12);
+  color: var(--primary);
+  outline: none;
 }
 
 .favorite-confirm-dialog p {
@@ -2183,6 +2214,16 @@ body.theme-dark .favorite-confirm-dialog {
 
 body.theme-dark .favorite-confirm-dialog p {
   color: #d6e2f4;
+}
+
+body.theme-dark .favorite-confirm-close {
+  color: #d6e2f4;
+}
+
+body.theme-dark .favorite-confirm-close:hover,
+body.theme-dark .favorite-confirm-close:focus-visible {
+  background: rgba(121, 170, 233, 0.18);
+  color: #e8f1ff;
 }
 
 body.theme-dark .favorite-confirm-password-label {
@@ -5187,6 +5228,20 @@ body.theme-dark .song-location-create-input:focus-visible {
   margin: 0;
 }
 
+.song-favorites-description-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.song-favorites-description-row p {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .song-favorites-share-btn {
   min-height: 31px;
   width: auto;
@@ -7525,7 +7580,10 @@ body.portal-mode .site-footer {
 
   .song-favorites-title-row {
     width: 100%;
-    justify-content: space-between;
+  }
+
+  .song-favorites-description-row {
+    align-items: flex-start;
   }
 
   .song-favorites-share-btn.btn {

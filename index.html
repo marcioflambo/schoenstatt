@@ -57,7 +57,7 @@
           <button type="button" class="auth-menu-option" data-auth-action="login" role="menuitem">Login</button>
           <button type="button" class="auth-menu-option" data-auth-action="register" role="menuitem">Registro</button>
           <button type="button" class="auth-menu-option" data-auth-action="account" role="menuitem" hidden>Conta</button>
-          <button type="button" class="auth-menu-option" data-auth-action="sessions" role="menuitem" hidden>Sessoes</button>
+          <button type="button" class="auth-menu-option" data-auth-action="sessions" role="menuitem" hidden>Sessões</button>
           <button type="button" class="auth-menu-option" data-auth-action="logout" role="menuitem" hidden>Sair</button>
         </div>
       </div>
@@ -171,6 +171,14 @@
           <div class="hero-actions">
             <a id="hero-start-rosary-link" href="#roteiro" class="btn btn-primary" data-open-rosary-modal></a>
             <a href="#cantos" class="btn btn-ghost"></a>
+            <button
+              type="button"
+              id="hero-share-songs-btn"
+              class="btn btn-outline"
+              hidden
+              aria-hidden="true"
+              aria-label="Compartilhar suas músicas por link e QR Code"
+              title="Compartilhar suas músicas por link e QR Code">Compartilhar</button>
           </div>
         </div>
 
@@ -418,9 +426,6 @@
             <div class="song-favorites-header-row">
               <div class="song-favorites-title-row">
                 <h3 id="song-favorites-title"></h3>
-                <button type="button" id="song-favorites-share-btn" class="btn btn-outline song-favorites-share-btn">
-                  Compartilhar
-                </button>
               </div>
               <div class="song-favorites-search-wrap">
                 <input
@@ -441,7 +446,12 @@
                   placeholder="">
               </div>
             </div>
-            <p id="song-favorites-description"></p>
+            <div class="song-favorites-description-row">
+              <p id="song-favorites-description"></p>
+              <button type="button" id="song-favorites-share-btn" class="btn btn-outline song-favorites-share-btn">
+                Compartilhar
+              </button>
+            </div>
           </header>
           <ul id="song-favorites-list" class="booklet-cantos-list song-favorites-list"></ul>
         </article>
@@ -791,7 +801,18 @@
       aria-labelledby="favorite-confirm-title"
       aria-describedby="favorite-confirm-message"
     >
-      <h3 id="favorite-confirm-title"></h3>
+      <header class="favorite-confirm-header">
+        <h3 id="favorite-confirm-title"></h3>
+        <button
+          type="button"
+          id="favorite-confirm-close"
+          class="favorite-confirm-close"
+          data-favorite-confirm-close
+          aria-label="Fechar confirmação"
+        >
+          &times;
+        </button>
+      </header>
       <p id="favorite-confirm-message"></p>
       <div id="favorite-confirm-password-wrap" class="favorite-confirm-password-wrap" hidden>
         <label id="favorite-confirm-password-label" class="favorite-confirm-password-label" for="favorite-confirm-password-input">
@@ -1104,13 +1125,13 @@
     <div class="auth-sessions-backdrop" data-auth-sessions-close></div>
     <article class="auth-sessions-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-sessions-title">
       <header class="auth-sessions-header">
-        <h3 id="auth-sessions-title">Sessoes ativas</h3>
+        <h3 id="auth-sessions-title">Sessões ativas</h3>
         <button
           type="button"
           id="auth-sessions-close"
           class="auth-sessions-close"
           data-auth-sessions-close
-          aria-label="Fechar sessoes"
+          aria-label="Fechar sessões"
         >
           &times;
         </button>

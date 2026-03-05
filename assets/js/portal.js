@@ -553,6 +553,17 @@
       'title',
       readSongMessage('favoritesShareButtonAria', 'Compartilhar suas musicas por link e QR Code')
     );
+    setNodeText('#hero-share-songs-btn', readSongMessage('favoritesShareButton', 'Compartilhar'));
+    setNodeAttr(
+      '#hero-share-songs-btn',
+      'aria-label',
+      readSongMessage('favoritesShareButtonAria', 'Compartilhar suas musicas por link e QR Code')
+    );
+    setNodeAttr(
+      '#hero-share-songs-btn',
+      'title',
+      readSongMessage('favoritesShareButtonAria', 'Compartilhar suas musicas por link e QR Code')
+    );
     setNodeAttr(
       '#song-favorites-search-input',
       'placeholder',
@@ -2452,6 +2463,13 @@
   };
 
   const fetchMysterySongAssignments = async () => {
+    if (songShareViewModeLoaded) {
+      mysterySongAssignmentsLoading = false;
+      updateMysteryModalSongToggleState();
+      renderSongFavorites();
+      return false;
+    }
+
     if (!isAuthLoggedIn()) {
       mysterySongAssignmentsLoading = false;
       mysterySongAssignments = {};
@@ -2539,7 +2557,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -2583,7 +2601,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -2623,6 +2641,14 @@
   };
 
   const fetchSongLocationAssignments = async () => {
+    if (songShareViewModeLoaded) {
+      songLocationAssignmentsLoading = false;
+      renderSongFavorites();
+      renderSongSaveLocationPicker();
+      updateRosaryModalSongToggleState();
+      return false;
+    }
+
     if (!isAuthLoggedIn()) {
       songLocationAssignmentsLoading = false;
       songLocationAssignments = {};
@@ -2700,7 +2726,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -2732,7 +2758,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -2745,23 +2771,32 @@
   };
 
   const deactivateSongLocationNodeOnServer = async (nodeId, password = '') => {
+    if (!ensureLoggedInForUserScopedAction({
+      message: 'Faça login para inativar categorias.',
+      notify: true,
+      openLoginModal: true,
+    })) {
+      throw new Error('Autenticacao obrigatoria.');
+    }
+
     const safeNodeId = String(nodeId || '').trim();
     const safePassword = String(password || '');
     if (!safeNodeId) {
       throw new Error(readMysteryMessage('assignCategoryDeactivateError'));
     }
-    if (!safePassword.trim()) {
-      throw new Error(
-        readMysteryMessage('assignCategoryDeactivatePasswordRequired')
-      );
+    const headers = buildUserScopedApiHeaders();
+    if (safePassword.trim()) {
+      headers['X-Location-Delete-Password'] = safePassword;
     }
     const response = await fetch(`/api/song-locations/nodes/${encodeURIComponent(safeNodeId)}`, {
       method: 'DELETE',
-      headers: {
-        'X-Location-Delete-Password': safePassword,
-      },
+      headers,
     });
     const responsePayload = asObject(await response.json().catch(() => ({})));
+    if (isUserScopedApiUnauthorized(response)) {
+      handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
     if (!response.ok || !responsePayload.ok) {
       const defaultErrorMessage = response.status === 403
         ? readMysteryMessage('assignCategoryDeactivatePasswordInvalid')
@@ -2816,7 +2851,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -2857,7 +2892,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -3951,6 +3986,9 @@
       );
       return false;
     }
+    if (!ensureSongShareImportForMutations(triggerElement)) {
+      return false;
+    }
 
     const currentAssignment = getMysterySongAssignment(groupTitle, mysteryTitle);
     const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
@@ -3996,6 +4034,7 @@
         renderMysterySongAssignList();
         renderSongSaveLocationPicker();
         renderSongFavorites();
+        leaveSongShareViewModeAfterMutation();
         showSongToast(
           readMysteryMessage('assignRemoveSuccess'),
           'is-success'
@@ -4039,6 +4078,7 @@
     renderMysterySongAssignList();
     renderSongSaveLocationPicker();
     renderSongFavorites();
+    leaveSongShareViewModeAfterMutation();
     showSongToast(
       readMysteryMessage('assignSuccess'),
       'is-success'
@@ -4064,6 +4104,9 @@
         readMysteryMessage('assignSongInvalid'),
         'is-error'
       );
+      return false;
+    }
+    if (!ensureSongShareImportForMutations(triggerElement)) {
       return false;
     }
 
@@ -4102,6 +4145,7 @@
 
         renderSongSaveLocationPicker();
         renderSongFavorites();
+        leaveSongShareViewModeAfterMutation();
         showSongToast(
           readMysteryMessage('assignRemoveSuccess'),
           'is-success'
@@ -4111,7 +4155,7 @@
     }
 
     try {
-      await saveSongLocationAssignmentOnServer(safeTarget, {
+      const nextPayload = {
         songTitle: String(song.title || '').trim(),
         songArtist: String(song.artist || '').trim(),
         songUrl: String(song.url || '').trim(),
@@ -4124,7 +4168,8 @@
         lyricsText: '',
         lyricsSource: '',
         lyricsSourceUrl: '',
-      });
+      };
+      await saveSongLocationAssignmentOnServer(safeTarget, nextPayload);
     } catch (err) {
       const message = err instanceof Error
         ? err.message
@@ -4135,6 +4180,7 @@
 
     renderSongSaveLocationPicker();
     renderSongFavorites();
+    leaveSongShareViewModeAfterMutation();
     showSongToast(
       readMysteryMessage('assignSuccess'),
       'is-success'
@@ -4555,7 +4601,12 @@
     try {
       const resolvedAssignment = await resolveMysterySongLyrics(assignment);
       let persistedAssignment = resolvedAssignment;
-      if (target.locationId) {
+      const shouldPersistAssignment = Boolean(
+        !songShareViewModeLoaded
+        && isAuthLoggedIn()
+        && target.locationId
+      );
+      if (shouldPersistAssignment) {
         try {
           persistedAssignment = await saveSongLocationAssignmentOnServer(target, resolvedAssignment);
         } catch (saveErr) {
@@ -4566,6 +4617,13 @@
             locationPath: target.locationPath,
           }) || resolvedAssignment;
         }
+      } else if (target.locationId) {
+        persistedAssignment = cacheSongLocationAssignment({
+          ...resolvedAssignment,
+          locationId: target.locationId,
+          locationLabel: target.locationLabel,
+          locationPath: target.locationPath,
+        }) || resolvedAssignment;
       }
       rosaryModalSongTitle.textContent = persistedAssignment.songArtist
         ? `${persistedAssignment.songTitle} - ${persistedAssignment.songArtist}`
@@ -4758,6 +4816,9 @@
             );
             return;
           }
+          if (!ensureSongShareImportForMutations(itemButton)) {
+            return;
+          }
 
           const currentAssignment = getMysterySongAssignment(group.title, itemTitle);
           const hasCurrentAssignment = Boolean(currentAssignment.songTitle || currentAssignment.songUrl);
@@ -4823,6 +4884,7 @@
               refreshAssignListAfterMutation();
               renderSongSaveLocationPicker();
               renderSongFavorites();
+              leaveSongShareViewModeAfterMutation();
               showSongToast(
                 readMysteryMessage('assignRemoveSuccess'),
                 'is-success'
@@ -4864,6 +4926,7 @@
           refreshAssignListAfterMutation();
           renderSongSaveLocationPicker();
           renderSongFavorites();
+          leaveSongShareViewModeAfterMutation();
           showSongToast(
             readMysteryMessage('assignSuccess'),
             'is-success'
@@ -5323,13 +5386,22 @@
     try {
       const resolvedAssignment = await resolveMysterySongLyrics(assignment);
       let persistedAssignment = resolvedAssignment;
-      try {
-        persistedAssignment = await saveMysterySongAssignmentOnServer(
-          currentMysteryModalSelection.group,
-          currentMysteryModalSelection.title,
-          resolvedAssignment
-        );
-      } catch (saveErr) {
+      const shouldPersistAssignment = Boolean(!songShareViewModeLoaded && isAuthLoggedIn());
+      if (shouldPersistAssignment) {
+        try {
+          persistedAssignment = await saveMysterySongAssignmentOnServer(
+            currentMysteryModalSelection.group,
+            currentMysteryModalSelection.title,
+            resolvedAssignment
+          );
+        } catch (saveErr) {
+          persistedAssignment = cacheMysterySongAssignment({
+            ...resolvedAssignment,
+            groupTitle: currentMysteryModalSelection.group,
+            mysteryTitle: currentMysteryModalSelection.title,
+          }) || resolvedAssignment;
+        }
+      } else {
         persistedAssignment = cacheMysterySongAssignment({
           ...resolvedAssignment,
           groupTitle: currentMysteryModalSelection.group,
@@ -6011,6 +6083,7 @@
   const songFavoritesList = document.getElementById('song-favorites-list');
   const songFavoritesSearchInput = document.getElementById('song-favorites-search-input');
   const songFavoritesShareBtn = document.getElementById('song-favorites-share-btn');
+  const heroShareSongsBtn = document.getElementById('hero-share-songs-btn');
   const customSongsCard = document.getElementById('custom-songs-card');
   const customSongsList = document.getElementById('custom-songs-list');
   const customSongsAddBtn = document.getElementById('custom-songs-add-btn');
@@ -6104,6 +6177,8 @@
   const AUTH_QR_QUERY_SESSION_KEY = 'auth_qr_session';
   const AUTH_QR_QUERY_TOKEN_KEY = 'auth_qr_token';
   const SONG_SHARE_QUERY_KEY = 'song_share';
+  const SONG_SHARE_LAST_VIEW_STORAGE_KEY = 'portal_song_share_last_view_id_v1';
+  const SONG_SHARE_LOCAL_STATE_STORAGE_KEY = 'portal_song_share_local_state_v1';
   let authMode = 'login';
   let authRequestPending = false;
   let authToken = '';
@@ -6128,6 +6203,8 @@
   let songShareImportPending = false;
   let songShareCurrentLink = '';
   let pendingSongShareImport = '';
+  let songShareViewModeLoaded = false;
+  let songShareCurrentViewId = '';
   let pendingAuthRegisterPrefill = null;
   let authSessionHealthcheckTimerId = null;
   let authSessionHealthcheckInFlight = false;
@@ -6867,13 +6944,13 @@
   const normalizeSongSearchPage = (rawPage) => {
     const parsed = Number.parseInt(String(rawPage ?? ''), 10);
     if (!Number.isInteger(parsed) || parsed < 1) return 1;
-    return Math.min(parsed, 100);
+    return parsed;
   };
 
   const normalizeSongSearchPageSize = (rawPageSize) => {
     const parsed = Number.parseInt(String(rawPageSize ?? ''), 10);
     if (!Number.isInteger(parsed) || parsed < 1) return SONG_SEARCH_DEFAULT_PAGE_SIZE;
-    return Math.max(1, Math.min(40, parsed));
+    return Math.max(1, parsed);
   };
 
   const createSongSearchCacheEntry = (query = '') => ({
@@ -7082,7 +7159,105 @@
     }
   };
 
+  const readLastSongShareViewId = () => {
+    try {
+      return normalizeSongShareId(window.localStorage.getItem(SONG_SHARE_LAST_VIEW_STORAGE_KEY) || '');
+    } catch (_err) {
+      return '';
+    }
+  };
+
+  const persistLastSongShareViewId = (shareId = '') => {
+    const safeShareId = normalizeSongShareId(shareId);
+    try {
+      if (!safeShareId) {
+        window.localStorage.removeItem(SONG_SHARE_LAST_VIEW_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(SONG_SHARE_LAST_VIEW_STORAGE_KEY, safeShareId);
+    } catch (_err) {
+      return;
+    }
+  };
+
+  const shouldAutoOpenSongShareView = (shareId = '') => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) return false;
+    return readLastSongShareViewId() === safeShareId;
+  };
+
+  const clearSongShareLocalState = () => {
+    try {
+      window.localStorage.removeItem(SONG_SHARE_LOCAL_STATE_STORAGE_KEY);
+    } catch (_err) {
+      return;
+    }
+  };
+
+  const leaveSongShareViewModeAfterMutation = () => {
+    if (!songShareViewModeLoaded) return;
+    clearSongShareLocalState();
+    const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
+    if (safeShareId) {
+      songShareCurrentViewId = safeShareId;
+      pendingSongShareImport = safeShareId;
+      persistLastSongShareViewId(safeShareId);
+    }
+    setSongShareRequestState(false);
+  };
+
   const isAuthLoggedIn = () => Boolean(authToken && normalizeAuthUser(authUser));
+
+  const ensureSongShareImportForMutations = (triggerElement = null) => {
+    if (!songShareViewModeLoaded) return true;
+
+    const safeTrigger = triggerElement instanceof HTMLElement ? triggerElement : null;
+    const safeShareId = normalizeSongShareId(songShareCurrentViewId || readSongShareIdFromUrl());
+    if (!isAuthLoggedIn()) {
+      showSongToast('Faça login e importe a lista compartilhada para poder alterar.', 'is-warning');
+      runDeferredTask(() => {
+        openAuthModal('login', safeTrigger || authMenuTrigger);
+      }, 80);
+      return false;
+    }
+
+    showSongToast('Para alterar, importe a lista compartilhada para sua conta.', 'is-warning');
+    if (safeShareId) {
+      pendingSongShareImport = safeShareId;
+      runDeferredTask(() => {
+        void maybeHandlePendingSongShareImport(safeTrigger || authMenuTrigger);
+      }, 90);
+    }
+    return false;
+  };
+
+  const syncHeroShareSongsButtonState = () => {
+    const loggedIn = isAuthLoggedIn();
+
+    if (songFavoritesShareBtn) {
+      const shouldShowFavoritesShare = loggedIn;
+      songFavoritesShareBtn.hidden = !shouldShowFavoritesShare;
+      songFavoritesShareBtn.disabled = !shouldShowFavoritesShare;
+      songFavoritesShareBtn.setAttribute('aria-hidden', shouldShowFavoritesShare ? 'false' : 'true');
+      if (shouldShowFavoritesShare) {
+        songFavoritesShareBtn.style.removeProperty('display');
+      } else {
+        songFavoritesShareBtn.style.display = 'none';
+      }
+    }
+
+    if (heroShareSongsBtn) {
+      const shouldShowHeroShare = loggedIn && Array.isArray(songFavorites) && songFavorites.length > 0;
+      heroShareSongsBtn.hidden = !shouldShowHeroShare;
+      heroShareSongsBtn.disabled = !shouldShowHeroShare;
+      heroShareSongsBtn.setAttribute('aria-hidden', shouldShowHeroShare ? 'false' : 'true');
+      if (shouldShowHeroShare) {
+        heroShareSongsBtn.style.removeProperty('display');
+      } else {
+        heroShareSongsBtn.style.display = 'none';
+      }
+    }
+  };
 
   const persistAuthState = () => {
     try {
@@ -7170,7 +7345,7 @@
     const {
       notify = false,
       openLoginModal = false,
-      message = 'Sessao expirada. Faça login novamente.',
+      message = 'Sessão expirada. Faça login novamente.',
       trigger = null,
     } = asObject(options);
     clearAuthState();
@@ -7182,7 +7357,7 @@
     closeAuthDropdown();
     closeMainMenu();
     if (notify) {
-      showSongToast(String(message || 'Sessao expirada. Faça login novamente.'), 'is-warning');
+      showSongToast(String(message || 'Sessão expirada. Faça login novamente.'), 'is-warning');
     }
     if (openLoginModal) {
       openAuthModal('login', trigger instanceof HTMLElement ? trigger : null);
@@ -7226,7 +7401,7 @@
         handleUserScopedApiUnauthorized({
           notify: true,
           openLoginModal: false,
-          message: 'Sessao expirada. Faça login novamente.',
+          message: 'Sessão expirada. Faça login novamente.',
         });
         return;
       }
@@ -7273,17 +7448,6 @@
     const safeMessage = String(message || '').trim();
     authFormFeedback.textContent = safeMessage;
     authFormFeedback.hidden = !safeMessage;
-  };
-
-  const isAuthUserNotFoundMessage = (message = '') => {
-    const safeMessage = String(message || '').trim().toLowerCase();
-    if (!safeMessage) return false;
-    return (
-      safeMessage.includes('usuario nao encontrado')
-      || safeMessage.includes('usuário não encontrado')
-      || safeMessage.includes('conta nao encontrada')
-      || safeMessage.includes('conta não encontrada')
-    );
   };
 
   const suggestNameFromEmail = (email = '') => {
@@ -7583,7 +7747,10 @@
   };
 
   const isAuthSessionUnauthorizedMessage = (message = '') => {
-    const safeMessage = String(message || '').toLowerCase();
+    const safeMessage = String(message || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
     if (!safeMessage) return false;
     return (
       safeMessage.includes('sessao invalida')
@@ -7666,21 +7833,14 @@
       const details = document.createElement('div');
       details.className = 'auth-sessions-item-details';
 
-      const label = document.createElement('p');
-      label.className = 'auth-sessions-item-label';
-      label.textContent = session.userAgent || 'Dispositivo nao identificado';
-      details.appendChild(label);
-
-      const metaParts = [];
-      if (session.ipAddress) metaParts.push(`IP ${session.ipAddress}`);
       const createdLabel = formatAuthSessionDateTime(session.createdAtUtc);
-      if (createdLabel) metaParts.push(`Inicio ${createdLabel}`);
       const expiresLabel = formatAuthSessionDateTime(session.expiresAtUtc);
-      if (expiresLabel) metaParts.push(`Expira ${expiresLabel}`);
+      const createdMeta = `Inicio ${createdLabel || 'indisponivel'}`;
+      const expiresMeta = `Expira ${expiresLabel || 'indisponivel'}`;
 
       const meta = document.createElement('p');
       meta.className = 'auth-sessions-item-meta';
-      meta.textContent = metaParts.length ? metaParts.join(' | ') : 'Sessao ativa';
+      meta.textContent = `${createdMeta} | ${expiresMeta}`;
       details.appendChild(meta);
 
       row.appendChild(details);
@@ -7689,13 +7849,13 @@
       actionButton.type = 'button';
       actionButton.className = 'btn btn-ghost auth-sessions-item-action';
       actionButton.dataset.authSessionLogout = session.sessionGuid;
-      actionButton.textContent = session.isCurrent ? 'Sair desta sessao' : 'Encerrar';
+      actionButton.textContent = session.isCurrent ? 'Sair desta sessão' : 'Encerrar';
       row.appendChild(actionButton);
 
       if (session.isCurrent) {
         const badge = document.createElement('span');
         badge.className = 'auth-sessions-item-badge';
-        badge.textContent = 'Atual';
+        badge.textContent = 'Este dispositivo';
         details.appendChild(badge);
       }
 
@@ -7723,7 +7883,7 @@
         if (!authSessionsRequestPending) {
           const row = button.closest('.auth-sessions-item');
           const isCurrent = Boolean(row && row.classList.contains('is-current'));
-          button.textContent = isCurrent ? 'Sair desta sessao' : 'Encerrar';
+          button.textContent = isCurrent ? 'Sair desta sessão' : 'Encerrar';
           return;
         }
         if (authSessionsRevokePendingGuid && isTarget) {
@@ -7753,12 +7913,12 @@
     if (!authSessionsModal || !authSessionsList) return;
     if (!isAuthLoggedIn()) {
       renderAuthSessionsList([]);
-      setAuthSessionsFeedback('Faça login para visualizar suas sessoes.', 'is-warning');
+      setAuthSessionsFeedback('Faça login para visualizar suas sessões.', 'is-warning');
       return;
     }
     authSessionsRevokePendingGuid = '';
     setAuthSessionsRequestState(true);
-    setAuthSessionsFeedback('Carregando sessoes ativas...', 'is-loading');
+    setAuthSessionsFeedback('Carregando sessões ativas...', 'is-loading');
     try {
       const payload = await requestAuthJson('/api/auth/sessions', {
         method: 'GET',
@@ -7769,12 +7929,12 @@
       const sessions = normalizeAuthSessions(payload.sessions);
       renderAuthSessionsList(sessions);
       if (!sessions.length) {
-        setAuthSessionsFeedback('Nenhuma sessao ativa encontrada.', 'is-warning');
+        setAuthSessionsFeedback('Nenhuma sessão ativa encontrada.', 'is-warning');
       } else {
         setAuthSessionsFeedback('');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Falha ao carregar sessoes.';
+      const message = err instanceof Error ? err.message : 'Falha ao carregar sessões.';
       renderAuthSessionsList([]);
       setAuthSessionsFeedback(message, 'is-error');
       if (isAuthSessionUnauthorizedMessage(message)) {
@@ -7794,7 +7954,7 @@
   const openAuthSessionsModal = (triggerElement = null) => {
     if (!authSessionsModal) return;
     if (!ensureLoggedInForUserScopedAction({
-      message: 'Faça login para gerenciar suas sessoes.',
+      message: 'Faça login para gerenciar suas sessões.',
       trigger: triggerElement instanceof HTMLElement ? triggerElement : null,
       notify: true,
     })) {
@@ -7826,10 +7986,10 @@
 
     const shouldLogoutSession = await openFavoriteConfirmModal({
       triggerElement: triggerButton instanceof HTMLElement ? triggerButton : null,
-      title: isCurrentSession ? 'Sair desta sessao' : 'Encerrar sessao',
+      title: isCurrentSession ? 'Sair desta sessão' : 'Encerrar sessão',
       message: isCurrentSession
-        ? 'Deseja sair desta sessao neste dispositivo?'
-        : 'Deseja encerrar esta sessao ativa?',
+        ? 'Deseja sair desta sessão neste dispositivo?'
+        : 'Deseja encerrar esta sessão ativa?',
       acceptLabel: isCurrentSession ? 'Sair' : 'Encerrar',
       cancelLabel: 'Cancelar',
       requirePassword: false,
@@ -7851,24 +8011,24 @@
         closeAuthSessionsModal({ restoreFocus: false });
         await handleAuthLogout({
           callServer: false,
-          toastMessage: 'Sessao expirada. Faça login novamente.',
+          toastMessage: 'Sessão expirada. Faça login novamente.',
           toastType: 'is-warning',
         });
         return;
       }
 
-      showSongToast('Sessao encerrada.', 'is-success');
+      showSongToast('Sessão encerrada.', 'is-success');
       await loadAuthSessions();
-      setAuthSessionsFeedback('Sessao encerrada com sucesso.', 'is-success');
+      setAuthSessionsFeedback('Sessão encerrada com sucesso.', 'is-success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Falha ao encerrar sessao.';
+      const message = err instanceof Error ? err.message : 'Falha ao encerrar sessão.';
       setAuthSessionsFeedback(message, 'is-error');
       if (isAuthSessionUnauthorizedMessage(message)) {
         closeAuthSessionsModal({ restoreFocus: false });
         handleUserScopedApiUnauthorized({
           notify: true,
           openLoginModal: false,
-          message: 'Sessao expirada. Faça login novamente.',
+          message: 'Sessão expirada. Faça login novamente.',
           trigger: triggerButton instanceof HTMLElement ? triggerButton : lastFocusedAuthSessionsTrigger,
         });
       }
@@ -7921,7 +8081,11 @@
 
     if (songShareCreateBtn) {
       songShareCreateBtn.disabled = disableActions;
-      songShareCreateBtn.textContent = songShareRequestPending ? 'Gerando...' : 'Gerar novo link';
+      if (songShareRequestPending) {
+        songShareCreateBtn.textContent = 'Gerando...';
+      } else {
+        songShareCreateBtn.textContent = 'Gerar novo link';
+      }
     }
     if (songShareCopyBtn) {
       songShareCopyBtn.disabled = disableActions || !songShareCurrentLink;
@@ -8015,12 +8179,206 @@
 
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !payload?.ok) {
       throw new Error(extractApiErrorMessage(payload, 'Falha ao importar compartilhamento.'));
     }
     return asObject(payload);
+  };
+
+  const requestSongShareView = async (shareId) => {
+    const safeShareId = normalizeSongShareId(shareId);
+    if (!safeShareId) {
+      throw new Error('Codigo de compartilhamento invalido.');
+    }
+    const query = new URLSearchParams({ share_id: safeShareId }).toString();
+    const response = await fetch(`/api/songs/share/view?${query}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = null;
+    }
+    if (!response.ok || !payload?.ok) {
+      throw new Error(extractApiErrorMessage(payload, 'Falha ao carregar compartilhamento.'));
+    }
+    return asObject(payload);
+  };
+
+  const buildSongShareViewFavoriteRows = (
+    favoriteRows = [],
+    mysteryRows = [],
+    locationRows = []
+  ) => {
+    const nextRows = [];
+    const seenUrlKeys = new Set();
+    const appendRow = (rawPayload) => {
+      const payload = asObject(rawPayload);
+      const songUrl = String(payload.url || payload.song_url || payload.songUrl || '').trim();
+      const songUrlKey = normalizeSongUrlKey(songUrl);
+      if (!songUrlKey || seenUrlKeys.has(songUrlKey)) return;
+      seenUrlKeys.add(songUrlKey);
+
+      nextRows.push({
+        id: payload.id ?? 0,
+        order_index: payload.order_index ?? payload.orderIndex ?? 0,
+        url: songUrl,
+        title: String(payload.title || payload.song_title || payload.songTitle || '').trim(),
+        artist: String(payload.artist || payload.song_artist || payload.songArtist || '').trim(),
+        source: String(payload.source || '').trim(),
+        source_label: String(payload.source_label || payload.sourceLabel || '').trim(),
+        image_url: String(payload.image_url || payload.imageUrl || '').trim(),
+        spotify_url: String(payload.spotify_url || payload.spotifyUrl || '').trim(),
+        youtube_url: String(payload.youtube_url || payload.youtubeUrl || '').trim(),
+        lyrics_text: String(payload.lyrics_text || payload.lyricsText || ''),
+        lyrics_source: String(payload.lyrics_source || payload.lyricsSource || '').trim(),
+        lyrics_source_url: String(payload.lyrics_source_url || payload.lyricsSourceUrl || '').trim(),
+        chords_text: String(payload.chords_text || payload.chordsText || ''),
+        chords_source: String(payload.chords_source || payload.chordsSource || '').trim(),
+        chords_source_url: String(payload.chords_source_url || payload.chordsSourceUrl || '').trim(),
+        chords_original_key: String(payload.chords_original_key || payload.chordsOriginalKey || '').trim(),
+        chords_selected_key: String(payload.chords_selected_key || payload.chordsSelectedKey || '').trim(),
+        created_at_utc: String(payload.created_at_utc || payload.createdAtUtc || '').trim(),
+        updated_at_utc: String(payload.updated_at_utc || payload.updatedAtUtc || '').trim(),
+        has_lyrics: Boolean(
+          payload.has_lyrics
+          || payload.hasLyrics
+          || String(payload.lyrics_text || payload.lyricsText || '').trim()
+        ),
+        has_chords: Boolean(
+          payload.has_chords
+          || payload.hasChords
+          || String(payload.chords_text || payload.chordsText || '').trim()
+        ),
+      });
+    };
+
+    (Array.isArray(favoriteRows) ? favoriteRows : []).forEach(appendRow);
+    (Array.isArray(mysteryRows) ? mysteryRows : []).forEach(appendRow);
+    (Array.isArray(locationRows) ? locationRows : []).forEach(appendRow);
+    return nextRows;
+  };
+
+  const applySongShareViewPayload = (payload) => {
+    const safePayload = asObject(payload);
+    const shareIdFromPayload = normalizeSongShareId(safePayload.share_id || readSongShareIdFromUrl());
+    if (shareIdFromPayload) {
+      songShareCurrentViewId = shareIdFromPayload;
+      pendingSongShareImport = shareIdFromPayload;
+    }
+    let shareUrl = String(safePayload.share_url || '').trim();
+    const qrImageDataUrl = String(safePayload.qr_image_data_url || '').trim();
+    if (!shareUrl) {
+      const shareIdFromPayload = normalizeSongShareId(safePayload.share_id || '');
+      if (shareIdFromPayload) {
+        try {
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set(SONG_SHARE_QUERY_KEY, shareIdFromPayload);
+          shareUrl = currentUrl.toString();
+        } catch (_err) {
+          shareUrl = '';
+        }
+      }
+    }
+    songShareCurrentLink = shareUrl;
+    if (songShareLinkInput) {
+      songShareLinkInput.value = shareUrl;
+    }
+    if (songShareQrImage) {
+      if (qrImageDataUrl) {
+        songShareQrImage.src = qrImageDataUrl;
+      } else {
+        songShareQrImage.removeAttribute('src');
+      }
+    }
+
+    const shareData = asObject(safePayload.data);
+    const songFavoritesRows = Array.isArray(shareData.song_favorites) ? shareData.song_favorites : [];
+    const customSongsRows = Array.isArray(shareData.custom_songs) ? shareData.custom_songs : [];
+    const mysteryAssignmentsRows = Array.isArray(shareData.mystery_song_assignments)
+      ? shareData.mystery_song_assignments
+      : [];
+    const locationAssignmentsRows = Array.isArray(shareData.song_location_assignments)
+      ? shareData.song_location_assignments
+      : [];
+    const locationUserNodesRows = Array.isArray(shareData.song_location_user_nodes)
+      ? shareData.song_location_user_nodes
+      : [];
+    const combinedSongRows = buildSongShareViewFavoriteRows(
+      songFavoritesRows,
+      mysteryAssignmentsRows,
+      locationAssignmentsRows
+    );
+
+    const userNodesById = new Map();
+    locationUserNodesRows.forEach((rawNode) => {
+      const normalizedNode = normalizeSongLocationNodePayload(rawNode);
+      const normalizedId = String(normalizedNode.id || '')
+        .trim()
+        .replace(/^location:/i, '')
+        .trim();
+      if (!normalizedId || !normalizedNode.label) return;
+      userNodesById.set(normalizedId, normalizedNode);
+    });
+
+    const resolveSharedLocationPath = (rawLocationId) => {
+      let currentId = String(rawLocationId || '')
+        .trim()
+        .replace(/^location:/i, '')
+        .trim();
+      if (!currentId) return [];
+
+      const path = [];
+      const visited = new Set();
+      while (currentId && !visited.has(currentId)) {
+        visited.add(currentId);
+        const node = userNodesById.get(currentId);
+        if (!node || !node.label) break;
+        path.unshift(node.label);
+        currentId = String(node.parentId || '')
+          .trim()
+          .replace(/^location:/i, '')
+          .trim();
+      }
+      return path;
+    };
+
+    const nextMysteryAssignments = {};
+    mysteryAssignmentsRows.forEach((rowPayload) => {
+      const normalized = normalizeMysterySongAssignmentPayload(rowPayload);
+      if (!normalized.groupTitle || !normalized.mysteryTitle) return;
+      const key = buildMysterySongAssignmentKey(normalized.groupTitle, normalized.mysteryTitle);
+      nextMysteryAssignments[key] = normalized;
+    });
+
+    const nextLocationAssignments = {};
+    locationAssignmentsRows.forEach((rowPayload) => {
+      const normalized = normalizeSongLocationAssignmentPayload(rowPayload);
+      if (!normalized.locationId) return;
+      if (!normalized.locationPath.length) {
+        normalized.locationPath = resolveSharedLocationPath(normalized.locationId);
+      }
+      nextLocationAssignments[normalized.locationId] = normalized;
+    });
+
+    songFavoritesLoading = false;
+    mysterySongAssignmentsLoading = false;
+    songLocationAssignmentsLoading = false;
+    songShareViewModeLoaded = true;
+    mysterySongAssignments = nextMysteryAssignments;
+    songLocationAssignments = nextLocationAssignments;
+    applySongFavorites(combinedSongRows);
+    setPersistedCustomSongs(customSongsRows);
+    syncStoredCustomDraftToSongList();
+    renderCustomSongs();
+    updateMysteryModalSongToggleState();
+    renderSongSaveLocationPicker();
+    updateRosaryModalSongToggleState();
+    setSongShareRequestState(false);
   };
 
   const buildSongShareImportToastMessage = (summaryPayload) => {
@@ -8047,37 +8405,73 @@
   const maybeHandlePendingSongShareImport = async (triggerElement = null) => {
     const safeShareId = normalizeSongShareId(pendingSongShareImport);
     if (!safeShareId || songShareImportPending) return false;
-    if (!isAuthLoggedIn()) return false;
 
     songShareImportPending = true;
     setSongShareRequestState(songShareRequestPending);
     try {
+      const autoOpenView = Boolean(
+        !isAuthLoggedIn()
+        && shouldAutoOpenSongShareView(safeShareId)
+      );
+      if (autoOpenView) {
+        const viewPayload = await requestSongShareView(safeShareId);
+        applySongShareViewPayload(viewPayload);
+        pendingSongShareImport = '';
+        return true;
+      }
+
       const previewPayload = await fetchSongSharePreview(safeShareId);
       const sourcePayload = asObject(previewPayload.source);
-      const sourceLabel = String(sourcePayload.name || sourcePayload.email || '').trim();
+      const sourceLabel = String(sourcePayload.name || '').trim();
       const countsSummary = formatSongShareCountsSummary(previewPayload.counts);
       const confirmationMessageBase = sourceLabel
-        ? `Deseja importar as musicas compartilhadas por ${sourceLabel}?`
-        : 'Deseja importar as musicas compartilhadas para sua conta?';
+        ? `Escolha como usar as musicas compartilhadas por ${sourceLabel}.`
+        : 'Escolha como deseja usar essas musicas compartilhadas.';
+      const confirmationActionHint = isAuthLoggedIn()
+        ? 'Importar copia para sua conta. Ver usa a lista apenas neste navegador.'
+        : 'Importar exige login. Ver abre a lista sem conta.';
       const confirmationMessage = countsSummary
-        ? `${confirmationMessageBase}\n\nConteudo: ${countsSummary}.`
-        : confirmationMessageBase;
-      const shouldImport = await openFavoriteConfirmModal({
+        ? `${confirmationMessageBase}\n\nConteudo: ${countsSummary}.\n\n${confirmationActionHint}`
+        : `${confirmationMessageBase}\n\n${confirmationActionHint}`;
+
+      const selectedAction = await openFavoriteDecisionModal({
         triggerElement: triggerElement instanceof HTMLElement ? triggerElement : null,
-        title: 'Importar musicas compartilhadas',
+        title: 'Musicas compartilhadas',
         message: confirmationMessage,
         acceptLabel: 'Importar',
-        cancelLabel: 'Cancelar',
-        requirePassword: false,
+        cancelLabel: 'Ver',
+        fallbackCancelConfirmMessage: 'Deseja abrir em modo Ver sem importar?',
       });
-      if (!shouldImport) {
+
+      if (selectedAction === FAVORITE_CONFIRM_ACTION_DISMISS) {
         pendingSongShareImport = '';
+        persistLastSongShareViewId('');
+        clearSongShareLocalState();
         clearSongShareFromUrl();
+        return false;
+      }
+
+      if (selectedAction === FAVORITE_CONFIRM_ACTION_CANCEL) {
+        const viewPayload = await requestSongShareView(safeShareId);
+        applySongShareViewPayload(viewPayload);
+        pendingSongShareImport = '';
+        persistLastSongShareViewId(safeShareId);
+        showSongToast('Lista compartilhada carregada. Voce pode usar sem conta neste navegador.', 'is-success');
+        return true;
+      }
+
+      if (!isAuthLoggedIn()) {
+        showSongToast('Faça login para importar no seu usuario, ou escolha Ver para usar sem conta.', 'is-warning');
+        runDeferredTask(() => {
+          openAuthModal('login', triggerElement instanceof HTMLElement ? triggerElement : authMenuTrigger);
+        }, 80);
         return false;
       }
 
       const importPayload = await requestSongShareImport(safeShareId);
       pendingSongShareImport = '';
+      persistLastSongShareViewId('');
+      clearSongShareLocalState();
       clearSongShareFromUrl();
       refreshUserScopedSongData(0);
       showSongToast(buildSongShareImportToastMessage(importPayload.summary), 'is-success');
@@ -8087,6 +8481,8 @@
       showSongToast(message, 'is-error');
       if (isSongShareNotFoundMessage(message)) {
         pendingSongShareImport = '';
+        persistLastSongShareViewId('');
+        clearSongShareLocalState();
         clearSongShareFromUrl();
       }
       return false;
@@ -8118,7 +8514,7 @@
 
       if (isUserScopedApiUnauthorized(response)) {
         handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-        throw new Error('Sessao expirada. Faça login novamente.');
+        throw new Error('Sessão expirada. Faça login novamente.');
       }
       if (!response.ok || !payload?.ok) {
         throw new Error(extractApiErrorMessage(payload, 'Falha ao gerar compartilhamento.'));
@@ -8137,12 +8533,14 @@
 
   const openSongShareModal = (triggerElement = null) => {
     if (!songShareModal) return;
-    if (!ensureLoggedInForUserScopedAction({
-      message: 'Faça login para compartilhar suas musicas.',
-      trigger: triggerElement instanceof HTMLElement ? triggerElement : null,
-      notify: true,
-    })) {
-      return;
+    if (!isAuthLoggedIn()) {
+      if (!ensureLoggedInForUserScopedAction({
+        message: 'Faça login para compartilhar suas musicas.',
+        trigger: triggerElement instanceof HTMLElement ? triggerElement : null,
+        notify: true,
+      })) {
+        return;
+      }
     }
 
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -8305,6 +8703,14 @@
     if (actions instanceof HTMLElement) {
       actions.classList.toggle('is-account-mode', isAccountMode);
     }
+    setAuthRegisterCtaState(
+      isLoginMode && !showQrPanel,
+      {
+        name: String(authNameInput?.value || '').trim(),
+        email: String(authEmailInput?.value || '').trim().toLowerCase(),
+        password: String(authPasswordInput?.value || ''),
+      }
+    );
   };
 
   const renderAuthMenu = () => {
@@ -8325,6 +8731,7 @@
       const visibleWhenLoggedIn = action === 'account' || action === 'sessions' || action === 'logout';
       button.hidden = loggedIn ? !visibleWhenLoggedIn : !visibleWhenLoggedOut;
     });
+    syncHeroShareSongsButtonState();
   };
 
   const setAuthSubmitState = (pending) => {
@@ -8405,7 +8812,6 @@
     if (authForm) {
       authForm.reset();
     }
-    setAuthRegisterCtaState(false);
     setAuthPasswordVisibility(false);
     if (showAccount) {
       if (authNameInput) {
@@ -8496,7 +8902,7 @@
       });
       const normalizedUser = normalizeAuthUser(payload.user);
       if (!normalizedUser) {
-        throw new Error('Sessao invalida.');
+        throw new Error('Sessão invalida.');
       }
       authUser = normalizedUser;
       persistAuthState();
@@ -8513,7 +8919,7 @@
   const handleAuthLogout = async (options = {}) => {
     const safeOptions = asObject(options);
     const shouldCallServer = safeOptions.callServer !== false;
-    const toastMessage = String(safeOptions.toastMessage || '').trim() || 'Sessao encerrada.';
+    const toastMessage = String(safeOptions.toastMessage || '').trim() || 'Sessão encerrada.';
     const toastType = String(safeOptions.toastType || '').trim() || 'is-success';
     const previousToken = String(authToken || '').trim();
     clearAuthState();
@@ -8619,17 +9025,22 @@
   restoreAuthState();
   const hasPendingQrApproval = Boolean(pendingAuthQrApproval);
   const hasPendingSongShareImport = Boolean(normalizeSongShareId(pendingSongShareImport));
-  if (!isAuthLoggedIn() && (hasPendingQrApproval || hasPendingSongShareImport)) {
-    if (hasPendingQrApproval && hasPendingSongShareImport) {
-      showSongToast('Faça login para autorizar o QR Code e importar as musicas compartilhadas.', 'is-warning');
-    } else if (hasPendingQrApproval) {
+  const autoOpenPendingSongShareView = Boolean(
+    !isAuthLoggedIn()
+    && hasPendingSongShareImport
+    && shouldAutoOpenSongShareView(pendingSongShareImport)
+  );
+  if (!isAuthLoggedIn() && hasPendingQrApproval) {
+    if (hasPendingSongShareImport) {
+      showSongToast('Faça login para autorizar o QR Code. Depois voce pode importar ou ver as musicas compartilhadas.', 'is-warning');
+    } else {
       showSongToast('Faça login no celular para autorizar o QR Code.', 'is-warning');
-    } else if (hasPendingSongShareImport) {
-      showSongToast('Faça login para importar as musicas compartilhadas.', 'is-warning');
     }
     runDeferredTask(() => {
       openAuthModal('login', authMenuTrigger);
     }, 80);
+  } else if (!isAuthLoggedIn() && hasPendingSongShareImport && !autoOpenPendingSongShareView) {
+    showSongToast('Link de compartilhamento detectado. Escolha Ver para usar sem conta ou Importar para salvar na sua conta.', 'is-warning');
   }
   runDeferredTask(async () => {
     await syncAuthSession();
@@ -8695,6 +9106,12 @@
     });
   }
 
+  if (heroShareSongsBtn) {
+    heroShareSongsBtn.addEventListener('click', () => {
+      openSongShareModal(heroShareSongsBtn);
+    });
+  }
+
   if (authSessionsList) {
     authSessionsList.addEventListener('click', (event) => {
       const targetButton = event.target instanceof Element
@@ -8721,18 +9138,6 @@
     });
   }
 
-  if (authEmailInput) {
-    authEmailInput.addEventListener('input', () => {
-      setAuthRegisterCtaState(false);
-    });
-  }
-
-  if (authPasswordInput) {
-    authPasswordInput.addEventListener('input', () => {
-      setAuthRegisterCtaState(false);
-    });
-  }
-
   if (authPasswordToggle && authPasswordInput) {
     authPasswordToggle.addEventListener('click', () => {
       const isCurrentlyVisible = authPasswordInput.type === 'text';
@@ -8756,7 +9161,6 @@
   if (authQrOpenBtn) {
     authQrOpenBtn.addEventListener('click', () => {
       if (normalizeAuthMode(authMode) !== 'login') return;
-      setAuthRegisterCtaState(false);
       authQrPanelOpen = true;
       syncAuthFormMode(authMode);
       void startAuthQrLogin();
@@ -8774,7 +9178,6 @@
     authQrCloseBtn.addEventListener('click', () => {
       authQrPanelOpen = false;
       resetAuthQrSessionState();
-      setAuthRegisterCtaState(false);
       syncAuthFormMode(authMode);
       if (authEmailInput instanceof HTMLElement) {
         window.requestAnimationFrame(() => {
@@ -8788,7 +9191,6 @@
     authForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (authRequestPending) return;
-      setAuthRegisterCtaState(false);
 
       const safeMode = normalizeAuthMode(authMode);
       if (safeMode === 'login' && authQrPanelOpen) return;
@@ -8824,7 +9226,7 @@
         return;
       }
       if (safeMode === 'account' && !isAuthLoggedIn()) {
-        setAuthFormFeedback('Sessao expirada. Faça login novamente.');
+        setAuthFormFeedback('Sessão expirada. Faça login novamente.');
         openAuthModal('login');
         return;
       }
@@ -8898,7 +9300,7 @@
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Falha ao autenticar.';
         setAuthFormFeedback(message);
-        if (safeMode === 'login' && isAuthUserNotFoundMessage(message)) {
+        if (safeMode === 'login') {
           setAuthRegisterCtaState(true, {
             name: safeName,
             email: safeEmail,
@@ -10108,6 +10510,7 @@
 
   const renderSongFavorites = () => {
     if (!songFavoritesCard || !songFavoritesList) return;
+    syncHeroShareSongsButtonState();
 
     const normalizedSearchQuery = normalizeSongMatchToken(songFavoritesSearchQuery);
     const hasActiveSearch = Boolean(normalizedSearchQuery);
@@ -10538,7 +10941,7 @@
             openLoginModal: true,
             trigger: triggerButton,
           });
-          throw new Error('Sessao expirada. Faça login novamente.');
+          throw new Error('Sessão expirada. Faça login novamente.');
         }
         if (!response.ok || !payload.ok) {
           const message = payload?.detail?.message
@@ -10623,7 +11026,7 @@
           openLoginModal: true,
           trigger: triggerButton,
         });
-        throw new Error('Sessao expirada. Faça login novamente.');
+        throw new Error('Sessão expirada. Faça login novamente.');
       }
       if (!response.ok || !payload.ok) {
         const message = payload?.detail?.message
@@ -10653,6 +11056,12 @@
   };
 
   const fetchSongFavorites = async () => {
+    if (songShareViewModeLoaded) {
+      songFavoritesLoading = false;
+      renderSongFavorites();
+      return false;
+    }
+
     if (!isAuthLoggedIn()) {
       songFavoritesLoading = false;
       applySongFavorites([]);
@@ -10716,7 +11125,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       const message = responsePayload?.detail?.message
@@ -10942,7 +11351,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -10978,7 +11387,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -11014,7 +11423,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -11049,7 +11458,7 @@
     const responsePayload = asObject(await response.json().catch(() => ({})));
     if (isUserScopedApiUnauthorized(response)) {
       handleUserScopedApiUnauthorized({ notify: true, openLoginModal: true });
-      throw new Error('Sessao expirada. Faça login novamente.');
+      throw new Error('Sessão expirada. Faça login novamente.');
     }
     if (!response.ok || !responsePayload.ok) {
       throw new Error(
@@ -11194,6 +11603,8 @@
   };
 
   const clearUserScopedSongData = () => {
+    songShareViewModeLoaded = false;
+    songShareCurrentViewId = '';
     songFavoritesLoading = false;
     applySongFavorites([]);
     songLocationTreeLoading = false;
@@ -11216,6 +11627,7 @@
       clearUserScopedSongData();
       return;
     }
+    songShareViewModeLoaded = false;
     const safeDelay = Number.isFinite(baseDelay) ? Math.max(0, Math.trunc(baseDelay)) : 0;
     runDeferredTask(fetchSongFavorites, safeDelay + 40);
     runDeferredTask(fetchMysterySongAssignments, safeDelay + 80);
@@ -12729,6 +13141,11 @@
     }, { passive: true });
 
     syncSongSearchClearButtons();
+    const resolveSongSearchExecutionWidget = (sourceWidget = null) => {
+      if (!sourceWidget) return resolveSongSearchWidget();
+      if (sourceWidget.id !== 'cantos') return sourceWidget;
+      return songSearchWidgets.find((widget) => widget.id === 'header') || sourceWidget;
+    };
 
     songSearchWidgets.forEach((widget) => {
       widget.resultsContainer.addEventListener('wheel', (event) => {
@@ -12762,7 +13179,8 @@
         }
 
         songSearchDebounceId = window.setTimeout(() => {
-          executeSongSearch(query, { fromTyping: true, widget });
+          const executionWidget = resolveSongSearchExecutionWidget(widget);
+          executeSongSearch(query, { fromTyping: true, widget: executionWidget });
         }, SONG_SEARCH_DEBOUNCE_MS);
       });
 
@@ -12774,7 +13192,8 @@
           }
           syncSongSearchInputs(widget.input);
           syncSongSearchClearButtons();
-          await executeSongSearch(widget.input.value, { fromTyping: false, widget });
+          const executionWidget = resolveSongSearchExecutionWidget(widget);
+          await executeSongSearch(widget.input.value, { fromTyping: false, widget: executionWidget });
         });
       }
 
@@ -12798,7 +13217,8 @@
           window.clearTimeout(songSearchDebounceId);
           songSearchDebounceId = null;
         }
-        await executeSongSearch(widget.input.value, { fromTyping: false, widget });
+        const executionWidget = resolveSongSearchExecutionWidget(widget);
+        await executeSongSearch(widget.input.value, { fromTyping: false, widget: executionWidget });
       });
     });
 
@@ -12823,7 +13243,8 @@
         cantosWidget.input.value = query;
         syncSongSearchInputs(cantosWidget.input);
         syncSongSearchClearButtons();
-        void executeSongSearch(query, { fromTyping: false, widget: cantosWidget });
+        const executionWidget = resolveSongSearchExecutionWidget(cantosWidget);
+        void executeSongSearch(query, { fromTyping: false, widget: executionWidget });
         return;
       }
       const clickedInsideSongLocationCreateModal = Boolean(
@@ -13288,5 +13709,6 @@
     }
   });
 })();
+
 
 

@@ -683,7 +683,7 @@ def _normalize_limit(raw_limit: int) -> int:
         limit = int(raw_limit)
     except (TypeError, ValueError):
         return 18
-    return max(1, min(40, limit))
+    return max(1, limit)
 
 
 def _normalize_page(raw_page: int) -> int:
@@ -691,7 +691,7 @@ def _normalize_page(raw_page: int) -> int:
         page = int(raw_page)
     except (TypeError, ValueError):
         return 1
-    return max(1, min(100, page))
+    return max(1, page)
 
 
 def _search_cifraclub(query: str, limit: int) -> list[dict[str, str]]:
@@ -779,7 +779,7 @@ def search_song_portals(
     page_start = (safe_page - 1) * safe_page_size
     page_end = page_start + safe_page_size
     # Build a larger candidate pool so relevance scoring can re-order noisy responses.
-    fetch_limit = min(240, max(page_end + 1, safe_page_size * 4))
+    fetch_limit = max(page_end + 1, safe_page_size * 4)
 
     source_batches: list[list[dict[str, str]]] = []
     errors: list[str] = []

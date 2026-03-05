@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import hashlib
@@ -270,7 +270,7 @@ def _create_session(
 ) -> dict[str, str]:
     safe_user_id = int(user_id)
     if safe_user_id <= 0:
-        raise RuntimeError('Usuario invalido para criar sessao.')
+        raise RuntimeError('Usuario invalido para criar sessão.')
 
     token = secrets.token_urlsafe(48)
     token_hash = _hash_session_token(token)
@@ -470,13 +470,13 @@ def get_authenticated_user(database_url: str | None, token: str | None) -> dict[
                 )
                 user_row = cur.fetchone()
                 if not isinstance(user_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
     except PermissionError:
         raise
     except OperationalError as exc:
-        raise RuntimeError(f'Falha ao conectar no PostgreSQL para validar sessao: {exc}') from exc
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para validar sessão: {exc}') from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
-        raise RuntimeError(f'Erro ao validar sessao: {exc}') from exc
+        raise RuntimeError(f'Erro ao validar sessão: {exc}') from exc
 
     return _build_user_payload(user_row)
 
@@ -507,12 +507,12 @@ def list_authenticated_user_sessions(database_url: str | None, token: str | None
                 )
                 current_session_row = cur.fetchone()
                 if not isinstance(current_session_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 current_user_id = int(current_session_row.get('user_id') or 0)
                 current_session_guid = str(current_session_row.get('session_guid') or '')
                 if current_user_id <= 0 or not current_session_guid:
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 cur.execute(
                     """
@@ -534,9 +534,9 @@ def list_authenticated_user_sessions(database_url: str | None, token: str | None
     except PermissionError:
         raise
     except OperationalError as exc:
-        raise RuntimeError(f'Falha ao conectar no PostgreSQL para listar sessoes: {exc}') from exc
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para listar sessões: {exc}') from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
-        raise RuntimeError(f'Erro ao listar sessoes: {exc}') from exc
+        raise RuntimeError(f'Erro ao listar sessões: {exc}') from exc
 
     sessions: list[dict[str, object]] = []
     for row in session_rows:
@@ -571,7 +571,7 @@ def logout_authenticated_user_session(
 ) -> dict[str, object]:
     safe_database_url = _require_database_url(database_url)
     safe_token = _normalize_auth_token(token)
-    safe_session_guid = _normalize_uuid_text(session_guid, 'a sessao')
+    safe_session_guid = _normalize_uuid_text(session_guid, 'a sessão')
     token_hash = _hash_session_token(safe_token)
     current_session_guid = ''
 
@@ -595,12 +595,12 @@ def logout_authenticated_user_session(
                 )
                 current_session_row = cur.fetchone()
                 if not isinstance(current_session_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 current_user_id = int(current_session_row.get('user_id') or 0)
                 current_session_guid = str(current_session_row.get('session_guid') or '')
                 if current_user_id <= 0 or not current_session_guid:
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 cur.execute(
                     """
@@ -619,16 +619,16 @@ def logout_authenticated_user_session(
     except (PermissionError, ValueError):
         raise
     except OperationalError as exc:
-        raise RuntimeError(f'Falha ao conectar no PostgreSQL para encerrar sessao selecionada: {exc}') from exc
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para encerrar sessão selecionada: {exc}') from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
-        raise RuntimeError(f'Erro ao encerrar sessao selecionada: {exc}') from exc
+        raise RuntimeError(f'Erro ao encerrar sessão selecionada: {exc}') from exc
 
     if not isinstance(revoked_row, dict):
-        raise ValueError('Sessao nao encontrada ou ja encerrada.')
+        raise ValueError('Sessão nao encontrada ou ja encerrada.')
 
     revoked_session_guid = str(revoked_row.get('session_guid') or '')
     if not revoked_session_guid:
-        raise ValueError('Sessao nao encontrada ou ja encerrada.')
+        raise ValueError('Sessão nao encontrada ou ja encerrada.')
 
     return {
         'session_guid': revoked_session_guid,
@@ -671,11 +671,11 @@ def update_authenticated_user(
                 )
                 current_user_row = cur.fetchone()
                 if not isinstance(current_user_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 current_user_id = int(current_user_row.get('id') or 0)
                 if current_user_id <= 0:
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 cur.execute(
                     """
@@ -741,10 +741,10 @@ def delete_authenticated_user(database_url: str | None, token: str | None) -> bo
                 )
                 user_row = cur.fetchone()
                 if not isinstance(user_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
                 user_id = int(user_row.get('id') or 0)
                 if user_id <= 0:
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 cur.execute(
                     """
@@ -790,9 +790,9 @@ def logout_user(database_url: str | None, token: str | None) -> bool:
     except PermissionError:
         raise
     except OperationalError as exc:
-        raise RuntimeError(f'Falha ao conectar no PostgreSQL para encerrar sessao: {exc}') from exc
+        raise RuntimeError(f'Falha ao conectar no PostgreSQL para encerrar sessão: {exc}') from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
-        raise RuntimeError(f'Erro ao encerrar sessao: {exc}') from exc
+        raise RuntimeError(f'Erro ao encerrar sessão: {exc}') from exc
 
     return isinstance(removed_row, dict) and int(removed_row.get('id') or 0) > 0
 
@@ -861,7 +861,7 @@ def get_qr_login_session_status(
     poll_token: str | None,
 ) -> dict[str, object]:
     safe_database_url = _require_database_url(database_url)
-    safe_session_guid = _normalize_uuid_text(session_guid, 'a sessao de QR Code')
+    safe_session_guid = _normalize_uuid_text(session_guid, 'a sessão de QR Code')
     safe_poll_token = _normalize_qr_token(poll_token, 'o token de verificacao')
     poll_token_hash = _hash_session_token(safe_poll_token)
 
@@ -953,7 +953,7 @@ def approve_qr_login_session(
     client_ip: str | None = None,
 ) -> dict[str, object]:
     safe_database_url = _require_database_url(database_url)
-    safe_session_guid = _normalize_uuid_text(payload.session_guid, 'a sessao de QR Code')
+    safe_session_guid = _normalize_uuid_text(payload.session_guid, 'a sessão de QR Code')
     safe_approve_token = _normalize_qr_token(payload.approve_token, 'o token de aprovacao')
     safe_approver_token = _normalize_auth_token(approver_token)
     approve_token_hash = _hash_session_token(safe_approve_token)
@@ -1005,11 +1005,11 @@ def approve_qr_login_session(
 
                 approver_user_row = _select_active_user_by_session_token_hash(cur, approver_token_hash)
                 if not isinstance(approver_user_row, dict):
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 approver_user_id = int(approver_user_row.get('id') or 0)
                 if approver_user_id <= 0:
-                    raise PermissionError('Sessao invalida ou expirada.')
+                    raise PermissionError('Sessão invalida ou expirada.')
 
                 cur.execute(
                     """
@@ -1054,7 +1054,7 @@ def complete_qr_login_session(
     client_ip: str | None = None,
 ) -> dict[str, object]:
     safe_database_url = _require_database_url(database_url)
-    safe_session_guid = _normalize_uuid_text(payload.session_guid, 'a sessao de QR Code')
+    safe_session_guid = _normalize_uuid_text(payload.session_guid, 'a sessão de QR Code')
     safe_poll_token = _normalize_qr_token(payload.poll_token, 'o token de verificacao')
     poll_token_hash = _hash_session_token(safe_poll_token)
 
@@ -1148,3 +1148,4 @@ def complete_qr_login_session(
         'user': _build_user_payload(approved_user_row),
         **session_payload,
     }
+

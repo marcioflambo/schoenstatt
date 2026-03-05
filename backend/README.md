@@ -34,6 +34,9 @@
 - Com `DATABASE_URL` definido, favoritos, musicas manuais e atribuicoes de misterios sao salvos no PostgreSQL.
 - Sem `DATABASE_URL`, o fallback local usa `data/song_favorites.json`, `data/custom_songs.json` e `data/mystery_song_assignments.json`.
 - Se `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` estiverem definidos, o backend tenta identificar tom por API quando a cifra nao informar `original_key`.
+- Rotas globais de escrita de locais (`PUT/DELETE /api/song-locations/nodes/*` e `PUT /api/song-locations/reorder`) exigem `Authorization: Bearer ...`.
+- `SONG_LOCATION_DELETE_PASSWORD` nao possui mais default hardcoded; quando definido, adiciona uma segunda camada para `DELETE /api/song-locations/nodes/{node_id}`.
+- Compartilhamento possui expiracao por `SONG_SHARE_TTL_HOURS` (default `168`) e rate limits por IP (`RATE_LIMIT_*`).
 
 ## Estrutura de banco (PostgreSQL)
 - Script inicial: `backend/sql/001_init_auth_schema.sql`

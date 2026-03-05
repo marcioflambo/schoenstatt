@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import base64
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 from hmac import compare_digest
 from io import BytesIO
 from pathlib import Path
 import secrets
 import re
+import time
+from threading import Lock
 import unicodedata
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import qrcode
@@ -107,9 +111,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_credentials=False,
+    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allow_headers=['Authorization', 'Content-Type', 'X-Location-Delete-Password'],
+    max_age=600,
 )
 
 assets_dir = PROJECT_DIR / 'assets'
@@ -124,6 +129,12 @@ PORTAL_CONTENT_FILE = PROJECT_DIR / 'assets' / 'data' / 'portal-content.json'
 SONG_SHARE_QUERY_KEY = 'song_share'
 SONG_SHARE_STORE_PREFIX = 'song_share_snapshot'
 SONG_SHARE_MAX_LIST_ITEMS = 1500
+RATE_LIMIT_BUCKET_API_GLOBAL = 'api-global'
+RATE_LIMIT_BUCKET_API_WRITE = 'api-write'
+RATE_LIMIT_BUCKET_AUTH = 'auth'
+RATE_LIMIT_BUCKET_SHARE = 'share'
+_RATE_LIMIT_STATE: dict[str, deque[float]] = defaultdict(deque)
+_RATE_LIMIT_LOCK = Lock()
 
 
 class SongShareImportRequest(BaseModel):
@@ -207,7 +218,102 @@ def _normalize_spaces(value: str | None) -> str:
     return ' '.join((value or '').split()).strip()
 
 
+def _resolve_client_ip(request: Request) -> str:
+    forwarded_for = _normalize_spaces(request.headers.get('x-forwarded-for', ''))
+    if forwarded_for:
+        first_client = _normalize_spaces(forwarded_for.split(',')[0])
+        if first_client:
+            return first_client
+    if request.client and request.client.host:
+        return _normalize_spaces(str(request.client.host))
+    return 'unknown'
+
+
+def _enforce_rate_limit(
+    request: Request,
+    *,
+    bucket: str,
+    max_requests: int,
+    window_seconds: int,
+) -> None:
+    if max_requests <= 0 or window_seconds <= 0:
+        return
+
+    client_ip = _resolve_client_ip(request)
+    safe_bucket = _normalize_spaces(bucket) or 'default'
+    request_key = f'{safe_bucket}|{client_ip}'
+    now = time.monotonic()
+    window_start = now - window_seconds
+
+    with _RATE_LIMIT_LOCK:
+        request_times = _RATE_LIMIT_STATE[request_key]
+        while request_times and request_times[0] <= window_start:
+            request_times.popleft()
+
+        if len(request_times) >= max_requests:
+            retry_after = max(1, int((request_times[0] + window_seconds) - now) + 1)
+            raise HTTPException(
+                status_code=429,
+                detail={'message': 'Limite de requisições excedido. Aguarde alguns instantes.'},
+                headers={'Retry-After': str(retry_after)},
+            )
+
+        request_times.append(now)
+
+
+def _enforce_auth_rate_limit(request: Request) -> None:
+    _enforce_rate_limit(
+        request,
+        bucket=RATE_LIMIT_BUCKET_AUTH,
+        max_requests=settings.rate_limit_auth_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
+
+def _enforce_share_rate_limit(request: Request) -> None:
+    _enforce_rate_limit(
+        request,
+        bucket=RATE_LIMIT_BUCKET_SHARE,
+        max_requests=settings.rate_limit_share_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
+
+@app.middleware('http')
+async def api_rate_limit_middleware(request: Request, call_next):
+    safe_path = _normalize_spaces(str(request.url.path or ''))
+    safe_method = _normalize_spaces(request.method).upper()
+    is_api_path = safe_path.startswith('/api/')
+    try:
+        if is_api_path and safe_method != 'OPTIONS':
+            _enforce_rate_limit(
+                request,
+                bucket=RATE_LIMIT_BUCKET_API_GLOBAL,
+                max_requests=settings.rate_limit_global_requests,
+                window_seconds=settings.rate_limit_window_seconds,
+            )
+            if safe_method in {'POST', 'PUT', 'DELETE', 'PATCH'}:
+                _enforce_rate_limit(
+                    request,
+                    bucket=RATE_LIMIT_BUCKET_API_WRITE,
+                    max_requests=settings.rate_limit_write_requests,
+                    window_seconds=settings.rate_limit_window_seconds,
+                )
+    except HTTPException as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={'detail': exc.detail},
+            headers=exc.headers or {},
+        )
+
+    return await call_next(request)
+
+
 def _resolve_public_base_url(request: Request) -> str:
+    configured_base_url = _normalize_spaces(settings.public_base_url)
+    if configured_base_url:
+        return configured_base_url.rstrip('/')
+
     base_url = _normalize_spaces(str(request.base_url or ''))
     safe_base_url = base_url.rstrip('/') if base_url else ''
     if safe_base_url:
@@ -588,6 +694,46 @@ def _cleanup_song_assignments_for_identity(
     return cleanup_payload
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_utc_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+
+def _parse_utc_timestamp(value: object) -> datetime | None:
+    raw_value = _normalize_spaces(str(value or ''))
+    if not raw_value:
+        return None
+    normalized = f"{raw_value[:-1]}+00:00" if raw_value.endswith('Z') else raw_value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resolve_song_share_expires_at(snapshot_payload: dict[str, object]) -> datetime | None:
+    expires_at = _parse_utc_timestamp(snapshot_payload.get('expires_at_utc'))
+    if expires_at:
+        return expires_at
+
+    created_at = _parse_utc_timestamp(snapshot_payload.get('created_at_utc'))
+    if not created_at:
+        return None
+    return created_at + timedelta(hours=max(1, settings.song_share_ttl_hours))
+
+
+def _is_song_share_snapshot_expired(snapshot_payload: dict[str, object]) -> bool:
+    expires_at = _resolve_song_share_expires_at(snapshot_payload)
+    if not expires_at:
+        return True
+    return expires_at <= _now_utc()
+
+
 def _normalize_song_share_id(raw_value: str | None) -> str:
     share_id = _normalize_spaces(raw_value)
     if not share_id:
@@ -636,6 +782,17 @@ def _build_song_share_counts(snapshot_payload: dict[str, object]) -> dict[str, i
     }
 
 
+def _build_song_share_view_data(snapshot_payload: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+    data = snapshot_payload.get('data') if isinstance(snapshot_payload.get('data'), dict) else {}
+    return {
+        'custom_songs': _truncate_song_share_rows(data.get('custom_songs')),
+        'mystery_song_assignments': _truncate_song_share_rows(data.get('mystery_song_assignments')),
+        'song_location_assignments': _truncate_song_share_rows(data.get('song_location_assignments')),
+        'song_location_user_nodes': _truncate_song_share_rows(data.get('song_location_user_nodes')),
+        'song_favorites': _truncate_song_share_rows(data.get('song_favorites')),
+    }
+
+
 def _build_custom_song_signature(
     *,
     title: str,
@@ -652,6 +809,9 @@ def _build_custom_song_signature(
 
 
 def _create_song_share_snapshot(store_namespace: str, source_user: dict[str, str]) -> dict[str, object]:
+    created_at = _now_utc()
+    expires_at = created_at + timedelta(hours=max(1, settings.song_share_ttl_hours))
+
     custom_songs = list_custom_songs(
         settings.custom_songs_file,
         include_inactive=False,
@@ -682,11 +842,11 @@ def _create_song_share_snapshot(store_namespace: str, source_user: dict[str, str
 
     return {
         'version': 1,
-        'created_at_utc': _normalize_spaces(str(ping_database(settings.database_url).get('checked_at_utc') or '')) or None,
+        'created_at_utc': _to_utc_iso(created_at),
+        'expires_at_utc': _to_utc_iso(expires_at),
         'source': {
             'user_guid': _normalize_spaces(str(source_user.get('guid') or '')),
             'name': _normalize_spaces(str(source_user.get('name') or '')),
-            'email': _normalize_spaces(str(source_user.get('email') or '')),
         },
         'data': {
             'custom_songs': _truncate_song_share_rows(custom_songs),
@@ -706,7 +866,52 @@ def _load_song_share_snapshot(share_id: str) -> dict[str, object] | None:
         return None
     if not isinstance(payload.get('data'), dict):
         return None
+    if _is_song_share_snapshot_expired(payload):
+        return None
     return payload
+
+
+def _refresh_song_share_snapshot_from_source(share_id: str, share_snapshot: dict[str, object]) -> dict[str, object]:
+    try:
+        safe_share_id = _normalize_song_share_id(share_id)
+    except ValueError:
+        return share_snapshot
+
+    source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
+    source_guid = _normalize_spaces(str(source_payload.get('user_guid') or source_payload.get('guid') or ''))
+    if not source_guid:
+        return share_snapshot
+
+    source_name = _normalize_spaces(str(source_payload.get('name') or ''))
+    try:
+        refreshed_snapshot = _create_song_share_snapshot(
+            source_guid,
+            {
+                'guid': source_guid,
+                'name': source_name,
+            },
+        )
+    except Exception:
+        return share_snapshot
+
+    original_created_at = _normalize_spaces(str(share_snapshot.get('created_at_utc') or ''))
+    original_expires_at = _normalize_spaces(str(share_snapshot.get('expires_at_utc') or ''))
+    if original_created_at:
+        refreshed_snapshot['created_at_utc'] = original_created_at
+    if original_expires_at:
+        refreshed_snapshot['expires_at_utc'] = original_expires_at
+
+    if settings.database_url:
+        try:
+            save_store(
+                settings.database_url,
+                _build_song_share_store_key(safe_share_id),
+                refreshed_snapshot,
+            )
+        except Exception:
+            pass
+
+    return refreshed_snapshot
 
 
 def _import_shared_custom_songs(store_namespace: str, rows: list[dict[str, object]]) -> dict[str, int]:
@@ -1103,6 +1308,8 @@ def api_song_share_create(
     request: Request,
     authorization: str = Header('', alias='Authorization'),
 ) -> dict[str, object]:
+    _enforce_share_rate_limit(request)
+
     if not settings.database_url:
         raise HTTPException(status_code=503, detail={'message': 'Compartilhamento indisponivel sem PostgreSQL configurado.'})
 
@@ -1121,7 +1328,6 @@ def api_song_share_create(
     source_user = {
         'guid': store_namespace,
         'name': _normalize_spaces(str(source_user_payload.get('name') or '')),
-        'email': _normalize_spaces(str(source_user_payload.get('email') or '')),
     }
 
     try:
@@ -1160,9 +1366,9 @@ def api_song_share_create(
         'share_url': share_url,
         'qr_image_data_url': qr_image_data_url,
         'created_at_utc': _normalize_spaces(str(snapshot_payload.get('created_at_utc') or '')),
+        'expires_at_utc': _normalize_spaces(str(snapshot_payload.get('expires_at_utc') or '')),
         'source': {
             'name': source_user.get('name') or '',
-            'email': source_user.get('email') or '',
         },
         'counts': counts,
         'total_items': sum(counts.values()),
@@ -1170,7 +1376,12 @@ def api_song_share_create(
 
 
 @app.get('/api/songs/share/preview')
-def api_song_share_preview(share_id: str = Query(..., min_length=8, max_length=80)) -> dict[str, object]:
+def api_song_share_preview(
+    request: Request,
+    share_id: str = Query(..., min_length=8, max_length=80),
+) -> dict[str, object]:
+    _enforce_share_rate_limit(request)
+
     if not settings.database_url:
         raise HTTPException(status_code=503, detail={'message': 'Compartilhamento indisponivel sem PostgreSQL configurado.'})
 
@@ -1186,16 +1397,56 @@ def api_song_share_preview(share_id: str = Query(..., min_length=8, max_length=8
     if not share_snapshot:
         raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
 
+    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
     source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
     counts = _build_song_share_counts(share_snapshot)
     return {
         'ok': True,
         'share_id': normalized_share_id,
         'created_at_utc': _normalize_spaces(str(share_snapshot.get('created_at_utc') or '')),
+        'expires_at_utc': _normalize_spaces(str(share_snapshot.get('expires_at_utc') or '')),
         'source': {
             'name': _normalize_spaces(str(source_payload.get('name') or '')),
-            'email': _normalize_spaces(str(source_payload.get('email') or '')),
         },
+        'counts': counts,
+        'total_items': sum(counts.values()),
+    }
+
+
+@app.get('/api/songs/share/view')
+def api_song_share_view(
+    request: Request,
+    share_id: str = Query(..., min_length=8, max_length=80),
+) -> dict[str, object]:
+    _enforce_share_rate_limit(request)
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail={'message': 'Compartilhamento indisponivel sem PostgreSQL configurado.'})
+
+    try:
+        normalized_share_id = _normalize_song_share_id(share_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)}) from exc
+
+    try:
+        share_snapshot = _load_song_share_snapshot(normalized_share_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={'message': str(exc)}) from exc
+    if not share_snapshot:
+        raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
+
+    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
+    counts = _build_song_share_counts(share_snapshot)
+    share_url = _build_portal_url_with_query(request, {SONG_SHARE_QUERY_KEY: normalized_share_id})
+    qr_image_data_url = _build_auth_qr_svg_data_url(share_url) if share_url else ''
+    return {
+        'ok': True,
+        'share_id': normalized_share_id,
+        'share_url': share_url,
+        'qr_image_data_url': qr_image_data_url,
+        'created_at_utc': _normalize_spaces(str(share_snapshot.get('created_at_utc') or '')),
+        'expires_at_utc': _normalize_spaces(str(share_snapshot.get('expires_at_utc') or '')),
+        'data': _build_song_share_view_data(share_snapshot),
         'counts': counts,
         'total_items': sum(counts.values()),
     }
@@ -1203,9 +1454,12 @@ def api_song_share_preview(share_id: str = Query(..., min_length=8, max_length=8
 
 @app.post('/api/songs/share/import')
 def api_song_share_import(
+    request: Request,
     payload: SongShareImportRequest,
     authorization: str = Header('', alias='Authorization'),
 ) -> dict[str, object]:
+    _enforce_share_rate_limit(request)
+
     if not settings.database_url:
         raise HTTPException(status_code=503, detail={'message': 'Compartilhamento indisponivel sem PostgreSQL configurado.'})
 
@@ -1222,6 +1476,7 @@ def api_song_share_import(
     if not share_snapshot:
         raise HTTPException(status_code=404, detail={'message': 'Compartilhamento não encontrado.'})
 
+    share_snapshot = _refresh_song_share_snapshot_from_source(normalized_share_id, share_snapshot)
     source_payload = share_snapshot.get('source') if isinstance(share_snapshot.get('source'), dict) else {}
     try:
         summary = _import_song_share_snapshot(share_snapshot, store_namespace)
@@ -1235,7 +1490,6 @@ def api_song_share_import(
         'share_id': normalized_share_id,
         'source': {
             'name': _normalize_spaces(str(source_payload.get('name') or '')),
-            'email': _normalize_spaces(str(source_payload.get('email') or '')),
         },
         'summary': summary,
     }
@@ -1248,6 +1502,9 @@ def api_health() -> dict[str, object]:
         'service': 'portal-schoenstatt-api',
         'database_configured': bool(settings.database_url),
         'songs_storage_backend': 'postgresql' if settings.database_url else 'json',
+        'cors_allow_origins': settings.cors_allow_origins,
+        'song_share_ttl_hours': settings.song_share_ttl_hours,
+        'song_location_delete_password_required': bool(settings.song_location_delete_password),
         'song_key_api_configured': bool(settings.spotify_client_id and settings.spotify_client_secret),
         'song_favorites_store': str(settings.song_favorites_file),
         'custom_songs_store': str(settings.custom_songs_file),
@@ -1637,7 +1894,13 @@ def api_song_locations_delete_user_node(
 
 
 @app.put('/api/song-locations/nodes/{node_id}')
-def api_song_locations_update_node(node_id: str, payload: SongLocationNodeUpdateRequest) -> dict[str, object]:
+def api_song_locations_update_node(
+    node_id: str,
+    payload: SongLocationNodeUpdateRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    _resolve_user_store_namespace_from_auth_header(authorization)
+
     try:
         node = update_song_location_node(
             settings.song_locations_file,
@@ -1661,11 +1924,14 @@ def api_song_locations_update_node(node_id: str, payload: SongLocationNodeUpdate
 @app.delete('/api/song-locations/nodes/{node_id}')
 def api_song_locations_delete_node(
     node_id: str,
+    authorization: str = Header('', alias='Authorization'),
     location_delete_password: str = Header('', alias='X-Location-Delete-Password'),
 ) -> dict[str, object]:
-    expected_password = str(settings.song_location_delete_password or '')
+    _resolve_user_store_namespace_from_auth_header(authorization)
+
+    expected_password = str(settings.song_location_delete_password or '').strip()
     provided_password = str(location_delete_password or '')
-    if not expected_password or not compare_digest(provided_password, expected_password):
+    if expected_password and not compare_digest(provided_password, expected_password):
         raise HTTPException(
             status_code=403,
             detail={
@@ -1692,7 +1958,12 @@ def api_song_locations_delete_node(
 
 
 @app.put('/api/song-locations/nodes/{node_id}/restore')
-def api_song_locations_restore_node(node_id: str) -> dict[str, object]:
+def api_song_locations_restore_node(
+    node_id: str,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    _resolve_user_store_namespace_from_auth_header(authorization)
+
     try:
         payload = restore_song_location_node(
             settings.song_locations_file,
@@ -1713,7 +1984,12 @@ def api_song_locations_restore_node(node_id: str) -> dict[str, object]:
 
 
 @app.put('/api/song-locations/reorder')
-def api_song_locations_reorder_nodes(payload: SongLocationNodeReorderRequest) -> dict[str, object]:
+def api_song_locations_reorder_nodes(
+    payload: SongLocationNodeReorderRequest,
+    authorization: str = Header('', alias='Authorization'),
+) -> dict[str, object]:
+    _resolve_user_store_namespace_from_auth_header(authorization)
+
     try:
         siblings = reorder_song_location_nodes(
             settings.song_locations_file,
@@ -1802,6 +2078,8 @@ def api_song_location_assignments_delete(
 
 @app.post('/api/auth/register')
 def api_auth_register(payload: AuthRegisterRequest, request: Request) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     try:
         auth_payload = register_user(
             settings.database_url,
@@ -1824,6 +2102,8 @@ def api_auth_register(payload: AuthRegisterRequest, request: Request) -> dict[st
 
 @app.post('/api/auth/login')
 def api_auth_login(payload: AuthLoginRequest, request: Request) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     try:
         auth_payload = login_user(
             settings.database_url,
@@ -1848,6 +2128,8 @@ def api_auth_login(payload: AuthLoginRequest, request: Request) -> dict[str, obj
 
 @app.post('/api/auth/qr/start')
 def api_auth_qr_start(request: Request) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     try:
         qr_payload = create_qr_login_session(
             settings.database_url,
@@ -1885,9 +2167,12 @@ def api_auth_qr_start(request: Request) -> dict[str, object]:
 
 @app.get('/api/auth/qr/status')
 def api_auth_qr_status(
+    request: Request,
     session_guid: str = Query(..., min_length=1),
     poll_token: str = Query(..., min_length=1),
 ) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     try:
         status_payload = get_qr_login_session_status(
             settings.database_url,
@@ -1913,6 +2198,8 @@ def api_auth_qr_approve(
     request: Request,
     authorization: str = Header('', alias='Authorization'),
 ) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     token = _extract_bearer_token(authorization)
     try:
         approval_payload = approve_qr_login_session(
@@ -1938,6 +2225,8 @@ def api_auth_qr_approve(
 
 @app.post('/api/auth/qr/complete')
 def api_auth_qr_complete(payload: AuthQrCompleteRequest, request: Request) -> dict[str, object]:
+    _enforce_auth_rate_limit(request)
+
     try:
         auth_payload = complete_qr_login_session(
             settings.database_url,

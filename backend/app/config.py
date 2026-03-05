@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -37,6 +38,7 @@ def _build_database_url() -> str | None:
 class Settings:
     database_url: str | None
     cors_allow_origins: list[str]
+    public_base_url: str
     auth_session_days: int
     song_favorites_file: Path
     custom_songs_file: Path
@@ -45,14 +47,48 @@ class Settings:
     song_location_user_nodes_file: Path
     song_location_assignments_file: Path
     song_location_delete_password: str
+    song_share_ttl_hours: int
+    rate_limit_window_seconds: int
+    rate_limit_global_requests: int
+    rate_limit_auth_requests: int
+    rate_limit_share_requests: int
+    rate_limit_write_requests: int
     spotify_client_id: str
     spotify_client_secret: str
 
 
 
 def _parse_origins(value: str) -> list[str]:
-    origins = [item.strip() for item in value.split(',') if item.strip()]
-    return origins or ['*']
+    raw_origins = [item.strip() for item in value.split(',') if item.strip()]
+    parsed_origins: list[str] = []
+    seen_origins: set[str] = set()
+
+    for origin in raw_origins:
+        if origin == '*':
+            continue
+        normalized = _normalize_public_base_url(origin)
+        if not normalized:
+            continue
+        lookup_key = normalized.casefold()
+        if lookup_key in seen_origins:
+            continue
+        seen_origins.add(lookup_key)
+        parsed_origins.append(normalized)
+
+    return parsed_origins
+
+
+def _normalize_public_base_url(value: str | None) -> str:
+    candidate = str(value or '').strip().rstrip('/')
+    if not candidate:
+        return ''
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {'http', 'https'}:
+        return ''
+    if not parsed.netloc:
+        return ''
+    return f'{parsed.scheme}://{parsed.netloc}'
 
 
 def _parse_positive_int(value: str, default: int) -> int:
@@ -139,7 +175,8 @@ def _resolve_song_location_user_nodes_file() -> Path:
 def get_settings() -> Settings:
     return Settings(
         database_url=_build_database_url(),
-        cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '*')),
+        cors_allow_origins=_parse_origins(os.getenv('CORS_ALLOW_ORIGINS', '')),
+        public_base_url=_normalize_public_base_url(os.getenv('PUBLIC_BASE_URL', '')),
         auth_session_days=_parse_positive_int(os.getenv('AUTH_SESSION_DAYS', '30'), 30),
         song_favorites_file=_resolve_song_favorites_file(),
         custom_songs_file=_resolve_custom_songs_file(),
@@ -147,7 +184,13 @@ def get_settings() -> Settings:
         song_locations_file=_resolve_song_locations_file(),
         song_location_user_nodes_file=_resolve_song_location_user_nodes_file(),
         song_location_assignments_file=_resolve_song_location_assignments_file(),
-        song_location_delete_password=os.getenv('SONG_LOCATION_DELETE_PASSWORD', 'FL@MB0'),
+        song_location_delete_password=os.getenv('SONG_LOCATION_DELETE_PASSWORD', '').strip(),
+        song_share_ttl_hours=_parse_positive_int(os.getenv('SONG_SHARE_TTL_HOURS', '168'), 168),
+        rate_limit_window_seconds=_parse_positive_int(os.getenv('RATE_LIMIT_WINDOW_SECONDS', '60'), 60),
+        rate_limit_global_requests=_parse_positive_int(os.getenv('RATE_LIMIT_GLOBAL_REQUESTS', '240'), 240),
+        rate_limit_auth_requests=_parse_positive_int(os.getenv('RATE_LIMIT_AUTH_REQUESTS', '30'), 30),
+        rate_limit_share_requests=_parse_positive_int(os.getenv('RATE_LIMIT_SHARE_REQUESTS', '45'), 45),
+        rate_limit_write_requests=_parse_positive_int(os.getenv('RATE_LIMIT_WRITE_REQUESTS', '80'), 80),
         spotify_client_id=os.getenv('SPOTIFY_CLIENT_ID', '').strip(),
         spotify_client_secret=os.getenv('SPOTIFY_CLIENT_SECRET', '').strip(),
     )

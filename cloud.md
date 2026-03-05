@@ -73,13 +73,20 @@ Observabilidade e operacao:
 | `POSTGRES_USER` | Nao | vazio | Idem acima |
 | `POSTGRES_PASSWORD` | Nao | vazio | Idem acima |
 | `POSTGRES_DB` | Nao | vazio | Idem acima |
-| `CORS_ALLOW_ORIGINS` | Nao | `*` | CORS do FastAPI |
+| `CORS_ALLOW_ORIGINS` | Nao | vazio | CORS do FastAPI (definir dominios explicitamente) |
+| `PUBLIC_BASE_URL` | Nao | vazio | URL publica canonical para links/QR |
 | `SONG_FAVORITES_FILE` | Nao | `data/song_favorites.json` | Fallback de favoritos |
 | `CUSTOM_SONGS_FILE` | Nao | `data/custom_songs.json` | Fallback de musicas manuais |
 | `MYSTERY_SONG_ASSIGNMENTS_FILE` | Nao | `data/mystery_song_assignments.json` | Fallback de vinculos por misterio |
 | `SONG_LOCATIONS_FILE` | Nao | `data/song_locations.json` | Fallback de arvore de locais |
 | `SONG_LOCATION_ASSIGNMENTS_FILE` | Nao | `data/song_location_assignments.json` | Fallback de vinculos por local |
-| `SONG_LOCATION_DELETE_PASSWORD` | Sim (operacional) | `FL@MB0` | Protege inativacao/exclusao de locais |
+| `SONG_LOCATION_DELETE_PASSWORD` | Nao | vazio | Senha adicional para inativacao/exclusao de locais |
+| `SONG_SHARE_TTL_HOURS` | Nao | `168` | Validade de links de compartilhamento |
+| `RATE_LIMIT_WINDOW_SECONDS` | Nao | `60` | Janela de rate limit por IP |
+| `RATE_LIMIT_GLOBAL_REQUESTS` | Nao | `240` | Limite global por janela |
+| `RATE_LIMIT_WRITE_REQUESTS` | Nao | `80` | Limite para escrita (POST/PUT/DELETE/PATCH) |
+| `RATE_LIMIT_AUTH_REQUESTS` | Nao | `30` | Limite para rotas de autenticacao |
+| `RATE_LIMIT_SHARE_REQUESTS` | Nao | `45` | Limite para rotas de compartilhamento |
 | `SPOTIFY_CLIENT_ID` | Nao | vazio | Autenticacao Spotify para detectar tom |
 | `SPOTIFY_CLIENT_SECRET` | Nao | vazio | Autenticacao Spotify para detectar tom |
 
@@ -113,7 +120,7 @@ Observabilidade e operacao:
 | `CORS_ALLOW_ORIGINS` | Recomendado | dominios oficiais | CORS |
 | `SPOTIFY_CLIENT_ID` | Nao | vazio | Detectar tom por API |
 | `SPOTIFY_CLIENT_SECRET` | Nao | vazio | Detectar tom por API |
-| `SONG_LOCATION_DELETE_PASSWORD` | Sim (operacional) | `FL@MB0` | Senha administrativa |
+| `SONG_LOCATION_DELETE_PASSWORD` | Recomendado | vazio | Senha administrativa adicional |
 
 ### Variaveis internas de runtime (container)
 
@@ -393,4 +400,3 @@ Timezone sugerido: Europe/Lisbon.
 - Senha administrativa nao exposta em frontend persistente longo.
 - Backup de `data/*.json` (se fallback) ou dump do PostgreSQL executado.
 - Documentacao atualizada (README + `cloud.md`) apos merge.
-

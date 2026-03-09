@@ -46,6 +46,10 @@
   - `app_user_sessions` (controle de sessao/login)
   - `app_auth_qr_sessions` (login por QR com aprovacao do celular)
 
+Observacao:
+- ao iniciar a API com `DATABASE_URL`, o backend aplica automaticamente o schema base (idempotente).
+- os scripts abaixo continuam uteis para aplicacao manual/operacional.
+
 Aplicar manualmente:
 
 ```powershell

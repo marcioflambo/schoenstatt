@@ -64,6 +64,25 @@ Acessos:
 - `https://localhost/api/health`
 - `https://localhost/api/db/ping`
 
+Portas padrao para evitar conflito com outros containers no host:
+- `PORT_HTTP_ALT=80`
+- `PORT_HTTPS_ALT=443`
+- `LOCAL_POSTGRES_PORT=5432`
+- `LOCAL_POSTGRES_VOLUME_NAME=shoenstatt_postgres_data`
+- `LOCAL_CADDY_DATA_VOLUME_NAME=shoenstatt_caddy_data`
+- `LOCAL_CADDY_CONFIG_VOLUME_NAME=shoenstatt_caddy_config`
+
+Banco local isolado do ambiente do host:
+- este compose usa `LOCAL_DATABASE_URL` (nao `DATABASE_URL`) para evitar herdar conexoes de outro projeto;
+- default: `postgresql://schoenstatt:schoenstatt@postgres:5432/schoenstatt?sslmode=disable`.
+
+Para rodar multiplas stacks Compose em paralelo, defina um nome de projeto diferente:
+
+```powershell
+$env:COMPOSE_PROJECT_NAME="schoenstatt_b"
+docker compose up --build -d
+```
+
 Para usar certificado público (sem aviso de "inseguro"), defina o domínio:
 
 ```powershell
@@ -74,14 +93,14 @@ docker compose up --build -d
 Obs.: para mudar as portas externas, defina `PORT_HTTP_ALT` e/ou `PORT_HTTPS_ALT` antes de subir:
 
 ```powershell
-$env:PORT_HTTP_ALT=80
-$env:PORT_HTTPS_ALT=443
+$env:PORT_HTTP_ALT=8080
+$env:PORT_HTTPS_ALT=8443
 docker compose up --build -d
 ```
 
 Requisitos para certificado válido do Let's Encrypt:
 - o DNS de `SITE_DOMAIN` deve apontar para este servidor;
-- portas `80` e `443` precisam estar abertas/públicas no host.
+- portas `80` e `443` precisam estar abertas/públicas no host (se precisar disso, ajuste `PORT_HTTP_ALT=80` e `PORT_HTTPS_ALT=443`).
 
 Comportamento de atualização sem reiniciar:
 - Altere arquivos em `index.html`, `assets/*`, `content/*` ou `backend/*`.

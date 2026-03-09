@@ -1,7 +1,8 @@
+name: "${COMPOSE_PROJECT_NAME:-schoenstatt}"
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: schoenstatt-postgres
     environment:
       POSTGRES_DB: "${LOCAL_POSTGRES_DB:-schoenstatt}"
       POSTGRES_USER: "${LOCAL_POSTGRES_USER:-schoenstatt}"
@@ -18,7 +19,6 @@ services:
     restart: unless-stopped
 
   portal:
-    container_name: schoenstatt-portal
     build:
       context: .
       dockerfile: Dockerfile
@@ -38,7 +38,12 @@ services:
       - backend/.env
     environment:
       WATCHFILES_FORCE_POLLING: "true"
-      DATABASE_URL: "${DATABASE_URL:-postgresql://schoenstatt:schoenstatt@postgres:5432/schoenstatt?sslmode=disable}"
+      DATABASE_URL: "${LOCAL_DATABASE_URL:-postgresql://${LOCAL_POSTGRES_USER:-schoenstatt}:${LOCAL_POSTGRES_PASSWORD:-schoenstatt}@postgres:5432/${LOCAL_POSTGRES_DB:-schoenstatt}?sslmode=disable}"
+      POSTGRES_HOST: ""
+      POSTGRES_PORT: ""
+      POSTGRES_USER: ""
+      POSTGRES_PASSWORD: ""
+      POSTGRES_DB: ""
     expose:
       - "8000"
     volumes:
@@ -47,7 +52,6 @@ services:
 
   proxy:
     image: caddy:2.8.4-alpine
-    container_name: schoenstatt-proxy
     depends_on:
       - portal
     environment:
@@ -63,5 +67,8 @@ services:
 
 volumes:
   postgres_data:
+    name: "${LOCAL_POSTGRES_VOLUME_NAME:-shoenstatt_postgres_data}"
   caddy_data:
+    name: "${LOCAL_CADDY_DATA_VOLUME_NAME:-shoenstatt_caddy_data}"
   caddy_config:
+    name: "${LOCAL_CADDY_CONFIG_VOLUME_NAME:-shoenstatt_caddy_config}"

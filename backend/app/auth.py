@@ -14,6 +14,8 @@ from psycopg.errors import OperationalError, UniqueViolation
 from psycopg.rows import dict_row
 from pydantic import BaseModel
 
+from .db_schema import ensure_app_schema_once
+
 _PASSWORD_HASH_ALGO = 'pbkdf2_sha256'
 _PASSWORD_HASH_ITERATIONS = 480_000
 _PASSWORD_SALT_BYTES = 16
@@ -64,6 +66,7 @@ def _normalize_spaces(value: str | None) -> str:
 def _require_database_url(database_url: str | None) -> str:
     safe_database_url = str(database_url or '').strip()
     if safe_database_url:
+        ensure_app_schema_once(safe_database_url)
         return safe_database_url
     raise RuntimeError('DATABASE_URL nao configurada para autenticacao.')
 

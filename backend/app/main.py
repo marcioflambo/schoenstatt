@@ -5,6 +5,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from hmac import compare_digest
 from io import BytesIO
+import logging
 from pathlib import Path
 import secrets
 import re
@@ -52,6 +53,7 @@ from .custom_songs import (
     update_custom_song,
 )
 from .db import ping_database
+from .db_schema import ensure_app_schema_once
 from .json_store_db import load_store, save_store
 from .mystery_song_assignments import (
     MysterySongAssignmentUpsertRequest,
@@ -135,11 +137,22 @@ RATE_LIMIT_BUCKET_AUTH = 'auth'
 RATE_LIMIT_BUCKET_SHARE = 'share'
 _RATE_LIMIT_STATE: dict[str, deque[float]] = defaultdict(deque)
 _RATE_LIMIT_LOCK = Lock()
+_LOGGER = logging.getLogger('uvicorn.error')
 
 
 class SongShareImportRequest(BaseModel):
     share_id: str
     exclude_conflict_keys: list[str] = []
+
+
+@app.on_event('startup')
+def ensure_database_schema_on_startup() -> None:
+    if not settings.database_url:
+        return
+    try:
+        ensure_app_schema_once(settings.database_url)
+    except RuntimeError as exc:
+        _LOGGER.warning('Nao foi possivel garantir schema inicial do PostgreSQL: %s', exc)
 
 
 def _extract_bearer_token(authorization_header: str | None) -> str:

@@ -399,7 +399,7 @@
       "jaculatoryItems": [
         "Glória ao Pai, ao Filho e ao Espírito Santo. Como era no princípio, agora e sempre. Amém.",
         "Ó meu Jesus, perdoai-nos e livrai-nos do fogo do inferno.",
-        "Levai as almas todas para o Céu, principalmente as que mais precisarem da vossa misericórdia.",
+        "Levai as almas todas para o Céu e socorrei principalmente as que mais precisarem da vossa misericórdia.",
         "Jesus manso e humilde de coração, fazei o nosso coração semelhante ao vosso.",
         "Sagrado Coração de Jesus, eu confio em Vós.",
         "Sagrado Coração de Jesus que tanto nos amais, fazei que vos ame sempre e cada vez mais.",
@@ -509,7 +509,7 @@
       },
       {
         "title": "Oração de Fátima",
-        "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o Céu, principalmente as que mais precisarem da vossa misericórdia."
+        "text": "Ó meu Jesus, perdoai-nos, livrai-nos do fogo do inferno, levai as almas todas para o Céu e socorrei principalmente as que mais precisarem da vossa misericórdia."
       },
       {
         "title": "Agradecimento Final",
@@ -866,8 +866,8 @@
       "nextButton": "Próximo",
       "finishButton": "Concluir",
       "stepStartGroup": "Invocação",
-      "stepStartTitle": "Sinal da Cruz",
-      "stepStartSignOfCrossText": "",
+      "stepStartTitle": "Estamos aqui reunidos em nome do Pai, do Filho e do Espírito Santo.",
+      "stepStartSignOfCrossText": "Graças e louvores se deem a todo momento, ao Santíssimo e Diviníssimo Sacramento. 3x \n\nMeu Deus! Eu creio, adoro, espero e amo-Vos. Peço-Vos perdão por aqueles que não creem, não adoram, não esperam e não Vos amam. 3x \n\n[Intenções]",
       "holySpiritPrayerTitle": "Oração ao Espírito Santo",
       "dotStartNumber": "Invocação",
       "dotStart": "Invocação",

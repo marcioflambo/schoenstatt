@@ -1830,6 +1830,10 @@
   const mysteryModalSongToggle = document.getElementById('mystery-modal-song-toggle');
   const mysteryModalSongPanel = document.getElementById('mystery-modal-song-panel');
   const mysteryModalSongTitle = document.getElementById('mystery-modal-song-title');
+  const mysteryModalSongMeta = document.getElementById('mystery-modal-song-meta');
+  const mysteryModalSongExternalActions = document.getElementById('mystery-modal-song-external-actions');
+  const mysteryModalSongSpotifyLink = document.getElementById('mystery-modal-song-spotify-link');
+  const mysteryModalSongYoutubeLink = document.getElementById('mystery-modal-song-youtube-link');
   const mysteryModalSongClose = document.getElementById('mystery-modal-song-close');
   const mysteryModalSongLyrics = document.getElementById('mystery-modal-song-lyrics');
   const mysteryAveMariaOptions = document.getElementById('mystery-ave-maria-options');
@@ -4529,6 +4533,12 @@
     if (mysteryModalSongTitle) {
       mysteryModalSongTitle.textContent = '';
     }
+    if (mysteryModalSongMeta) {
+      mysteryModalSongMeta.textContent = '';
+    }
+    if (mysteryModalSongExternalActions) {
+      mysteryModalSongExternalActions.hidden = true;
+    }
     if (mysteryModalSongLyrics) {
       mysteryModalSongLyrics.textContent = '';
     }
@@ -4599,6 +4609,25 @@
       ? readRosaryMessage('songToggleShow', readMysteryMessage('songToggleShow'))
       : readRosaryMessage('songToggleEmpty', readMysteryMessage('songToggleEmpty'));
     rosaryModalSongToggle.setAttribute('aria-label', rosaryModalSongToggle.title);
+  };
+
+  const setupSongExternalLink = (node, href, title, ariaLabel) => {
+    if (!node) return;
+    node.title = title;
+    node.setAttribute('aria-label', ariaLabel);
+    if (href) {
+      node.href = href;
+      node.target = '_blank';
+      node.rel = 'noopener noreferrer';
+      node.classList.remove('is-disabled');
+      node.removeAttribute('aria-disabled');
+      return;
+    }
+    node.removeAttribute('href');
+    node.removeAttribute('target');
+    node.removeAttribute('rel');
+    node.classList.add('is-disabled');
+    node.setAttribute('aria-disabled', 'true');
   };
 
   const toggleRosaryModalSongPanel = async () => {
@@ -4681,32 +4710,13 @@
         const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
         const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
 
-        const setupExternalLink = (node, href, title, ariaLabel) => {
-          if (!node) return;
-          node.title = title;
-          node.setAttribute('aria-label', ariaLabel);
-          if (href) {
-            node.href = href;
-            node.target = '_blank';
-            node.rel = 'noopener noreferrer';
-            node.classList.remove('is-disabled');
-            node.removeAttribute('aria-disabled');
-            return;
-          }
-          node.removeAttribute('href');
-          node.removeAttribute('target');
-          node.removeAttribute('rel');
-          node.classList.add('is-disabled');
-          node.setAttribute('aria-disabled', 'true');
-        };
-
-        setupExternalLink(
+        setupSongExternalLink(
           rosaryModalSongSpotifyLink,
           spotifyUrl,
           readSongMessage('spotifyTitle'),
           readSongMessage('spotifyAria')
         );
-        setupExternalLink(
+        setupSongExternalLink(
           rosaryModalSongYoutubeLink,
           youtubeUrl,
           readSongMessage('youtubeTitle'),
@@ -5439,6 +5449,44 @@
       mysteryModalSongTitle.textContent = persistedAssignment.songArtist
         ? `${persistedAssignment.songTitle} - ${persistedAssignment.songArtist}`
         : persistedAssignment.songTitle || readSongMessage('defaultSongTitle');
+      const resolvedSource = String(
+        persistedAssignment.lyricsSource
+        || persistedAssignment.source
+        || persistedAssignment.songSource
+        || ''
+      ).trim();
+      const resolvedSourceLabel = resolveSongSourceLabel(
+        resolvedSource,
+        String(
+          persistedAssignment.sourceLabel
+          || persistedAssignment.source_label
+          || ''
+        ).trim()
+      );
+      if (mysteryModalSongMeta) {
+        mysteryModalSongMeta.textContent = `${readSongMessage('sourcePrefix')} ${resolvedSourceLabel}`;
+      }
+      if (mysteryModalSongExternalActions && mysteryModalSongSpotifyLink && mysteryModalSongYoutubeLink) {
+        const externalQuery = buildExternalSongSearchQuery({
+          title: persistedAssignment.songTitle || '',
+          artist: persistedAssignment.songArtist || '',
+        });
+        const spotifyUrl = buildExternalSongSearchUrl('spotify', externalQuery);
+        const youtubeUrl = buildExternalSongSearchUrl('youtube', externalQuery);
+        setupSongExternalLink(
+          mysteryModalSongSpotifyLink,
+          spotifyUrl,
+          readSongMessage('spotifyTitle'),
+          readSongMessage('spotifyAria')
+        );
+        setupSongExternalLink(
+          mysteryModalSongYoutubeLink,
+          youtubeUrl,
+          readSongMessage('youtubeTitle'),
+          readSongMessage('youtubeAria')
+        );
+        mysteryModalSongExternalActions.hidden = false;
+      }
       mysteryModalSongLyrics.textContent = String(persistedAssignment.lyricsText || '').trim()
         || readMysteryMessage('songLyricsEmpty');
       mysteryModalSongPanel.hidden = false;
